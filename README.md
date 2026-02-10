@@ -76,9 +76,16 @@ python -c "from huggingface_hub import snapshot_download; snapshot_download('BAA
 ### 5. Index Dokumen PDF
 Taruh file PDF di `data/pdfs/`, lalu jalankan di terminal terpisah:
 ```bash
+# Incremental (default) — hanya index file baru, skip yang sudah ada
 python -m scripts.index_documents
+
+# Force re-index — hapus semua data lama, index ulang semua
+python -m scripts.index_documents --force
+
+# Custom directory
+python -m scripts.index_documents --force path/to/pdfs
 ```
-> Catatan: Jika VRAM penuh saat indexing, matikan Ollama dulu: `ollama stop qwen2.5:7b`
+> **Catatan:** Indexing pakai GPU (PaddleOCR + Embedding). Jika VRAM penuh, matikan Ollama dulu: `ollama stop qwen2.5:7b`
 
 ### 6. Jalankan Backend + Frontend
 ```bash
