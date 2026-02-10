@@ -22,21 +22,37 @@ async function checkHealth() {
     }
 }
 
-function addMessage(content, type, sources = []) {
+function addMessage(content, type, sources = [], debug = null) {
     const msg = document.createElement("div");
     msg.className = `message ${type}-message`;
 
     let html = `<div class="message-content">${escapeHtml(content)}</div>`;
 
+    if (debug) {
+        const mode = debug.mode === "rag" ? "RAG" : "Chitchat";
+        const time = `${debug.total_time_s}s`;
+        const details = debug.mode === "rag"
+            ? ` · Top-K: ${debug.similarity_top_k} → Re-rank: ${debug.reranker_top_n} · Sources: ${debug.sources_returned} · Model: ${debug.model}`
+            : ` · Model: ${debug.model || "ollama"}`;
+        html += `<div class="debug-bar">${mode} · ${time}${details}</div>`;
+    }
+
     if (sources.length > 0) {
         html += `<details class="sources"><summary>Sumber (${sources.length})</summary>`;
-        for (const src of sources) {
-            const page = src.page ? ` — Hal. ${src.page}` : "";
+        for (let i = 0; i < sources.length; i++) {
+            const src = sources[i];
+            const page = src.page ? `Hal. ${src.page}` : "";
+            const chunk = src.chunk_index != null ? `Chunk #${src.chunk_index}` : "";
+            const type = src.element_type ? `[${src.element_type}]` : "";
+            const meta = [page, chunk, type].filter(Boolean).join(" · ");
             html += `
                 <div class="source-item">
-                    <strong>${escapeHtml(src.file_name)}</strong>${page}
-                    <span class="source-score">Score: ${src.score}</span>
-                    <br><small>${escapeHtml(src.text_preview)}</small>
+                    <div class="source-header">
+                        <strong>${i + 1}. ${escapeHtml(src.file_name)}</strong>
+                        <span class="source-score">Score: ${src.score}</span>
+                    </div>
+                    ${meta ? `<div class="source-meta">${meta}</div>` : ""}
+                    <div class="source-preview">${escapeHtml(src.text_preview)}</div>
                 </div>`;
         }
         html += `</details>`;
@@ -98,7 +114,7 @@ async function sendMessage(query) {
         }
 
         const data = await res.json();
-        addMessage(data.answer, "bot", data.sources);
+        addMessage(data.answer, "bot", data.sources, data.debug);
     } catch (err) {
         removeLoading();
         addMessage("Tidak dapat terhubung ke server. Pastikan backend berjalan.", "bot");
