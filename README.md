@@ -50,7 +50,14 @@ Dashboard: http://localhost:6333/dashboard
 ollama pull qwen2.5vl:7b
 ```
 
-### 4. Jalankan Backend + Frontend
+### 4. Index Dokumen PDF
+Taruh file PDF di `data/pdfs/`, lalu jalankan di terminal terpisah:
+```bash
+python -m scripts.index_documents
+```
+> Catatan: Download embedding model (~1.2GB) terjadi saat pertama kali. Jika VRAM penuh, matikan Ollama dulu: `ollama stop qwen2.5vl:7b`
+
+### 5. Jalankan Backend + Frontend
 ```bash
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
