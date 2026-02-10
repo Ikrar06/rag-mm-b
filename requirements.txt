@@ -1,0 +1,27 @@
+# Core Framework
+llama-index>=0.12.0
+llama-index-vector-stores-qdrant>=0.4.0
+llama-index-embeddings-huggingface>=0.4.0
+llama-index-llms-ollama>=0.4.0
+llama-index-postprocessor-flag-embedding-reranker>=0.3.0
+llama-index-readers-file>=0.4.0
+
+# Embedding & Reranker
+sentence-transformers>=3.3.0
+FlagEmbedding>=1.3.0
+torch>=2.1.0
+
+# Vector Database
+qdrant-client>=1.12.0
+
+# Backend
+fastapi>=0.115.0
+uvicorn>=0.32.0
+python-multipart>=0.0.12
+
+# LLM Client
+openai>=1.55.0
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.10.0
