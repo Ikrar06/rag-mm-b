@@ -5,9 +5,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# === Paths ===
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
+DATA_DIR = os.path.join(_PROJECT_ROOT, "data", "pdfs")
+IMAGES_DIR = os.path.join(_PROJECT_ROOT, "data", "images")
+
 # === LLM (Multimodal VLM via Ollama) ===
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-LLM_MODEL = os.getenv("LLM_MODEL", "qwen2.5vl:7b")  # Multimodal VLM
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen2.5:7b")  # Text-only (VLM terlalu berat di RAM)
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.1"))
 LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "512"))
 LLM_REQUEST_TIMEOUT = int(os.getenv("LLM_REQUEST_TIMEOUT", "120"))
@@ -18,9 +23,9 @@ EMBED_DEVICE = "cuda"
 EMBED_BATCH_SIZE = 32
 EMBED_DIMENSION = 1024
 
-# === Re-ranker ===
-RERANKER_MODEL_NAME = "BAAI/bge-reranker-v2-m3"
-RERANKER_TOP_N = 3
+# === Re-ranker (local model) ===
+RERANKER_MODEL_NAME = os.path.join(_PROJECT_ROOT, "models", "bge-reranker-v2-m3")
+RERANKER_TOP_N = 10
 RERANKER_USE_FP16 = True
 
 # === Qdrant ===
@@ -36,9 +41,4 @@ CHUNK_SIZE = 512
 CHUNK_OVERLAP = 50
 
 # === RAG Pipeline ===
-SIMILARITY_TOP_K = 10  # Ambil 10 dari Qdrant, re-rank jadi top 3
-
-# === Paths ===
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
-DATA_DIR = os.path.join(_PROJECT_ROOT, "data", "pdfs")
-IMAGES_DIR = os.path.join(_PROJECT_ROOT, "data", "images")
+SIMILARITY_TOP_K = 20  # Ambil 20 dari Qdrant, re-rank jadi top 10

@@ -25,7 +25,8 @@ data/images/
 .DS_Store
 Thumbs.db
 
-# Model cache
+# Model files (local downloads)
+models/
 *.bin
 *.safetensors
 
