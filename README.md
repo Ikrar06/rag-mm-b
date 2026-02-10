@@ -12,6 +12,8 @@ RAG (Retrieval-Augmented Generation) chatbot untuk informasi akademik Universita
 | Vector DB | Qdrant (Docker) |
 | Framework | LlamaIndex |
 | Backend | FastAPI |
+| Preprocessing / OCR | PaddleOCR + PyMuPDF |
+| Chunking | Unstructured.io (chunk_by_title) |
 | Frontend | HTML/JS sederhana |
 
 ## Hardware Requirements
@@ -71,11 +73,13 @@ rag-prototype/
 │   ├── main.py              # FastAPI entry point
 │   ├── config.py            # Settings & env vars
 │   ├── routers/             # API route handlers
-│   ├── services/            # Business logic (RAG pipeline, indexing)
+│   ├── services/            # Business logic (RAG pipeline, indexing, OCR preprocessing)
 │   ├── models/              # Pydantic schemas
 │   └── prompts/             # Prompt templates
 ├── frontend/                # Simple chat UI
-├── data/pdfs/               # PDF dokumen UNHAS
+├── data/
+│   ├── pdfs/                # PDF dokumen UNHAS
+│   └── images/              # Gambar hasil extract dari PDF (multimodal)
 ├── scripts/                 # Utility scripts (indexing, evaluasi)
 ├── tests/                   # Test files
 ├── docker-compose.yml       # Qdrant service
@@ -87,6 +91,7 @@ rag-prototype/
 
 - [x] Project setup (venv, dependencies, folder structure, docker-compose, config)
 - [x] Backend services (RAG pipeline, indexing, prompt templates, schemas)
+- [x] Preprocessing pipeline (PaddleOCR + Unstructured.io + image extraction)
 - [x] API endpoints (FastAPI routes: /api/chat, /api/health, /api/index)
 - [ ] Frontend UI
 - [ ] Evaluasi

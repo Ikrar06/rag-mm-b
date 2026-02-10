@@ -22,6 +22,14 @@ python-multipart>=0.0.12
 # LLM Client
 openai>=1.55.0
 
+# Preprocessing / OCR
+paddlepaddle>=2.6.0
+paddleocr>=2.9.0
+pymupdf>=1.24.0
+
+# Document Parsing & Chunking
+unstructured[pdf]>=0.16.0
+
 # Utilities
 python-dotenv>=1.0.0
 pydantic>=2.10.0

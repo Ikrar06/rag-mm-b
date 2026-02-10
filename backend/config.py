@@ -27,10 +27,18 @@ RERANKER_USE_FP16 = True
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "unhas_docs")
 
-# === RAG Pipeline ===
+# === PaddleOCR ===
+OCR_LANG = "id"  # Bahasa Indonesia (fallback ke en jika id tidak tersedia)
+OCR_USE_GPU = True
+
+# === Chunking (Unstructured.io chunk_by_title) ===
 CHUNK_SIZE = 512
 CHUNK_OVERLAP = 50
+
+# === RAG Pipeline ===
 SIMILARITY_TOP_K = 10  # Ambil 10 dari Qdrant, re-rank jadi top 3
 
 # === Paths ===
-DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "pdfs")
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
+DATA_DIR = os.path.join(_PROJECT_ROOT, "data", "pdfs")
+IMAGES_DIR = os.path.join(_PROJECT_ROOT, "data", "images")
