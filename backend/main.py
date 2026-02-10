@@ -1,10 +1,13 @@
 """FastAPI application entry point."""
 
 import logging
+import os
 
 import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from qdrant_client import QdrantClient
 
 from backend.config import OLLAMA_BASE_URL, QDRANT_URL, LLM_MODEL
@@ -24,6 +27,16 @@ app.add_middleware(
 )
 
 app.include_router(chat_router)
+
+# Serve frontend static files
+_frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
+app.mount("/static", StaticFiles(directory=_frontend_dir), name="static")
+
+
+@app.get("/")
+async def serve_frontend():
+    """Serve the chat UI."""
+    return FileResponse(os.path.join(_frontend_dir, "index.html"))
 
 
 @app.get("/api/health", response_model=HealthResponse)

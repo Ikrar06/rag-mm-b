@@ -50,10 +50,11 @@ Dashboard: http://localhost:6333/dashboard
 ollama pull qwen2.5vl:7b
 ```
 
-### 4. Jalankan Backend
+### 4. Jalankan Backend + Frontend
 ```bash
 uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
+Chat UI: http://localhost:8000
 
 ## API Endpoints
 
@@ -76,7 +77,10 @@ rag-prototype/
 │   ├── services/            # Business logic (RAG pipeline, indexing, OCR preprocessing)
 │   ├── models/              # Pydantic schemas
 │   └── prompts/             # Prompt templates
-├── frontend/                # Simple chat UI
+├── frontend/
+│   ├── index.html           # Chat UI
+│   ├── style.css            # Styling
+│   └── app.js               # API calls + chat logic
 ├── data/
 │   ├── pdfs/                # PDF dokumen UNHAS
 │   └── images/              # Gambar hasil extract dari PDF (multimodal)
@@ -93,5 +97,5 @@ rag-prototype/
 - [x] Backend services (RAG pipeline, indexing, prompt templates, schemas)
 - [x] Preprocessing pipeline (PaddleOCR + Unstructured.io + image extraction)
 - [x] API endpoints (FastAPI routes: /api/chat, /api/health, /api/index)
-- [ ] Frontend UI
+- [x] Frontend UI (chat interface dengan health check + sources)
 - [ ] Evaluasi
