@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Chatbot UNHAS</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app">
+        <header class="header">
+            <h1>RAG Chatbot UNHAS</h1>
+            <p>Asisten Akademik Universitas Hasanuddin</p>
+            <div id="status" class="status">Mengecek koneksi...</div>
+        </header>
+
+        <main class="chat-container" id="chatContainer">
+            <div class="message bot-message">
+                <div class="message-content">
+                    Halo! Saya asisten akademik UNHAS. Silakan ajukan pertanyaan tentang informasi akademik.
+                </div>
+            </div>
+        </main>
+
+        <footer class="input-container">
+            <form id="chatForm" class="input-form">
+                <input
+                    type="text"
+                    id="queryInput"
+                    placeholder="Ketik pertanyaan Anda..."
+                    autocomplete="off"
+                    required
+                >
+                <button type="submit" id="sendBtn">Kirim</button>
+            </form>
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
