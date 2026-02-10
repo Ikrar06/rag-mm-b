@@ -50,8 +50,18 @@ ollama pull qwen2.5vl:7b
 
 ### 4. Jalankan Backend
 ```bash
-# (coming soon)
+uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+## API Endpoints
+
+| Method | Endpoint | Deskripsi |
+|--------|----------|-----------|
+| POST | `/api/chat` | Kirim pertanyaan, dapat jawaban RAG + sumber |
+| GET | `/api/health` | Cek status Ollama & Qdrant |
+| POST | `/api/index` | Trigger indexing dokumen PDF |
+
+Docs: http://localhost:8000/docs
 
 ## Project Structure
 
@@ -76,7 +86,7 @@ rag-prototype/
 ## Progress
 
 - [x] Project setup (venv, dependencies, folder structure, docker-compose, config)
-- [ ] Backend services (RAG pipeline, indexing, prompt templates)
-- [ ] API endpoints (FastAPI routes)
+- [x] Backend services (RAG pipeline, indexing, prompt templates, schemas)
+- [x] API endpoints (FastAPI routes: /api/chat, /api/health, /api/index)
 - [ ] Frontend UI
 - [ ] Evaluasi
