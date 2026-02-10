@@ -71,7 +71,7 @@ async def index_documents(request: IndexRequest):
     from backend.services.indexing import index_documents as do_index
 
     try:
-        count = do_index(request.directory)
+        count = do_index(request.directory, force=request.force)
         return IndexResponse(status="ok", documents_indexed=count)
     except Exception as e:
         logger.error(f"Indexing error: {e}")
