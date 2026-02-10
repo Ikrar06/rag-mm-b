@@ -27,7 +27,7 @@ def _get_ocr_engine() -> PaddleOCR:
     global _ocr_engine
     if _ocr_engine is None:
         logger.info("Initializing PaddleOCR...")
-        _ocr_engine = PaddleOCR(use_angle_cls=True, lang=OCR_LANG, use_gpu=OCR_USE_GPU)
+        _ocr_engine = PaddleOCR(use_angle_cls=True, lang=OCR_LANG, device="gpu" if OCR_USE_GPU else "cpu")
     return _ocr_engine
 
 
@@ -53,7 +53,7 @@ def _extract_text_from_page(page: fitz.Page) -> str:
 
     try:
         ocr = _get_ocr_engine()
-        result = ocr.ocr(tmp_path, cls=True)
+        result = ocr.ocr(tmp_path)
 
         if not result or not result[0]:
             return text
@@ -148,12 +148,21 @@ def chunk_documents(pages: list[dict]) -> list[dict]:
         for element in chunked_elements:
             text = str(element).strip()
             if text:
+                # Ambil tipe elemen asli dari composite chunk
+                orig = getattr(element.metadata, "orig_elements", None)
+                if orig:
+                    seen = set()
+                    types = [e.category for e in orig if not (e.category in seen or seen.add(e.category))]
+                    element_type = " + ".join(types)
+                else:
+                    element_type = element.category
+
                 chunks.append({
                     "text": text,
                     "page": page_data["page"],
                     "file_name": page_data["file_name"],
                     "chunk_index": len(chunks),
-                    "element_type": element.category,
+                    "element_type": element_type,
                 })
 
     logger.info(f"  Chunked {len(pages)} pages into {len(chunks)} chunks (structure-aware)")
