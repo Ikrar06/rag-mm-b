@@ -1,0 +1,8 @@
+FROM Supa-AI/gemma2-9b-cpt-sahabatai-v1-instruct:q4_k_m
+
+TEMPLATE """User: {{ .Prompt }}
+Assistant: """
+
+PARAMETER stop "User:"
+PARAMETER stop "Assistant:"
+PARAMETER temperature 0.1

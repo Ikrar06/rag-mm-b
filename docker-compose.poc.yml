@@ -1,0 +1,114 @@
+version: "3.8"
+
+# POC environment — L40S 48GB, managed sebagian oleh IOH
+# Jalankan dengan: docker compose -f docker-compose.poc.yml up -d
+#
+# Yang Anda provision: postgres, redis, qdrant, minio, backend
+# Yang IOH provision:  vllm, tei-embed, tei-rerank, monitoring stack
+#
+# Sebelum jalankan: copy .env.poc ke .env, fill semua credentials production
+
+services:
+  # ── YANG ANDA PROVISION ──────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ragchat
+      POSTGRES_USER: ragchat
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis/redis-stack:latest
+    command: redis-stack-server --maxmemory 4gb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+    volumes:
+      - minio_data:/data
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file: .env.poc
+    depends_on:
+      - postgres
+      - redis
+      - qdrant
+      - minio
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    deploy:
+      replicas: 1   # IOH bisa scale ke 2+ replica kalau load tinggi
+
+  # ── YANG IOH PROVISION (reference config — IOH yang setup) ──────────────
+
+  # vllm:
+  #   image: vllm/vllm-openai:latest
+  #   command: >
+  #     --model Qwen/Qwen3-VL-8B-Instruct
+  #     --port 8001
+  #     --max-model-len 8192
+  #     --gpu-memory-utilization 0.92
+  #     --max-num-seqs 64
+  #     --limit-mm-per-prompt image=2
+  #     --enable-prefix-caching
+  #     --served-model-name qwen3-vl-8b
+  #   volumes:
+  #     - hf_cache:/root/.cache/huggingface
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+  #
+  # tei-embed:
+  #   image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+  #   command: --model-id Qwen/Qwen3-Embedding-0.6B --port 8002
+  #
+  # tei-rerank:
+  #   image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+  #   command: --model-id BAAI/bge-reranker-v2-m3 --port 8003
+
+  # ── MONITORING (IOH provision) ────────────────────────────────────────────
+
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   volumes:
+  #     - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+  #
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   volumes:
+  #     - grafana_data:/var/lib/grafana
+  #   ports:
+  #     - "3000:3000"
+
+volumes:
+  pg_data:
+  redis_data:
+  qdrant_data:
+  minio_data:
+  # hf_cache:
+  # grafana_data:
