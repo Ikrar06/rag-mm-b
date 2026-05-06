@@ -7,10 +7,45 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <div class="app">
+
+    <!-- Login overlay -->
+    <div id="loginOverlay" class="login-overlay hidden">
+        <div class="login-card">
+            <div class="login-logo">
+                <h2>RAG Chatbot UNHAS</h2>
+                <p>Asisten Akademik Universitas Hasanuddin</p>
+            </div>
+            <form id="loginForm">
+                <div class="login-field">
+                    <label for="usernameInput">Username</label>
+                    <input type="text" id="usernameInput" placeholder="Masukkan username" autocomplete="username" required>
+                </div>
+                <div class="login-field">
+                    <label for="passwordInput">Password</label>
+                    <input type="password" id="passwordInput" placeholder="Masukkan password" autocomplete="current-password" required>
+                </div>
+                <div id="loginError" class="login-error hidden">Username atau password salah.</div>
+                <button type="submit" id="loginBtn" class="login-btn">Masuk</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main app -->
+    <div class="app" id="mainApp">
         <header class="header">
-            <h1>RAG Chatbot UNHAS</h1>
-            <p>Asisten Akademik Universitas Hasanuddin</p>
+            <div class="header-top">
+                <div>
+                    <h1>RAG Chatbot UNHAS</h1>
+                    <p>Asisten Akademik Universitas Hasanuddin</p>
+                </div>
+                <div class="header-user" id="headerUser">
+                    <span id="userLabel"></span>
+                    <div class="header-actions">
+                        <button id="newSessionBtn" class="new-session-btn" onclick="handleNewSession()">+ Chat Baru</button>
+                        <button id="logoutBtn" class="logout-btn" onclick="handleLogout()">Keluar</button>
+                    </div>
+                </div>
+            </div>
             <div id="status" class="status">Mengecek koneksi...</div>
         </header>
 
@@ -36,6 +71,7 @@
         </footer>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="/static/app.js"></script>
 </body>
 </html>

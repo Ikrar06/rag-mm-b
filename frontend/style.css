@@ -10,6 +10,159 @@ body {
     height: 100vh;
 }
 
+/* ─── Login overlay ─────────────────────────────────────────────────────── */
+
+.login-overlay {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(135deg, #0d2239 0%, #1a3a5c 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.login-overlay.hidden {
+    display: none;
+}
+
+.login-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 40px 36px;
+    width: 360px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+
+.login-logo {
+    text-align: center;
+    margin-bottom: 28px;
+}
+
+.login-logo h2 {
+    font-size: 1.3rem;
+    color: #1a3a5c;
+    margin-bottom: 4px;
+}
+
+.login-logo p {
+    font-size: 0.85rem;
+    color: #888;
+}
+
+.login-field {
+    margin-bottom: 16px;
+}
+
+.login-field label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #555;
+    margin-bottom: 6px;
+}
+
+.login-field input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.login-field input:focus {
+    border-color: #1a3a5c;
+}
+
+.login-error {
+    font-size: 0.85rem;
+    color: #dc3545;
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    background: #fff5f5;
+    border-radius: 6px;
+    border-left: 3px solid #dc3545;
+}
+
+.login-error.hidden {
+    display: none;
+}
+
+.login-btn {
+    width: 100%;
+    padding: 12px;
+    background: #1a3a5c;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin-top: 4px;
+}
+
+.login-btn:hover { background: #2a5a8c; }
+.login-btn:disabled { background: #999; cursor: not-allowed; }
+
+/* ─── Main app hidden state ──────────────────────────────────────────────── */
+
+.app.hidden { display: none; }
+
+/* ─── Header user info ───────────────────────────────────────────────────── */
+
+.header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.header-user {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    font-size: 0.78rem;
+    opacity: 0.9;
+}
+
+.header-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.new-session-btn {
+    background: rgba(255,255,255,0.22);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.4);
+    border-radius: 12px;
+    padding: 4px 10px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.new-session-btn:hover {
+    background: rgba(255,255,255,0.35);
+}
+
+.logout-btn {
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 12px;
+    padding: 3px 10px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.logout-btn:hover {
+    background: rgba(255,255,255,0.25);
+}
+
 .app {
     display: flex;
     flex-direction: column;
@@ -101,7 +254,52 @@ body {
     color: #1a1a1a;
     border-radius: 16px 16px 16px 4px;
     padding: 12px 16px;
-    line-height: 1.5;
+    line-height: 1.6;
+}
+
+.bot-message .message-content p {
+    margin: 0 0 8px 0;
+}
+
+.bot-message .message-content p:last-child {
+    margin-bottom: 0;
+}
+
+.bot-message .message-content ul,
+.bot-message .message-content ol {
+    margin: 8px 0;
+    padding-left: 24px;
+}
+
+.bot-message .message-content li {
+    margin-bottom: 4px;
+}
+
+.bot-message .message-content strong {
+    color: #1a3a5c;
+    font-weight: 600;
+}
+
+.bot-message .message-content code {
+    background: #e0e4e9;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+/* Streaming cursor */
+.message-content.streaming::after {
+    content: "▊";
+    display: inline-block;
+    margin-left: 2px;
+    animation: blink-cursor 0.6s step-end infinite;
+    color: #1a3a5c;
+    opacity: 0.7;
+}
+
+@keyframes blink-cursor {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 0; }
 }
 
 /* Debug bar */
