@@ -1,45 +1,69 @@
 """Pydantic models for request/response schemas."""
 
+from typing import Optional
 from pydantic import BaseModel, Field
 
 
+# ─── Chat ─────────────────────────────────────────────────────────────────────
+
 class ChatRequest(BaseModel):
-    query: str = Field(..., min_length=1, max_length=2000, description="Pertanyaan user")
+    query: str = Field(..., min_length=1, max_length=2000)
+    session_id: Optional[str] = Field(None, description="UUID session — None untuk session baru")
 
 
 class SourceDocument(BaseModel):
     file_name: str
-    page: int | None = None
-    chunk_index: int | None = None
-    element_type: str | None = None
+    page: Optional[int] = None
+    chunk_index: Optional[int] = None
+    element_type: Optional[str] = None
     score: float
-    text_preview: str = Field(description="Potongan teks sumber (max 300 char)")
+    text_preview: str
 
 
 class DebugInfo(BaseModel):
-    mode: str  # "rag" or "chitchat"
+    mode: str
     total_time_s: float
-    similarity_top_k: int | None = None
-    reranker_top_n: int | None = None
-    sources_returned: int | None = None
-    model: str | None = None
+    top_score: Optional[float] = None
+    similarity_top_k: Optional[int] = None
+    reranker_top_n: Optional[int] = None
+    sources_returned: Optional[int] = None
+    model: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
     answer: str
+    session_id: str
     sources: list[SourceDocument] = []
-    debug: DebugInfo | None = None
+    condensed_question: Optional[str] = None
+    debug: Optional[DebugInfo] = None
 
+
+# ─── Session ──────────────────────────────────────────────────────────────────
+
+class SessionInfo(BaseModel):
+    id: str
+    title: Optional[str] = None
+    message_count: int = 0
+    last_message_at: Optional[str] = None
+
+
+class SessionListResponse(BaseModel):
+    sessions: list[SessionInfo]
+
+
+# ─── Infrastructure ───────────────────────────────────────────────────────────
 
 class HealthResponse(BaseModel):
     status: str
     ollama: bool
     qdrant: bool
+    postgres: bool = False
+    redis: bool = False
 
 
 class IndexRequest(BaseModel):
-    directory: str = Field(default="data/pdfs", description="Path ke folder PDF")
-    force: bool = Field(default=False, description="Hapus collection lama sebelum re-index")
+    directory: str = Field(default="data/pdfs")
+    force: bool = Field(default=False)
 
 
 class IndexResponse(BaseModel):

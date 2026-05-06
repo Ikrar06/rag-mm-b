@@ -30,6 +30,16 @@ pymupdf>=1.24.0
 # Document Parsing & Chunking
 unstructured[pdf]>=0.16.0
 
+# Auth
+python-jose[cryptography]>=3.3.0
+
+# Database (PostgreSQL)
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+
+# Cache & session (Redis)
+redis>=5.0.0
+
 # Utilities
 python-dotenv>=1.0.0
 pydantic>=2.10.0
