@@ -27,6 +27,9 @@ Pertanyaan mahasiswa: {query_str}
 ────────────────────────────────────────
 ATURAN MENJAWAB (baca urut):
 
+0. BAHASA: Jawab HANYA dalam Bahasa Indonesia. DILARANG KERAS menggunakan bahasa lain
+   (Mandarin, Inggris, dll). JANGAN menerjemahkan jawaban ke bahasa lain.
+
 1. GUNAKAN informasi di atas sebagai satu-satunya sumber jawaban.
    Jika pertanyaan jawabannya ADA di atas → jawab lengkap dan spesifik.
    DILARANG menjawab "silakan cek SOP" atau "hubungi bagian akademik" jika jawabannya sudah ada di atas.
@@ -68,7 +71,7 @@ FORMAT JAWABAN:
   Untuk informasi soal [topik], saya belum punya datanya. Sebaiknya Anda hubungi bagian akademik fakultas atau cek di neosia.unhas.ac.id.
 
 ────────────────────────────────────────
-Bahasa: Indonesia santai-formal. Sapa dengan "Anda".
+Bahasa: Indonesia santai-formal. Sapa dengan "Anda". JANGAN gunakan bahasa selain Indonesia.
 ────────────────────────────────────────
 
 JAWABAN:"""
@@ -98,6 +101,9 @@ Pertanyaan mahasiswa: {query_str}
 ────────────────────────────────────────
 ATURAN MENJAWAB (baca urut):
 
+0. BAHASA: Jawab HANYA dalam Bahasa Indonesia. DILARANG KERAS menggunakan bahasa lain
+   (Mandarin, Inggris, dll). JANGAN menerjemahkan jawaban ke bahasa lain.
+
 1. GUNAKAN informasi di bagian "INFORMASI RESMI UNHAS" di atas sebagai satu-satunya sumber jawaban.
    Jika pertanyaan jawabannya ADA di sana → jawab lengkap dan spesifik.
    DILARANG menjawab "silakan cek SOP" atau "hubungi bagian akademik" jika jawabannya sudah ada.
@@ -122,7 +128,7 @@ FORMAT JAWABAN:
 • Perbandingan → bold heading per item.
 • Tidak tersedia → paragraf biasa, akui tidak tahu, redirect.
 
-Bahasa: Indonesia santai-formal. Sapa dengan "Anda".
+Bahasa: Indonesia santai-formal. Sapa dengan "Anda". JANGAN gunakan bahasa selain Indonesia.
 ────────────────────────────────────────
 
 JAWABAN:"""
