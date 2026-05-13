@@ -3,8 +3,8 @@
 **RAG Core** adalah komponen inti retrieval-augmented generation untuk chatbot akademik Universitas Hasanuddin. Repo ini hanya mencakup **pipeline RAG + API-nya** — bukan frontend produksi maupun BE utama.
 
 ```
-Tim 1 (BE)  ──HTTP──▶  /api/query  ──▶  RAG Core (repo ini)  ──▶  Qdrant + LLM
-Tim 3 (FE)  ──────────────────────────▶  (via BE Tim 1)
+Tim 1 (BE + FE)  ──HTTP──▶  /api/query  ──▶  RAG Core (repo ini)  ──▶  Qdrant + LLM
+Tim 3 (Evaluasi) ──────────────────────────▶  (uji pipeline via /api/query)
 ```
 
 ---
@@ -13,14 +13,17 @@ Tim 3 (FE)  ──────────────────────�
 
 1. [Arsitektur Pipeline](#arsitektur-pipeline)
 2. [Tech Stack](#tech-stack)
-3. [Struktur Folder](#struktur-folder)
-4. [Setup Dev (RTX 3060)](#setup-dev-rtx-3060)
-5. [Setup POC (L40S 48GB — IOH)](#setup-poc-l40s-48gb--ioh)
-6. [Data Pipeline: JSON → Narasi → Qdrant](#data-pipeline-json--narasi--qdrant)
-7. [API Reference](#api-reference)
-8. [Environment Variables](#environment-variables)
-9. [Untuk Tim 1 (BE)](#untuk-tim-1-be)
-10. [Progress](#progress)
+3. [Intent Classifier (IndoBERT)](#intent-classifier-indobert)
+4. [Logging](#logging)
+5. [Struktur Folder](#struktur-folder)
+6. [Setup Dev (RTX 3060)](#setup-dev-rtx-3060)
+7. [Setup POC (L40S 48GB — IOH)](#setup-poc-l40s-48gb--ioh)
+8. [Data Pipeline: JSON → Narasi → Qdrant](#data-pipeline-json--narasi--qdrant)
+9. [API Reference](#api-reference)
+10. [Environment Variables](#environment-variables)
+11. [Untuk Tim 1 (BE + FE)](#untuk-tim-1-be--fe)
+12. [Untuk Tim 3 (Evaluasi)](#untuk-tim-3-evaluasi)
+13. [Progress](#progress)
 
 ---
 
@@ -56,6 +59,108 @@ User Message
 Response
 ```
 
+### Detail Tiap Layer
+
+#### L1 — Keyword Filter
+Pengecekan regex berbasis daftar kata kunci berbahaya sebelum query menyentuh model apapun. Sangat cepat (< 1ms). Mengembalikan mode `blocked`.
+
+Kategori yang diblokir: senjata, bahan peledak, narkoba, serangan siber, prompt injection (`"ignore instruction"`, `"abaikan instruksi"`, dll).
+
+#### L2 — Moderation Model
+Llama Guard 3 1B (Meta) via Ollama untuk deteksi konten berbahaya yang lebih nuanced dari regex. Di lingkungan **dev dinonaktifkan** (`MODERATION_BACKEND=passthrough`) karena VRAM tidak cukup di RTX 3060 bersamaan model lain. Aktif di **POC** (L40S 48GB). Mengembalikan mode `blocked_moderation`.
+
+#### L3 — Intent Classifier
+IndoBERT fine-tuned 4-kelas (lihat [seksi Intent Classifier](#intent-classifier-indobert)). Menentukan alur routing query:
+
+| Intent | Alur | Mode response |
+|---|---|---|
+| `chitchat` | Langsung ke LLM dengan system prompt ringan, tanpa RAG | `chitchat` |
+| `out_of_scope` | Tolak dengan pesan sopan, tanpa LLM call | `out_of_scope` |
+| `get_info_public` | Lanjut ke L5 RAG | `rag` / `rag_low_relevance` / `cache_hit` |
+| `get_info_private` | Lanjut ke L4 Private API | `get_info_private` / fallback ke `rag` |
+
+Jika confidence < `INTENT_CONFIDENCE_THRESHOLD` (default 0.6), pipeline meminta klarifikasi daripada menebak intent. Hasil intent dan confidence-nya selalu dikembalikan di field `debug.intent` dan `debug.intent_confidence`.
+
+#### L4 — Private API Handler
+Menangani query `get_info_private` dengan memanggil endpoint API UNHAS secara langsung (function calling). Saat ini **fallback ke RAG** karena `UNHAS_API_BASE_URL` belum dikonfigurasi — akan aktif setelah endpoint UNHAS tersedia.
+
+Data yang bisa di-query via API: IPK, KRS, jadwal personal, nilai, status UKT, dosen wali.
+
+#### L5 — RAG Pipeline
+Sub-pipeline dengan 4 tahap:
+
+```
+Query
+  │
+  ▼
+[5a] Query Condensation   — ubah follow-up multi-turn jadi pertanyaan standalone
+  │                          (via LLM + CONDENSE_PROMPT, skip jika single-turn)
+  ▼
+[5b] Cache Check          — cari jawaban identik di Redis (semantic cache)
+  │                          hit → skip retrieval + generation langsung
+  ▼
+[5c] Retrieval            — embed query → ANN search di Qdrant (top-K chunks)
+  │                          model: Qwen3-Embedding-0.6B
+  ▼
+[5d] Reranking            — cross-encoder scoring untuk re-order chunks
+  │                          model: BGE-Reranker-v2-M3
+  │                          jika top score < SCORE_THRESHOLD → mode rag_low_relevance
+  ▼
+[5e] Generation           — LLM generate jawaban dari chunks + prompt template
+```
+
+Parameter yang bisa dikonfigurasi via `.env`: `SIMILARITY_TOP_K`, `SCORE_THRESHOLD`, `RERANKER_TOP_N`, `HISTORY_TURNS`, `CHUNK_SIZE`, `CHUNK_OVERLAP`.
+
+#### L6 — Output Filter
+Regex post-processing pada jawaban akhir sebagai backstop. Meredact:
+- Nama model AI (`qwen`, `llama`, `mistral`, `gpt`, dll.)
+- Nama stack teknologi (`LlamaIndex`, `Qdrant`, `FastAPI`, dll.)
+- NIM pola regex (format `D/F/H + digit`)
+- JWT token (format `eyJ...`)
+- URL internal (localhost, IP private)
+
+---
+
+## Logging
+
+Pipeline menggunakan **structlog** dengan output JSON untuk kompatibilitas dengan log aggregator (ELK, Loki, dll.).
+
+### Format Log
+
+Setiap request HTTP otomatis mendapat **correlation ID** (`request_id`) yang diteruskan ke semua log dalam satu request:
+
+```json
+{
+  "event": "http_request method=POST path=/api/query status=200 duration_ms=4231.5 request_id=a3f9b1c2",
+  "request_id": "a3f9b1c2",
+  "timestamp": "2026-05-14T10:23:45.123456Z",
+  "level": "info"
+}
+```
+
+Client bisa mengirim `X-Request-ID` header sendiri, atau sistem generate otomatis (8 karakter hex). Header dikembalikan di response sebagai `X-Request-ID`.
+
+### Log Penting yang Dihasilkan Pipeline
+
+| Event | Level | Keterangan |
+|---|---|---|
+| `http_request` | INFO | Setiap request masuk: method, path, status, duration |
+| `intent_classifier_loaded` | INFO | Saat model IndoBERT pertama kali di-load ke memori |
+| `cache_hit` | DEBUG | Query dijawab dari Redis |
+| `rag_low_relevance` | WARNING | Top reranker score di bawah threshold |
+| `stream_error` | ERROR | Error saat streaming response |
+| `db_init_failed` | ERROR | PostgreSQL tidak terhubung saat startup |
+| `chat_error` | ERROR | Error di `/api/chat` endpoint |
+
+### Konfigurasi Log Level
+
+```bash
+# Di .env
+LOG_LEVEL=INFO    # INFO (default) / DEBUG / WARNING / ERROR
+```
+
+Mode `DEBUG` menampilkan detail tiap tahap pipeline (retrieval scores, intent confidence, cache status).
+
 ---
 
 ## Tech Stack
@@ -79,6 +184,54 @@ Response
 
 ---
 
+## Intent Classifier (IndoBERT)
+
+Layer 3 pipeline menggunakan model **IndoBERT fine-tuned** untuk klasifikasi intent sebelum query masuk ke RAG.
+
+### Detail Model
+
+| Atribut | Nilai |
+|---|---|
+| Base model | `indobenchmark/indobert-base-p2` |
+| Jumlah kelas | 4 |
+| Dataset | Sintetis via Gemini API (`gemini-2.5-flash`) |
+| Sampel per intent | 1.000 |
+| Total dataset | ~4.000 sampel |
+| Split | 80% train / 10% val / 10% test |
+| HuggingFace | [`ikrarrr/rag-unhas-intent-classifier`](https://huggingface.co/ikrarrr/rag-unhas-intent-classifier) |
+
+### Kelas Intent
+
+| Label | Deskripsi | Contoh |
+|---|---|---|
+| `chitchat` | Sapaan, basa-basi, pertanyaan tentang bot | "halo", "terima kasih", "kamu bisa apa?" |
+| `out_of_scope` | Topik di luar akademik UNHAS | "harga laptop bagus apa?", "resep rendang" |
+| `get_info_public` | Info akademik publik atau data mahasiswa/dosen tertentu (nama disebutkan) | "syarat cuti?", "NIM Budi Santoso berapa?" |
+| `get_info_private` | Data akademik milik si penanya sendiri (ada kata saya/gue/aku/-ku) | "IPK saya berapa?", "jadwal gue hari ini?" |
+
+> **Catatan penting:** Query tentang data orang lain yang namanya disebutkan (mis. *"NIM Maria berapa?"*) diklasifikasikan sebagai `get_info_public`, bukan `get_info_private`.
+
+### Melatih Ulang
+
+```powershell
+# 1. Generate dataset baru (butuh GEMINI_API_KEY)
+$env:GEMINI_API_KEY="your_key"
+python generate-dataset-intent-gemini.py --samples 1000
+
+# 2. Training (output langsung ke folder model)
+python train_classifier.py --output_dir C:\path\to\rag-prototype\models\intent_classifier
+
+# 3. Salin best_model ke root model path
+Copy-Item -Recurse -Force models\intent_classifier\best_model\* models\intent_classifier\
+
+# 4. Upload ke HuggingFace
+hf upload ikrarrr/rag-unhas-intent-classifier models/intent_classifier .
+```
+
+> Script `generate-dataset-intent-gemini.py` dan `train_classifier.py` disimpan di luar repo (tidak di-commit) karena hanya dipakai saat retraining.
+
+---
+
 ## Struktur Folder
 
 ```
@@ -91,7 +244,7 @@ rag-prototype/
 │   ├── routers/
 │   │   ├── auth.py              # POST /api/auth/login, /api/auth/logout
 │   │   ├── chat.py              # POST /api/chat, /api/chat/stream, GET /api/sessions
-│   │   └── query.py             # POST /api/query, /api/query/stream  ← untuk Tim 1
+│   │   └── query.py             # POST /api/query, /api/query/stream  ← untuk Tim 1 (BE + FE)
 │   ├── services/
 │   │   ├── rag_pipeline.py      # Pipeline utama (L1–L6, query, query_stream)
 │   │   ├── auth.py              # bcrypt verify, JWT encode/decode
@@ -320,7 +473,7 @@ Qdrant collection: unhas_docs
 
 Semua endpoint tersedia di `http://localhost:8000/docs` (Swagger UI).
 
-### Untuk Integrasi BE Eksternal (Tim 1)
+### Untuk Integrasi BE Eksternal (Tim 1 — BE + FE)
 
 **`POST /api/query`** — RAG query tanpa session management
 
@@ -432,7 +585,7 @@ Semua config dibaca dari `.env`. Template tersedia di `.env.dev` (dev lokal) dan
 
 ---
 
-## Untuk Tim 1 (BE)
+## Untuk Tim 1 (BE + FE)
 
 ### Cara Memanggil RAG Core
 
@@ -482,6 +635,46 @@ def ask_rag_stream(question: str, history: list, role: str = "public"):
 - Repo ini adalah **RAG core saja** — session management, auth mahasiswa, dan integrasi sistem UNHAS lainnya ada di BE Tim 1
 - `get_info_private` intent saat ini fallback ke RAG karena `UNHAS_API_BASE_URL` belum dikonfigurasi. Akan aktif setelah endpoint UNHAS tersedia dan `UNHAS_API_BASE_URL` di-set
 - Rate limiting ada di RAG core (20 req/menit per IP) — BE bisa tambahkan rate limiting tersendiri di atasnya
+
+---
+
+## Untuk Tim 3 (Evaluasi)
+
+Tim 3 melakukan evaluasi kualitas pipeline RAG secara kuantitatif. Endpoint yang dipakai sama dengan Tim 1: **`POST /api/query`**.
+
+### Metrik yang Bisa Dievaluasi
+
+| Metrik | Cara Ukur |
+|---|---|
+| **Faithfulness** | Apakah jawaban sesuai dengan source dokumen? |
+| **Answer Relevancy** | Apakah jawaban menjawab pertanyaan? |
+| **Context Recall** | Apakah dokumen yang diambil relevan? |
+| **Context Precision** | Seberapa presisi retrieval? |
+
+### Setup Evaluasi
+
+```python
+import httpx, json
+
+RAG_BASE_URL = "http://rag-core:8000"
+
+def evaluate_query(question: str, expected_answer: str = None):
+    resp = httpx.post(
+        f"{RAG_BASE_URL}/api/query",
+        json={"question": question, "history": [], "role": "public"},
+        timeout=60,
+    )
+    result = resp.json()
+    return {
+        "answer": result["answer"],
+        "sources": result["sources"],
+        "mode": result["debug"]["mode"],
+        "top_score": result["debug"]["top_score"],
+        "intent": result["debug"].get("intent"),
+    }
+```
+
+> **Catatan:** Field `debug.mode` berguna untuk evaluasi — query yang masuk sebagai `rag` atau `cache_hit` adalah kandidat evaluasi RAG. Query `chitchat` / `out_of_scope` bukan domain RAG.
 
 ---
 
