@@ -70,7 +70,7 @@ async def serve_frontend():
 
 @app.get("/api/health", response_model=HealthResponse)
 async def health_check():
-    ollama_ok = qdrant_ok = postgres_ok = redis_ok = False
+    ollama_ok = qdrant_ok = postgres_ok = redis_ok = intent_ok = False
 
     try:
         check_url = (
@@ -102,13 +102,21 @@ async def health_check():
     except Exception:
         pass
 
-    status = "healthy" if (ollama_ok and qdrant_ok) else "degraded"
+    try:
+        from pathlib import Path
+        from backend.config import INTENT_MODEL_PATH
+        intent_ok = (Path(INTENT_MODEL_PATH) / "config.json").exists()
+    except Exception:
+        pass
+
+    status = "healthy" if (ollama_ok and qdrant_ok and intent_ok) else "degraded"
     return HealthResponse(
         status=status,
         ollama=ollama_ok,
         qdrant=qdrant_ok,
         postgres=postgres_ok,
         redis=redis_ok,
+        intent_model=intent_ok,
     )
 
 

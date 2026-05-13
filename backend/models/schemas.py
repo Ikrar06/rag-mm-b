@@ -21,13 +21,27 @@ class SourceDocument(BaseModel):
 
 
 class DebugInfo(BaseModel):
-    mode: str
-    total_time_s: float
-    top_score: Optional[float] = None
-    similarity_top_k: Optional[int] = None
-    reranker_top_n: Optional[int] = None
-    sources_returned: Optional[int] = None
-    model: Optional[str] = None
+    mode: str = Field(
+        ...,
+        description=(
+            "Mode jawaban: rag | chitchat | out_of_scope | blocked | "
+            "blocked_moderation | clarification_needed | get_info_private | "
+            "cache_hit | rag_low_relevance"
+        ),
+    )
+    total_time_s: float = Field(..., description="Total waktu proses dalam detik")
+    top_score: Optional[float] = Field(None, description="Skor relevansi tertinggi dari reranker (0–1)")
+    similarity_top_k: Optional[int] = Field(None, description="Jumlah dokumen yang diambil dari vector store")
+    reranker_top_n: Optional[int] = Field(None, description="Jumlah dokumen setelah reranking")
+    sources_returned: Optional[int] = Field(None, description="Jumlah sumber yang dikembalikan")
+    model: Optional[str] = Field(None, description="Nama model LLM yang digunakan")
+    intent: Optional[str] = Field(
+        None,
+        description="Hasil L3 intent classifier: chitchat | out_of_scope | get_info_public | get_info_private",
+    )
+    intent_confidence: Optional[float] = Field(
+        None, description="Skor kepercayaan intent classifier (0–1)"
+    )
 
 
 class ChatResponse(BaseModel):
@@ -54,14 +68,30 @@ class SessionListResponse(BaseModel):
 # ─── Clean Query API (untuk integrasi BE eksternal, tanpa session) ────────────
 
 class HistoryMessage(BaseModel):
-    role: str = Field(..., pattern="^(user|assistant)$")
-    content: str = Field(..., min_length=1, max_length=4000)
+    role: str = Field(..., pattern="^(user|assistant)$", description="Pengirim: 'user' atau 'assistant'")
+    content: str = Field(..., min_length=1, max_length=4000, description="Isi pesan")
 
 
 class QueryRequest(BaseModel):
-    question: str = Field(..., min_length=1, max_length=2000)
-    history: list[HistoryMessage] = Field(default_factory=list, max_length=20)
-    role: str = Field(default="public", pattern="^(public|mahasiswa|admin)$")
+    question: str = Field(..., min_length=1, max_length=2000, description="Pertanyaan dari user")
+    history: list[HistoryMessage] = Field(
+        default_factory=list,
+        max_length=20,
+        description=(
+            "Riwayat percakapan sebelumnya dalam format [{role, content}]. "
+            "BE bertanggung jawab menyimpan dan mengirim ini di setiap request."
+        ),
+    )
+    role: str = Field(
+        default="public",
+        pattern="^(public|mahasiswa|admin)$",
+        description=(
+            "Role user terverifikasi dari BE. "
+            "public: tamu/calon mahasiswa. "
+            "mahasiswa: mahasiswa terdaftar (dapat akses get_info_private). "
+            "admin: staf akademik."
+        ),
+    )
 
 
 class QueryResponse(BaseModel):
@@ -79,6 +109,7 @@ class HealthResponse(BaseModel):
     qdrant: bool
     postgres: bool = False
     redis: bool = False
+    intent_model: bool = False
 
 
 class IndexRequest(BaseModel):

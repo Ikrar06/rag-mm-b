@@ -135,11 +135,17 @@ async function checkHealth() {
 
 // ─── Chat UI ──────────────────────────────────────────────────────────────────
 
+function safeMd(text) {
+    // Escape "YYYY. " at start of paragraph so marked doesn't treat it as an ordered list.
+    // e.g. "2026. Untuk..." → "2026\. Untuk..."
+    return marked.parse(text.replace(/\n\n(\d{4})\. /g, '\n\n$1\\. '));
+}
+
 function addMessage(content, type, sources = [], debug = null) {
     const msg = document.createElement("div");
     msg.className = `message ${type}-message`;
 
-    let html = `<div class="message-content">${marked.parse(content)}</div>`;
+    let html = `<div class="message-content">${safeMd(content)}</div>`;
 
     if (debug) {
         const modeMap = {
@@ -282,7 +288,7 @@ async function sendMessage(userQuery) {
 
                     // Replace streaming content with markdown-rendered text
                     contentEl.classList.remove("streaming");
-                    contentEl.innerHTML = marked.parse(finalAnswer);
+                    contentEl.innerHTML = safeMd(finalAnswer);
 
                     // Append debug bar + sources to botMsg (outside contentEl, same as addMessage)
                     if (event.debug) {

@@ -393,17 +393,22 @@ def query(
     history = history or []
 
     def _make_result(answer: str, mode: str, sources: list = None,
-                     top_score: float = 0.0, condensed: str = None) -> dict:
+                     top_score: float = 0.0, condensed: str = None,
+                     intent: str = None, intent_conf: float = None) -> dict:
+        d = {
+            "mode": mode,
+            "total_time_s": round(time.time() - t_start, 2),
+            "model": LLM_MODEL,
+            "top_score": top_score,
+        }
+        if intent is not None:
+            d["intent"] = intent
+            d["intent_confidence"] = intent_conf
         return {
             "answer": answer,
             "sources": sources or [],
             "condensed_question": condensed,
-            "debug": {
-                "mode": mode,
-                "total_time_s": round(time.time() - t_start, 2),
-                "model": LLM_MODEL,
-                "top_score": top_score,
-            },
+            "debug": d,
         }
 
     # ── 1. Layer 1 — Harmful keyword check (fast, deterministic) ─────────────
@@ -425,19 +430,24 @@ def query(
     intent = intent_result["intent"]
     logger.info(f"L3_intent={intent} conf={intent_result['confidence']:.3f}")
 
+    _intent = intent
+    _intent_conf = intent_result["confidence"]
+
     if intent_result["low_confidence"]:
         return _make_result(
             "Maaf, bisa diperjelas maksud pertanyaannya?",
             mode="clarification_needed",
+            intent=_intent, intent_conf=_intent_conf,
         )
     if intent == "chitchat":
         answer = filter_output(_chitchat_response(question, history))
-        return _make_result(answer, mode="chitchat")
+        return _make_result(answer, mode="chitchat", intent=_intent, intent_conf=_intent_conf)
     if intent == "out_of_scope":
         return _make_result(
             "Maaf, saya hanya dapat membantu urusan akademik UNHAS. "
             "Untuk pertanyaan lain, silakan gunakan layanan yang sesuai.",
             mode="out_of_scope",
+            intent=_intent, intent_conf=_intent_conf,
         )
     if intent == "get_info_private":
         from backend.services.private_api import handle_private_query
@@ -452,6 +462,8 @@ def query(
                     "total_time_s": round(time.time() - t_start, 2),
                     "model": LLM_MODEL,
                     "top_score": 0.0,
+                    "intent": _intent,
+                    "intent_confidence": _intent_conf,
                 },
             }
         # private API tidak dikonfigurasi → fall through ke RAG
@@ -465,7 +477,8 @@ def query(
         condensed, is_ack = _condense_question(trimmed_history, question)
         if is_ack:
             answer = _chitchat_response(question, history)
-            return _make_result(answer, mode="chitchat", condensed=condensed)
+            return _make_result(answer, mode="chitchat", condensed=condensed,
+                                intent=_intent, intent_conf=_intent_conf)
 
         # Harmful check pada condensed question
         if _is_harmful(condensed):
@@ -497,7 +510,8 @@ def query(
         logger.info(f"Top score {top_score} < {SCORE_THRESHOLD} — low-relevance fallback")
         answer = _low_relevance_response(condensed)
         result = _make_result(answer, mode="rag_low_relevance",
-                              sources=sources, top_score=top_score, condensed=condensed)
+                              sources=sources, top_score=top_score, condensed=condensed,
+                              intent=_intent, intent_conf=_intent_conf)
         result["debug"].update({
             "similarity_top_k": SIMILARITY_TOP_K,
             "reranker_top_n": RERANKER_TOP_N,
@@ -529,7 +543,8 @@ def query(
     )
 
     result = _make_result(answer, mode="rag",
-                          sources=sources, top_score=top_score, condensed=condensed)
+                          sources=sources, top_score=top_score, condensed=condensed,
+                          intent=_intent, intent_conf=_intent_conf)
     result["debug"].update({
         "similarity_top_k": SIMILARITY_TOP_K,
         "reranker_top_n": RERANKER_TOP_N,
@@ -564,13 +579,16 @@ def query_stream(
 
     def _make_meta(answer: str, mode: str, sources: list = None,
                    top_score: float = 0.0, condensed: str = None,
-                   extra: dict = None) -> dict:
+                   extra: dict = None, intent: str = None, intent_conf: float = None) -> dict:
         d = {
             "mode": mode,
             "total_time_s": round(time.time() - t_start, 2),
             "model": LLM_MODEL,
             "top_score": top_score,
         }
+        if intent is not None:
+            d["intent"] = intent
+            d["intent_confidence"] = intent_conf
         if extra:
             d.update(extra)
         return {
@@ -606,20 +624,25 @@ def query_stream(
     # ── 3. Layer 3 — Intent classification (IndoBERT) ─────────────────────────
     intent_result = classify_intent(question)
     intent = intent_result["intent"]
-    logger.info(f"L3_intent={intent} conf={intent_result['confidence']:.3f}")
+    _intent = intent
+    _intent_conf = intent_result["confidence"]
+    logger.info(f"L3_intent={intent} conf={_intent_conf:.3f}")
 
     if intent_result["low_confidence"]:
         msg = "Maaf, bisa diperjelas maksud pertanyaannya?"
-        yield from _fake_stream(msg, _make_meta(msg, "clarification_needed"))
+        yield from _fake_stream(msg, _make_meta(msg, "clarification_needed",
+                                                intent=_intent, intent_conf=_intent_conf))
         return
     if intent == "chitchat":
         answer = filter_output(_chitchat_response(question, history))
-        yield from _fake_stream(answer, _make_meta(answer, "chitchat"))
+        yield from _fake_stream(answer, _make_meta(answer, "chitchat",
+                                                   intent=_intent, intent_conf=_intent_conf))
         return
     if intent == "out_of_scope":
         msg = ("Maaf, saya hanya dapat membantu urusan akademik UNHAS. "
                "Untuk pertanyaan lain, silakan gunakan layanan yang sesuai.")
-        yield from _fake_stream(msg, _make_meta(msg, "out_of_scope"))
+        yield from _fake_stream(msg, _make_meta(msg, "out_of_scope",
+                                                intent=_intent, intent_conf=_intent_conf))
         return
     if intent == "get_info_private":
         from backend.services.private_api import handle_private_query
@@ -627,7 +650,8 @@ def query_stream(
         if private_result:
             answer = private_result.get("answer", "")
             mode = private_result.get("mode", "get_info_private")
-            yield from _fake_stream(answer, _make_meta(answer, mode))
+            yield from _fake_stream(answer, _make_meta(answer, mode,
+                                                       intent=_intent, intent_conf=_intent_conf))
             return
         # private API tidak dikonfigurasi → fall through ke RAG
 
@@ -640,7 +664,8 @@ def query_stream(
         condensed, is_ack = _condense_question(trimmed_history, question)
         if is_ack:
             answer = _chitchat_response(question, history)
-            yield from _fake_stream(answer, _make_meta(answer, "chitchat", condensed=condensed))
+            yield from _fake_stream(answer, _make_meta(answer, "chitchat", condensed=condensed,
+                                                       intent=_intent, intent_conf=_intent_conf))
             return
         if _is_harmful(condensed):
             yield from _fake_stream(_pick(_HARMFUL_RESPONSES),
@@ -678,7 +703,8 @@ def query_stream(
         yield from _fake_stream(
             answer,
             _make_meta(answer, "rag_low_relevance", sources=sources,
-                       top_score=top_score, condensed=condensed, extra=extra),
+                       top_score=top_score, condensed=condensed, extra=extra,
+                       intent=_intent, intent_conf=_intent_conf),
         )
         return
 
@@ -713,6 +739,8 @@ def query_stream(
         "similarity_top_k": SIMILARITY_TOP_K,
         "reranker_top_n": RERANKER_TOP_N,
         "sources_returned": len(sources),
+        "intent": _intent,
+        "intent_confidence": _intent_conf,
     }
     cache_set(condensed, full_answer, sources, role=role, debug=debug_dict)
     if condensed != question:
