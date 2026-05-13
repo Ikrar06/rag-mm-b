@@ -50,10 +50,29 @@ def _get_current_user(request: Request) -> dict:
     return {"username": "anonymous", "role": "public", "name": "Anonymous", "token": ""}
 
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post(
+    "/chat",
+    response_model=ChatResponse,
+    summary="Chat RAG dengan session management",
+    responses={
+        429: {"description": "Rate limit terlampaui"},
+        500: {"description": "Internal server error"},
+    },
+)
 @limiter.limit(f"{RATE_LIMIT_TEXT_PER_MINUTE}/minute")
 async def chat(request: Request, request_body: ChatRequest, db: DBSession = Depends(get_db)):
-    """Main RAG chat endpoint dengan session + multi-turn history."""
+    """
+    Endpoint chat utama untuk **frontend** (UI chatbot UNHAS).
+
+    - Auth: cookie `access_token` atau header `Authorization: Bearer <token>` (opsional).
+      Tanpa auth, user dianggap role `public`.
+    - Session: kirim `session_id` dari response sebelumnya untuk melanjutkan percakapan.
+      Jika `session_id` kosong/null, session baru dibuat dan UUID-nya dikembalikan.
+    - History multi-turn dikelola otomatis — RAG core menyimpan di PostgreSQL.
+    - Rate limit: 20 request/menit per IP.
+
+    **Untuk Tim 1 (BE):** gunakan `/api/query` yang tidak memerlukan session management.
+    """
     user = _get_current_user(request)
 
     try:
@@ -102,10 +121,30 @@ async def chat(request: Request, request_body: ChatRequest, db: DBSession = Depe
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/chat/stream")
+@router.post(
+    "/chat/stream",
+    summary="Chat RAG streaming (SSE)",
+    responses={429: {"description": "Rate limit terlampaui"}},
+)
 @limiter.limit(f"{RATE_LIMIT_TEXT_PER_MINUTE}/minute")
 async def chat_stream(request: Request, request_body: ChatRequest):
-    """Streaming chat endpoint — server-sent events."""
+    """
+    Versi streaming dari `/api/chat` menggunakan **Server-Sent Events (SSE)**.
+
+    - Request body sama persis dengan `/api/chat`.
+    - Auth dan session management sama dengan `/api/chat`.
+
+    **Format event stream:**
+    ```
+    data: {"type": "session", "session_id": "uuid"}
+
+    data: {"type": "token", "delta": "Untuk "}
+    data: {"type": "token", "delta": "mengajukan "}
+    ...
+    data: {"type": "meta", "answer": "...", "sources": [...], "debug": {...}, "condensed_question": "..."}
+    ```
+    Error: `data: {"type": "error", "message": "..."}`
+    """
     user = _get_current_user(request)
 
     setup_db = SessionLocal()
@@ -170,8 +209,20 @@ async def chat_stream(request: Request, request_body: ChatRequest):
     )
 
 
-@router.get("/sessions", response_model=SessionListResponse)
+@router.get(
+    "/sessions",
+    response_model=SessionListResponse,
+    summary="Daftar sesi percakapan user yang login",
+    responses={200: {"description": "List sesi (kosong jika tidak login)"}},
+)
 async def get_sessions(request: Request, db: DBSession = Depends(get_db)):
+    """
+    Kembalikan daftar sesi percakapan milik user yang sedang login.
+
+    - Auth: cookie `access_token` atau header `Authorization: Bearer <token>` (wajib untuk hasil non-kosong).
+    - Tanpa auth (anonymous), selalu mengembalikan list kosong.
+    - Dipakai frontend untuk menampilkan riwayat sesi di sidebar.
+    """
     user = _get_current_user(request)
     if user["username"] == "anonymous":
         return SessionListResponse(sessions=[])

@@ -7,8 +7,12 @@ from pydantic import BaseModel, Field
 # ─── Chat ─────────────────────────────────────────────────────────────────────
 
 class ChatRequest(BaseModel):
-    query: str = Field(..., min_length=1, max_length=2000)
-    session_id: Optional[str] = Field(None, description="UUID session — None untuk session baru")
+    query: str = Field(..., min_length=1, max_length=2000, description="Pesan / pertanyaan dari user")
+    session_id: Optional[str] = Field(
+        None,
+        description="UUID session percakapan. Kosongkan (null) untuk memulai session baru. "
+                    "UUID dikembalikan di field session_id pada response.",
+    )
 
 
 class SourceDocument(BaseModel):
@@ -45,11 +49,11 @@ class DebugInfo(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    answer: str
-    session_id: str
-    sources: list[SourceDocument] = []
-    condensed_question: Optional[str] = None
-    debug: Optional[DebugInfo] = None
+    answer: str = Field(..., description="Jawaban dari RAG chatbot")
+    session_id: str = Field(..., description="UUID session yang digunakan — simpan untuk request berikutnya")
+    sources: list[SourceDocument] = Field(default=[], description="Dokumen sumber yang digunakan untuk menjawab")
+    condensed_question: Optional[str] = Field(None, description="Pertanyaan setelah dikondensasi dari history (multi-turn)")
+    debug: Optional[DebugInfo] = Field(None, description="Info debug — mode, waktu, skor relevansi, intent")
 
 
 # ─── Session ──────────────────────────────────────────────────────────────────
@@ -113,10 +117,10 @@ class HealthResponse(BaseModel):
 
 
 class IndexRequest(BaseModel):
-    directory: str = Field(default="data/pdfs")
-    force: bool = Field(default=False)
+    directory: str = Field(default="data/pdfs", description="Path folder berisi file PDF yang akan di-index")
+    force: bool = Field(default=False, description="Jika true, hapus index lama dan index ulang semua file")
 
 
 class IndexResponse(BaseModel):
-    status: str
-    documents_indexed: int
+    status: str = Field(..., description="'ok' jika berhasil, atau pesan error")
+    documents_indexed: int = Field(..., description="Jumlah dokumen yang berhasil di-index")

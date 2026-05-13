@@ -68,8 +68,25 @@ async def serve_frontend():
     return FileResponse(os.path.join(_frontend_dir, "index.html"))
 
 
-@app.get("/api/health", response_model=HealthResponse)
+@app.get(
+    "/api/health",
+    response_model=HealthResponse,
+    summary="Status semua service",
+    tags=["infrastructure"],
+)
 async def health_check():
+    """
+    Cek status semua dependency service.
+
+    - `ollama` / LLM: endpoint `/api/tags` atau `/v1/models`
+    - `qdrant`: Qdrant vector store
+    - `postgres`: PostgreSQL (session persistence)
+    - `redis`: Redis cache
+    - `intent_model`: file model IndoBERT di `INTENT_MODEL_PATH`
+
+    Status `healthy` = ollama + qdrant + intent_model semua OK.
+    Status `degraded` = salah satu service tidak tersedia.
+    """
     ollama_ok = qdrant_ok = postgres_ok = redis_ok = intent_ok = False
 
     try:
@@ -120,8 +137,25 @@ async def health_check():
     )
 
 
-@app.post("/api/index", response_model=IndexResponse)
+@app.post(
+    "/api/index",
+    response_model=IndexResponse,
+    summary="Index dokumen PDF ke Qdrant",
+    tags=["infrastructure"],
+    responses={500: {"description": "Error saat indexing"}},
+)
 async def index_documents(request: IndexRequest):
+    """
+    Trigger indexing dokumen PDF ke Qdrant vector store.
+
+    - Scan folder `directory` (default: `data/pdfs`) untuk file PDF baru.
+    - Jika `force=true`, hapus semua chunk lama lalu index ulang.
+    - Jika `force=false` (default), hanya index file yang belum ada di Qdrant.
+
+    **Catatan:** Endpoint ini tidak memerlukan auth saat ini.
+    Untuk indexing narasi JSON (data akademik UNHAS), gunakan script:
+    `python backend/services/index_narratives.py`
+    """
     from backend.services.indexing import index_documents as do_index
     try:
         count = do_index(request.directory, force=request.force)

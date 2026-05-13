@@ -16,21 +16,43 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["query"])
 
 
-@router.post("/query", response_model=QueryResponse)
+@router.post(
+    "/query",
+    response_model=QueryResponse,
+    summary="RAG query untuk integrasi BE eksternal (Tim 1)",
+    responses={
+        429: {"description": "Rate limit terlampaui (20 req/menit per IP)"},
+        422: {"description": "Validasi input gagal"},
+    },
+)
 @limiter.limit(f"{RATE_LIMIT_TEXT_PER_MINUTE}/minute")
 async def query_endpoint(request: Request, body: QueryRequest):
     """
-    RAG query tanpa session management — untuk dipanggil BE eksternal.
+    Endpoint RAG tanpa session management — dirancang untuk **Tim 1 (BE)**.
 
-    BE bertanggung jawab atas:
-    - Autentikasi user (kirim role yang sesuai)
-    - Penyimpanan history (kirim history di setiap request)
-    - Session tracking
+    **Tanggung jawab BE pemanggil:**
+    - Autentikasi user sendiri → kirim `role` yang sesuai
+    - Simpan history di DB sendiri → kirim kembali di setiap request
+    - Tidak ada JWT/cookie yang dibutuhkan di endpoint ini
 
-    Input:
-    - question: pertanyaan user
-    - history: riwayat percakapan [{"role": "user"|"assistant", "content": "..."}]
-    - role: "public" | "mahasiswa" | "admin"
+    **Alur integrasi:**
+    ```
+    FE → BE Tim 1 → POST /api/query → RAG Core → jawaban
+    ```
+
+    **Field `role`:**
+    - `public` — tamu / calon mahasiswa (default)
+    - `mahasiswa` — mahasiswa terdaftar, dapat akses `get_info_private`
+    - `admin` — staf akademik
+
+    **Field `debug.mode`** menjelaskan jalur jawaban:
+    - `rag` — dari dokumen RAG
+    - `chitchat` — sapaan / basa-basi
+    - `out_of_scope` — di luar topik akademik UNHAS
+    - `get_info_private` — dari API UNHAS (aktif jika `UNHAS_API_BASE_URL` dikonfigurasi)
+    - `cache_hit` — dari cache Redis (jawaban identik sebelumnya)
+    - `blocked` — diblokir keyword berbahaya
+    - `rag_low_relevance` — tidak ada dokumen relevan ditemukan
     """
     history = [m.model_dump() for m in body.history]
 
@@ -53,16 +75,31 @@ async def query_endpoint(request: Request, body: QueryRequest):
     )
 
 
-@router.post("/query/stream")
+@router.post(
+    "/query/stream",
+    summary="RAG query streaming untuk BE eksternal (SSE)",
+    responses={429: {"description": "Rate limit terlampaui"}},
+)
 @limiter.limit(f"{RATE_LIMIT_TEXT_PER_MINUTE}/minute")
 async def query_stream_endpoint(request: Request, body: QueryRequest):
     """
-    Streaming variant dari /api/query — server-sent events.
+    Versi streaming dari `/api/query` menggunakan **Server-Sent Events (SSE)**.
 
-    Event types:
-    - {"type": "token", "delta": "..."}   — token per token
-    - {"type": "meta", "answer": "...", "sources": [...], "debug": {...}}
-    - {"type": "error", "message": "..."}
+    - Request body sama persis dengan `/api/query`.
+    - Tidak memerlukan auth/session.
+
+    **Format event stream:**
+    ```
+    data: {"type": "token", "delta": "Untuk "}
+    data: {"type": "token", "delta": "mengajukan "}
+    ...
+    data: {"type": "meta", "answer": "...", "sources": [...], "debug": {...}, "condensed_question": "..."}
+    ```
+    Error: `data: {"type": "error", "message": "..."}`
+
+    **Catatan implementasi:** consume stream sampai event `meta` diterima,
+    lalu gunakan `meta.answer` sebagai jawaban final (sudah difilter output_filter).
+    Token individual belum difilter — gunakan hanya untuk tampilan live streaming.
     """
     history = [m.model_dump() for m in body.history]
 
