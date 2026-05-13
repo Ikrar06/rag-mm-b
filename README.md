@@ -122,13 +122,13 @@ rag-prototype/
 │   │   ├── prodi/
 │   │   └── ...
 │   └── pdfs/                    # Dokumen PDF UNHAS (SOP, peraturan, dll.)
-├── models/
-│   └── intent_classifier/       # Model IndoBERT yang sudah ditraining
-│       ├── config.json
-│       ├── model.safetensors
-│       └── tokenizer.json
+├── models/                      # Gitignored — download via scripts/download_models.py
+│   ├── intent_classifier/       # IndoBERT fine-tuned sendiri untuk UNHAS (4-kelas)
+│   │                            # Tersedia di HF: ikrarrr/rag-unhas-intent-classifier
+│   └── bge-reranker-v2-m3/      # Pre-trained reranker (HF: BAAI/bge-reranker-v2-m3)
 ├── scripts/
 │   ├── preprocess-template.py   # JSON → teks narasi (.txt)
+│   ├── download_models.py       # Download semua model dari HuggingFace
 │   └── start_demo.ps1           # Script demo (Windows)
 ├── frontend/
 │   ├── index.html
@@ -198,18 +198,22 @@ ollama pull qwen2.5:7b
 ### 5. Download Model dari HuggingFace (pertama kali)
 
 ```powershell
-# Embedding (~600MB)
-python -c "from huggingface_hub import snapshot_download; snapshot_download('Qwen/Qwen3-Embedding-0.6B')"
+# Download intent classifier (fine-tuned, ~500MB) + reranker (~2.3GB)
+python scripts/download_models.py
 
-# Re-ranker (~2.3GB) — bisa skip jika RERANKER_PROVIDER=sentence_transformers
-python -c "from huggingface_hub import snapshot_download; snapshot_download('BAAI/bge-reranker-v2-m3')"
+# Atau download satu per satu:
+python scripts/download_models.py --model intent    # hanya intent classifier
+python scripts/download_models.py --model reranker  # hanya reranker
+
+# Embedding (~600MB) — download terpisah karena dikelola LlamaIndex
+python -c "from huggingface_hub import snapshot_download; snapshot_download('Qwen/Qwen3-Embedding-0.6B')"
 ```
 
-> **Download lambat?** Gunakan aria2 atau set HF token:
+> **Download lambat?** Aktifkan hf_transfer:
 > ```powershell
-> $env:HF_TOKEN="hf_xxxxx"
-> $env:HF_HUB_ENABLE_HF_TRANSFER="1"
 > pip install hf_transfer
+> $env:HF_HUB_ENABLE_HF_TRANSFER="1"
+> python scripts/download_models.py
 > ```
 
 ### 6. Index Data dari JSON API UNHAS
@@ -500,6 +504,7 @@ def ask_rag_stream(question: str, history: list, role: str = "public"):
 - [x] Structured logging (structlog JSON)
 - [x] `/api/query` endpoint untuk integrasi BE eksternal
 - [x] Docker compose (dev + POC)
+- [x] Fine-tuned IndoBERT intent classifier (4-kelas, hosted di HuggingFace)
 - [ ] Integrasi API UNHAS (menunggu endpoint tersedia)
 - [ ] Evaluasi pipeline (RAGAS atau sejenisnya)
 - [ ] Vision RAG (aktif di POC dengan Qwen3-VL)
