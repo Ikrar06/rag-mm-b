@@ -39,7 +39,7 @@ def get_db():
 
 def init_db():
     """Buat semua tabel kalau belum ada. Dipanggil saat startup."""
-    from backend.db.models import Session, Message  # noqa: F401 — ensure tables are registered
+    from backend.db.models import User, Session, Message  # noqa: F401 — ensure tables are registered
     try:
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables initialized.")

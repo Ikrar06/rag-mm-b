@@ -16,6 +16,7 @@ qdrant_storage/
 # Data files
 data/pdfs/*.pdf
 data/images/
+data/narratives/
 
 # IDE
 .vscode/

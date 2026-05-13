@@ -51,6 +51,26 @@ class SessionListResponse(BaseModel):
     sessions: list[SessionInfo]
 
 
+# ─── Clean Query API (untuk integrasi BE eksternal, tanpa session) ────────────
+
+class HistoryMessage(BaseModel):
+    role: str = Field(..., pattern="^(user|assistant)$")
+    content: str = Field(..., min_length=1, max_length=4000)
+
+
+class QueryRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=2000)
+    history: list[HistoryMessage] = Field(default_factory=list, max_length=20)
+    role: str = Field(default="public", pattern="^(public|mahasiswa|admin)$")
+
+
+class QueryResponse(BaseModel):
+    answer: str
+    sources: list[SourceDocument] = []
+    condensed_question: Optional[str] = None
+    debug: Optional[DebugInfo] = None
+
+
 # ─── Infrastructure ───────────────────────────────────────────────────────────
 
 class HealthResponse(BaseModel):

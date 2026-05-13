@@ -1,4 +1,4 @@
-# =============================================================================
+﻿# =============================================================================
 # Demo startup script — RAG Chatbot UNHAS
 # Jalankan dari root project: .\scripts\start_demo.ps1
 #
@@ -17,7 +17,7 @@
 # ── KONFIGURASI — Edit sesuai setup Anda ────────────────────────────────────
 
 $BACKEND_PORT = 8000
-$NGROK_DOMAIN  = "GANTI-DENGAN-DOMAIN-ANDA.ngrok-free.app"   # dari ngrok dashboard
+$NGROK_DOMAIN = "remover-repressed-backboned.ngrok-free.dev"   # dari ngrok dashboard
 $VENV_PATH     = ".\venv\Scripts\Activate.ps1"
 
 # ── 1. Mulai Qdrant via Docker ───────────────────────────────────────────────
@@ -85,7 +85,8 @@ Write-Host "  Backend OK — http://localhost:$BACKEND_PORT" -ForegroundColor Gr
 Write-Host "`n[4/4] Starting ngrok tunnel..." -ForegroundColor Cyan
 Write-Host "  Domain: https://$NGROK_DOMAIN" -ForegroundColor White
 
-$ngrokProcess = Start-Process -FilePath "ngrok" -ArgumentList @(
+$ngrokExe = "C:\Users\ikrar\AppData\Local\Microsoft\WinGet\Packages\Ngrok.Ngrok_Microsoft.Winget.Source_8wekyb3d8bbwe\ngrok.exe"
+$ngrokProcess = Start-Process -FilePath $ngrokExe -ArgumentList @(
     "http", "--domain=$NGROK_DOMAIN", "$BACKEND_PORT"
 ) -PassThru
 

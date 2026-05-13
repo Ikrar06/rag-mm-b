@@ -132,22 +132,63 @@ JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_EXPIRE_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "24"))
 
 # =============================================================================
-# POC-only — Uncomment saat deploy ke L40S / production
+# Intent Classifier (IndoBERT)
 # =============================================================================
 
-# --- Storage (MinIO untuk POC, filesystem untuk dev) ---
+INTENT_MODEL_PATH = os.getenv(
+    "INTENT_MODEL_PATH",
+    os.path.join(_PROJECT_ROOT, "models", "intent_classifier"),
+)
+INTENT_CONFIDENCE_THRESHOLD = float(os.getenv("INTENT_CONFIDENCE_THRESHOLD", "0.6"))
+
+# =============================================================================
+# Moderation (Layer 2 — Llama Guard 3)
+# Dev:  passthrough (skip)
+# POC:  ollama      (llama-guard3:1b via Ollama)
+# =============================================================================
+
+MODERATION_BACKEND = os.getenv("MODERATION_BACKEND", "passthrough")
+MODERATION_MODEL = os.getenv("MODERATION_MODEL", "llama-guard3:1b")
+
+# =============================================================================
+# Rate Limiting
+# =============================================================================
+
+RATE_LIMIT_TEXT_PER_MINUTE = int(os.getenv("RATE_LIMIT_TEXT_PER_MINUTE", "10"))
+RATE_LIMIT_VISION_PER_MINUTE = int(os.getenv("RATE_LIMIT_VISION_PER_MINUTE", "3"))
+
+# =============================================================================
+# CORS
+# =============================================================================
+
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:3000,http://localhost:8000,http://127.0.0.1:8000",
+    ).split(",")
+    if o.strip()
+]
+
+# =============================================================================
+# Logging
+# =============================================================================
+
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+# =============================================================================
+# Private API (integrasi sistem UNHAS — aktif saat URL dikonfigurasi)
+# =============================================================================
+
+UNHAS_API_BASE_URL = os.getenv("UNHAS_API_BASE_URL", "")
+
+# =============================================================================
+# POC-only — Storage (MinIO)
+# =============================================================================
+
 # STORAGE_BACKEND: Literal["filesystem", "minio"] = os.getenv("STORAGE_BACKEND", "filesystem")
 # STORAGE_LOCAL_PATH = os.getenv("STORAGE_LOCAL_PATH", "./storage")
 # MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
 # MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "")
 # MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "")
 # MINIO_BUCKET = os.getenv("MINIO_BUCKET", "ragchat-images")
-
-# --- Rate limiting (production scale) ---
-# RATE_LIMIT_TEXT_PER_MINUTE = int(os.getenv("RATE_LIMIT_TEXT_PER_MINUTE", "8"))
-# RATE_LIMIT_VISION_PER_MINUTE = int(os.getenv("RATE_LIMIT_VISION_PER_MINUTE", "2"))
-# RATE_LIMIT_BURST_PER_SECOND = int(os.getenv("RATE_LIMIT_BURST_PER_SECOND", "3"))
-
-# --- Circuit breaker ---
-# CIRCUIT_OPEN_THRESHOLD = int(os.getenv("CIRCUIT_OPEN_THRESHOLD", "60"))
-# CIRCUIT_RECOVERY_THRESHOLD = int(os.getenv("CIRCUIT_RECOVERY_THRESHOLD", "20"))

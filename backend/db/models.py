@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models — sessions, messages."""
+"""SQLAlchemy ORM models — users, sessions, messages."""
 
 import uuid
 from datetime import datetime, timezone
@@ -15,6 +15,18 @@ from backend.db.database import Base
 
 def _now():
     return datetime.now(timezone.utc)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    username = Column(String(100), primary_key=True, index=True)
+    password_hash = Column(String(200), nullable=False)
+    name = Column(String(200), nullable=False)
+    nim = Column(String(50), nullable=True)
+    role = Column(String(30), default="mahasiswa")
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), default=_now)
 
 
 class Session(Base):

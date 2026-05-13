@@ -35,6 +35,9 @@ from backend.prompts.templates import (
 )
 from backend.services.indexing import get_qdrant_client
 from backend.services.cache import cache_get, cache_set
+from backend.services.moderation import check_moderation
+from backend.services.intent_classifier import classify_intent
+from backend.services.output_filter import filter_output, filter_token
 
 logger = logging.getLogger(__name__)
 
@@ -43,29 +46,6 @@ _retriever = None
 _reranker = None
 
 # ─── Routing keyword sets ────────────────────────────────────────────────────
-
-_CHITCHAT_EXACT = {
-    "halo", "hai", "hello", "hi", "hey",
-    "selamat pagi", "selamat siang", "selamat sore", "selamat malam",
-    "terima kasih", "makasih", "thanks", "thank you",
-    "apa kabar", "bye", "dadah", "sampai jumpa",
-    "ok", "oke", "baik", "mantap", "sip",
-}
-
-_IDENTITY_KEYWORDS = [
-    "siapa kamu", "siapa anda", "kamu siapa", "anda siapa",
-    "nama kamu", "nama anda", "namamu", "namanya",
-    "siapa nama", "apa namamu",
-    "kamu ini", "kamu apa", "anda ini",
-    "dari mana kamu", "dari mana anda", "asalmu", "asalnya",
-    "asal kamu", "asal anda",
-    "siapa yang buat", "siapa yang membuat", "siapa pembuat", "siapa penciptamu",
-    "siapa yang ciptakan", "siapa yang menciptakan", "dibuat oleh", "diciptakan oleh",
-    "yang membuat kamu", "yang membuat anda", "kamu dibuat", "anda dibuat",
-    "apa itu kamu", "apa itu anda",
-    "kamu robot", "anda robot", "kamu ai", "anda ai",
-    "kamu bot", "anda bot",
-]
 
 _HARMFUL_KEYWORDS = [
     "bom", "peledak", "ledak", "dinamit", "granat",
@@ -119,15 +99,6 @@ def _pick(responses: list) -> str:
 
 def _normalize(text: str) -> str:
     return text.strip().lower().rstrip("?!.,")
-
-
-def _is_chitchat(question: str) -> bool:
-    return _normalize(question) in _CHITCHAT_EXACT
-
-
-def _is_identity_question(question: str) -> bool:
-    q = _normalize(question)
-    return any(kw in q for kw in _IDENTITY_KEYWORDS)
 
 
 def _is_harmful(question: str) -> bool:
@@ -279,6 +250,17 @@ def _low_relevance_response(question: str) -> str:
     return str(llm.complete(prompt))
 
 
+def _trim_history_by_tokens(history: list[dict], max_tokens: int = None) -> list[dict]:
+    """Trim history dari paling lama sampai estimasi token di bawah limit."""
+    from backend.config import HISTORY_MAX_TOKENS
+    limit = max_tokens or HISTORY_MAX_TOKENS
+    total_chars = sum(len(m.get("content", "")) for m in history)
+    while total_chars > limit * 4 and len(history) > 2:
+        removed = history.pop(0)
+        total_chars -= len(removed.get("content", ""))
+    return history
+
+
 def _condense_question(history: list[dict], question: str) -> tuple[str, bool]:
     """Return (condensed_question, is_acknowledgment)."""
     if not history:
@@ -424,21 +406,63 @@ def query(
             },
         }
 
-    # ── 1. Harmful check ─────────────────────────────────────────────────────
+    # ── 1. Layer 1 — Harmful keyword check (fast, deterministic) ─────────────
     if _is_harmful(question):
-        logger.warning(f"Harmful request blocked: '{question}'")
+        logger.warning(f"L1_blocked question={question[:60]!r}")
         return _make_result(_pick(_HARMFUL_RESPONSES), mode="blocked")
 
-    # ── 2. Chitchat / identity (always — even mid-session) ───────────────────
-    if _is_identity_question(question):
-        return _make_result(_chitchat_response(question, history), mode="identity")
-    if _is_chitchat(question):
-        return _make_result(_chitchat_response(question, history), mode="chitchat")
+    # ── 2. Layer 2 — Moderation model ─────────────────────────────────────────
+    is_safe, mod_reason = check_moderation(question)
+    if not is_safe:
+        logger.warning(f"L2_moderation_blocked reason={mod_reason}")
+        return _make_result(
+            "Maaf, saya tidak dapat memproses permintaan tersebut.",
+            mode="blocked_moderation",
+        )
 
-    # ── 3. Query condensation (kalau ada history) ─────────────────────────────
+    # ── 3. Layer 3 — Intent classification (IndoBERT) ─────────────────────────
+    intent_result = classify_intent(question)
+    intent = intent_result["intent"]
+    logger.info(f"L3_intent={intent} conf={intent_result['confidence']:.3f}")
+
+    if intent_result["low_confidence"]:
+        return _make_result(
+            "Maaf, bisa diperjelas maksud pertanyaannya?",
+            mode="clarification_needed",
+        )
+    if intent == "chitchat":
+        answer = filter_output(_chitchat_response(question, history))
+        return _make_result(answer, mode="chitchat")
+    if intent == "out_of_scope":
+        return _make_result(
+            "Maaf, saya hanya dapat membantu urusan akademik UNHAS. "
+            "Untuk pertanyaan lain, silakan gunakan layanan yang sesuai.",
+            mode="out_of_scope",
+        )
+    if intent == "get_info_private":
+        from backend.services.private_api import handle_private_query
+        private_result = handle_private_query(question, user_token="")
+        if private_result:
+            mode = private_result.pop("mode", "get_info_private")
+            return {
+                **private_result,
+                "condensed_question": None,
+                "debug": {
+                    "mode": mode,
+                    "total_time_s": round(time.time() - t_start, 2),
+                    "model": LLM_MODEL,
+                    "top_score": 0.0,
+                },
+            }
+        # private API tidak dikonfigurasi → fall through ke RAG
+
+    # intent == "get_info_public" (atau private tanpa API) → lanjut ke RAG
+
+    # ── 4. Query condensation (kalau ada history) ─────────────────────────────
     condensed = question
     if history:
-        condensed, is_ack = _condense_question(history[-(HISTORY_TURNS * 2):], question)
+        trimmed_history = _trim_history_by_tokens(list(history[-(HISTORY_TURNS * 2):]))
+        condensed, is_ack = _condense_question(trimmed_history, question)
         if is_ack:
             answer = _chitchat_response(question, history)
             return _make_result(answer, mode="chitchat", condensed=condensed)
@@ -447,7 +471,7 @@ def query(
         if _is_harmful(condensed):
             return _make_result(_pick(_HARMFUL_RESPONSES), mode="blocked", condensed=condensed)
 
-    # ── 4. Cache check (condensed first, then original as fallback) ──────────
+    # ── 5. Cache check (condensed first, then original as fallback) ──────────
     cached = cache_get(condensed, role=role)
     if not cached and condensed != question:
         cached = cache_get(question, role=role)
@@ -497,7 +521,7 @@ def query(
     # ── 8. LLM generate ──────────────────────────────────────────────────────
     llm = get_llm()
     raw_answer = str(llm.complete(prompt))
-    answer = _format_answer(raw_answer)
+    answer = filter_output(_format_answer(raw_answer))
 
     logger.info(
         f"RAG done in {round(time.time() - t_start, 2)}s "
@@ -565,26 +589,55 @@ def query_stream(
                 time.sleep(delay)
         yield meta
 
-    # ── 1. Harmful ────────────────────────────────────────────────────────────
+    # ── 1. Layer 1 — Harmful keyword check ───────────────────────────────────
     if _is_harmful(question):
-        yield from _fake_stream(_pick(_HARMFUL_RESPONSES),
-                                _make_meta("", "blocked"))
+        logger.warning(f"L1_blocked question={question[:60]!r}")
+        yield from _fake_stream(_pick(_HARMFUL_RESPONSES), _make_meta("", "blocked"))
         return
 
-    # ── 2. Chitchat / identity ────────────────────────────────────────────────
-    if _is_identity_question(question):
-        answer = _chitchat_response(question, history)
-        yield from _fake_stream(answer, _make_meta(answer, "identity"))
+    # ── 2. Layer 2 — Moderation model ─────────────────────────────────────────
+    is_safe, mod_reason = check_moderation(question)
+    if not is_safe:
+        logger.warning(f"L2_moderation_blocked reason={mod_reason}")
+        msg = "Maaf, saya tidak dapat memproses permintaan tersebut."
+        yield from _fake_stream(msg, _make_meta(msg, "blocked_moderation"))
         return
-    if _is_chitchat(question):
-        answer = _chitchat_response(question, history)
+
+    # ── 3. Layer 3 — Intent classification (IndoBERT) ─────────────────────────
+    intent_result = classify_intent(question)
+    intent = intent_result["intent"]
+    logger.info(f"L3_intent={intent} conf={intent_result['confidence']:.3f}")
+
+    if intent_result["low_confidence"]:
+        msg = "Maaf, bisa diperjelas maksud pertanyaannya?"
+        yield from _fake_stream(msg, _make_meta(msg, "clarification_needed"))
+        return
+    if intent == "chitchat":
+        answer = filter_output(_chitchat_response(question, history))
         yield from _fake_stream(answer, _make_meta(answer, "chitchat"))
         return
+    if intent == "out_of_scope":
+        msg = ("Maaf, saya hanya dapat membantu urusan akademik UNHAS. "
+               "Untuk pertanyaan lain, silakan gunakan layanan yang sesuai.")
+        yield from _fake_stream(msg, _make_meta(msg, "out_of_scope"))
+        return
+    if intent == "get_info_private":
+        from backend.services.private_api import handle_private_query
+        private_result = handle_private_query(question, user_token="")
+        if private_result:
+            answer = private_result.get("answer", "")
+            mode = private_result.get("mode", "get_info_private")
+            yield from _fake_stream(answer, _make_meta(answer, mode))
+            return
+        # private API tidak dikonfigurasi → fall through ke RAG
 
-    # ── 3. Condensation ───────────────────────────────────────────────────────
+    # intent == "get_info_public" (atau private tanpa API) → lanjut ke RAG
+
+    # ── 4. Condensation ────────────────────────────────────────────────────────
     condensed = question
     if history:
-        condensed, is_ack = _condense_question(history[-(HISTORY_TURNS * 2):], question)
+        trimmed_history = _trim_history_by_tokens(list(history[-(HISTORY_TURNS * 2):]))
+        condensed, is_ack = _condense_question(trimmed_history, question)
         if is_ack:
             answer = _chitchat_response(question, history)
             yield from _fake_stream(answer, _make_meta(answer, "chitchat", condensed=condensed))
@@ -645,9 +698,9 @@ def query_stream(
         delta = token_resp.delta
         if delta:
             parts.append(delta)
-            yield {"type": "token", "delta": delta}
+            yield {"type": "token", "delta": filter_token(delta)}
 
-    full_answer = _format_answer("".join(parts))
+    full_answer = filter_output(_format_answer("".join(parts)))
     logger.info(f"Stream RAG done in {round(time.time() - t_start, 2)}s "
                 f"— top_score={top_score:.4f}, sources={len(sources)}")
 

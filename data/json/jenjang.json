@@ -1,0 +1,83 @@
+{
+  "success": true,
+  "error": null,
+  "data": {
+    "items": [
+      {
+        "kode_jenjang": "D3",
+        "nama_jenjang": "Diploma Tiga",
+        "maksimal_sks": 108,
+        "maksimal_semester": 10,
+        "maksimal_sks_semester_awal": 24,
+        "batas_evaluasi_semester_awal": 4,
+        "jumlah_prodi_jenjang": 2,
+        "jumlah_mahasiswa_jenjang": 690,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_jenjang": "D4",
+        "nama_jenjang": "Sarjana Terapan",
+        "maksimal_sks": 144,
+        "maksimal_semester": 14,
+        "maksimal_sks_semester_awal": 24,
+        "batas_evaluasi_semester_awal": 4,
+        "jumlah_prodi_jenjang": 1,
+        "jumlah_mahasiswa_jenjang": 480,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_jenjang": "S1",
+        "nama_jenjang": "Sarjana",
+        "maksimal_sks": 144,
+        "maksimal_semester": 14,
+        "maksimal_sks_semester_awal": 24,
+        "batas_evaluasi_semester_awal": 4,
+        "jumlah_prodi_jenjang": 49,
+        "jumlah_mahasiswa_jenjang": 36790,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_jenjang": "Profesi",
+        "nama_jenjang": "Pendidikan Profesi",
+        "maksimal_sks": 36,
+        "maksimal_semester": 6,
+        "maksimal_sks_semester_awal": 15,
+        "batas_evaluasi_semester_awal": 2,
+        "jumlah_prodi_jenjang": 4,
+        "jumlah_mahasiswa_jenjang": 2100,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_jenjang": "S2",
+        "nama_jenjang": "Magister",
+        "maksimal_sks": 36,
+        "maksimal_semester": 8,
+        "maksimal_sks_semester_awal": 15,
+        "batas_evaluasi_semester_awal": 2,
+        "jumlah_prodi_jenjang": 12,
+        "jumlah_mahasiswa_jenjang": 1850,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_jenjang": "S3",
+        "nama_jenjang": "Doktor",
+        "maksimal_sks": 42,
+        "maksimal_semester": 14,
+        "maksimal_sks_semester_awal": 15,
+        "batas_evaluasi_semester_awal": 2,
+        "jumlah_prodi_jenjang": 8,
+        "jumlah_mahasiswa_jenjang": 1200,
+        "updated_at": "2026-05-05T17:03:46"
+      }
+    ],
+    "pagination": {
+      "total": 6,
+      "page": 1,
+      "page_size": 6,
+      "total_pages": 1
+    },
+    "summary": {
+      "jumlah_jenjang_unhas": 6
+    }
+  }
+}

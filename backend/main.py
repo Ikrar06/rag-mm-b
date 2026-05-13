@@ -2,36 +2,63 @@
 
 import logging
 import os
+import time
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from qdrant_client import QdrantClient
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
 
-from backend.config import LLM_BASE_URL, LLM_PROVIDER, QDRANT_URL, LLM_MODEL
+from backend.config import (
+    LLM_BASE_URL, LLM_PROVIDER, QDRANT_URL, LLM_MODEL,
+    ALLOWED_ORIGINS, LOG_LEVEL,
+)
+from backend.logging_config import configure_logging
+from backend.limiter import limiter
 from backend.models.schemas import HealthResponse, IndexRequest, IndexResponse
 from backend.routers.chat import router as chat_router
 from backend.routers.auth import router as auth_router
+from backend.routers.query import router as query_router
 
-logging.basicConfig(level=logging.INFO)
+configure_logging(level=LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="RAG Chatbot UNHAS", version="2.0.0")
 
+# ── Rate limiting ──────────────────────────────────────────────────────────────
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ── CORS ──────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+# ── Request timing middleware ─────────────────────────────────────────────────
+@app.middleware("http")
+async def log_request_timing(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = round((time.perf_counter() - start) * 1000, 2)
+    logger.info(
+        f"http_request method={request.method} path={request.url.path} "
+        f"status={response.status_code} duration_ms={duration_ms}"
+    )
+    return response
 
 app.include_router(chat_router)
 app.include_router(auth_router)
+app.include_router(query_router)
 
-# Serve frontend static files
+# ── Static files ──────────────────────────────────────────────────────────────
 _frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
 app.mount("/static", StaticFiles(directory=_frontend_dir), name="static")
 
@@ -43,12 +70,8 @@ async def serve_frontend():
 
 @app.get("/api/health", response_model=HealthResponse)
 async def health_check():
-    ollama_ok = False
-    qdrant_ok = False
-    postgres_ok = False
-    redis_ok = False
+    ollama_ok = qdrant_ok = postgres_ok = redis_ok = False
 
-    # Check LLM endpoint (Ollama atau vLLM)
     try:
         check_url = (
             f"{LLM_BASE_URL}/api/tags" if LLM_PROVIDER == "ollama"
@@ -60,7 +83,6 @@ async def health_check():
     except Exception:
         pass
 
-    # Check Qdrant
     try:
         qc = QdrantClient(url=QDRANT_URL, timeout=5)
         qc.get_collections()
@@ -68,14 +90,12 @@ async def health_check():
     except Exception:
         pass
 
-    # Check PostgreSQL
     try:
         from backend.db.database import check_db_connection
         postgres_ok = check_db_connection()
     except Exception:
         pass
 
-    # Check Redis
     try:
         from backend.services.cache import check_redis_connection
         redis_ok = check_redis_connection()
@@ -99,20 +119,23 @@ async def index_documents(request: IndexRequest):
         count = do_index(request.directory, force=request.force)
         return IndexResponse(status="ok", documents_indexed=count)
     except Exception as e:
-        logger.error(f"Indexing error: {e}")
+        logger.error(f"indexing_error error={e}")
         return IndexResponse(status=f"error: {e}", documents_indexed=0)
 
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("RAG Chatbot UNHAS v2 starting...")
-    logger.info(f"LLM: {LLM_PROVIDER} / {LLM_MODEL}")
-    logger.info(f"Qdrant: {QDRANT_URL}")
+    logger.info(f"RAG Chatbot UNHAS v2 starting llm={LLM_PROVIDER}/{LLM_MODEL} qdrant={QDRANT_URL}")
 
-    # Init database tables
     try:
         from backend.db.database import init_db
         init_db()
     except Exception as e:
-        logger.error(f"DB init failed: {e}")
+        logger.error(f"db_init_failed error={e}")
         logger.warning("Chatbot will run without session persistence.")
+
+    try:
+        from backend.services.auth import seed_users_from_json
+        seed_users_from_json()
+    except Exception as e:
+        logger.warning(f"user_seed_skipped reason={e}")

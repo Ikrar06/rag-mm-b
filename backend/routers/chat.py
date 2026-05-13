@@ -1,4 +1,4 @@
-"""Chat API router — dengan session, auth, multi-turn history."""
+"""Chat API router — session, auth, multi-turn history, rate limiting."""
 
 import json
 import logging
@@ -9,12 +9,15 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session as DBSession
 
 from backend.db.database import get_db, SessionLocal
+from backend.limiter import limiter
+from backend.config import RATE_LIMIT_TEXT_PER_MINUTE
 from backend.models.schemas import (
     ChatRequest, ChatResponse, SourceDocument, DebugInfo,
     SessionListResponse, SessionInfo,
 )
 from backend.services.rag_pipeline import query, query_stream
 from backend.services.auth import decode_token
+from backend.services.output_filter import filter_output
 from backend.services.session import (
     get_or_create_session, get_history, save_user_message, save_assistant_message,
     list_sessions,
@@ -41,18 +44,19 @@ def _get_current_user(request: Request) -> dict:
                 "username": payload.get("sub", "anonymous"),
                 "role": payload.get("role", "public"),
                 "name": payload.get("name", "Anonymous"),
+                "token": token,
             }
 
-    return {"username": "anonymous", "role": "public", "name": "Anonymous"}
+    return {"username": "anonymous", "role": "public", "name": "Anonymous", "token": ""}
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request_body: ChatRequest, request: Request, db: DBSession = Depends(get_db)):
+@limiter.limit(f"{RATE_LIMIT_TEXT_PER_MINUTE}/minute")
+async def chat(request: Request, request_body: ChatRequest, db: DBSession = Depends(get_db)):
     """Main RAG chat endpoint dengan session + multi-turn history."""
     user = _get_current_user(request)
 
     try:
-        # ── Session ──────────────────────────────────────────────────────────
         session = get_or_create_session(
             db,
             session_id=request_body.session_id,
@@ -60,21 +64,18 @@ async def chat(request_body: ChatRequest, request: Request, db: DBSession = Depe
             role=user["role"],
         )
         session_id_str = str(session.id)
-
-        # ── History ───────────────────────────────────────────────────────────
         history = get_history(db, session_id_str)
-
-        # ── Save user message ─────────────────────────────────────────────────
         save_user_message(db, session_id_str, request_body.query)
 
-        # ── RAG ───────────────────────────────────────────────────────────────
         result = query(
             question=request_body.query,
             history=history,
             role=user["role"],
         )
 
-        # ── Save assistant message ────────────────────────────────────────────
+        # Layer 6 — output filter (backstop, RAG pipeline sudah filter tapi dobel aman)
+        result["answer"] = filter_output(result["answer"], session_id_str)
+
         save_assistant_message(
             db,
             session_id=session_id_str,
@@ -97,16 +98,16 @@ async def chat(request_body: ChatRequest, request: Request, db: DBSession = Depe
         )
 
     except Exception as e:
-        logger.error(f"Chat error: {e}", exc_info=True)
+        logger.error(f"chat_error error={e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/chat/stream")
-async def chat_stream(request_body: ChatRequest, request: Request):
+@limiter.limit(f"{RATE_LIMIT_TEXT_PER_MINUTE}/minute")
+async def chat_stream(request: Request, request_body: ChatRequest):
     """Streaming chat endpoint — server-sent events."""
     user = _get_current_user(request)
 
-    # Setup session outside the generator (needs its own DB session lifecycle)
     setup_db = SessionLocal()
     try:
         session = get_or_create_session(
@@ -120,13 +121,12 @@ async def chat_stream(request_body: ChatRequest, request: Request):
         save_user_message(setup_db, session_id_str, request_body.query)
     except Exception as e:
         setup_db.close()
-        logger.error(f"Stream setup error: {e}", exc_info=True)
+        logger.error(f"stream_setup_error error={e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         setup_db.close()
 
     def event_generator():
-        # Send session_id first so frontend can update currentSessionId
         yield f"data: {json.dumps({'type': 'session', 'session_id': session_id_str})}\n\n"
 
         answer_parts: list[str] = []
@@ -137,13 +137,14 @@ async def chat_stream(request_body: ChatRequest, request: Request):
                 if event["type"] == "token":
                     answer_parts.append(event.get("delta", ""))
                 elif event["type"] == "meta":
+                    # Filter final answer in meta event
+                    event["answer"] = filter_output(event.get("answer", ""), session_id_str)
                     meta_event = event
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
-            logger.error(f"Stream error: {e}", exc_info=True)
+            logger.error(f"stream_error error={e}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
         finally:
-            # Save assistant message after stream completes
             full_answer = meta_event.get("answer") or "".join(answer_parts)
             if full_answer:
                 save_db = SessionLocal()
@@ -158,7 +159,7 @@ async def chat_stream(request_body: ChatRequest, request: Request):
                         condensed_question=meta_event.get("condensed_question"),
                     )
                 except Exception as e:
-                    logger.error(f"Failed to save assistant message: {e}")
+                    logger.error(f"stream_save_error error={e}")
                 finally:
                     save_db.close()
 
@@ -171,7 +172,6 @@ async def chat_stream(request_body: ChatRequest, request: Request):
 
 @router.get("/sessions", response_model=SessionListResponse)
 async def get_sessions(request: Request, db: DBSession = Depends(get_db)):
-    """List semua session milik user yang login."""
     user = _get_current_user(request)
     if user["username"] == "anonymous":
         return SessionListResponse(sessions=[])

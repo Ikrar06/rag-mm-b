@@ -1,0 +1,1365 @@
+{
+  "success": true,
+  "error": null,
+  "data": {
+    "items": [
+      {
+        "kode_mk": "MK-P0401-004",
+        "nama_mk": "Ilmu Material Kedokteran Gigi",
+        "min_sks": 45,
+        "min_ipk": 2.67,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-KIM-101",
+            "nama_mk": "Kimia Dasar"
+          },
+          {
+            "kode_mk": "PRE-MAT-201",
+            "nama_mk": "Pengantar Ilmu Material"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0104-007",
+        "nama_mk": "Pemrosesan Sinyal Digital",
+        "min_sks": 52,
+        "min_ipk": 2.81,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-MAT-202",
+            "nama_mk": "Matematika Teknik I"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1005-005",
+        "nama_mk": "Antropologi Agama",
+        "min_sks": 38,
+        "min_ipk": 2.15,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-ANT-101",
+            "nama_mk": "Pengantar Antropologi"
+          },
+          {
+            "kode_mk": "PRE-SOS-201",
+            "nama_mk": "Sosiologi Agama"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1502-003",
+        "nama_mk": "British Literature Survey",
+        "min_sks": 33,
+        "min_ipk": 2.49,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-SAS-101",
+            "nama_mk": "Pengantar Studi Sastra"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0401-005",
+        "nama_mk": "Fisiologi Umum",
+        "min_sks": 59,
+        "min_ipk": 2.92,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-BIO-101",
+            "nama_mk": "Biologi Sel dan Molekuler"
+          },
+          {
+            "kode_mk": "PRE-ANA-103",
+            "nama_mk": "Anatomi Dasar"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1302-010",
+        "nama_mk": "Ekonomi Agribisnis Hasil Ternak",
+        "min_sks": 41,
+        "min_ipk": 2.33,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-EKO-101",
+            "nama_mk": "Pengantar Ekonomi Pertanian"
+          },
+          {
+            "kode_mk": "PRE-TER-204",
+            "nama_mk": "Manajemen Ternak Dasar"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1103-003",
+        "nama_mk": "Prinsip Teknologi Pangan",
+        "min_sks": 50,
+        "min_ipk": 2.76,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-KIM-102",
+            "nama_mk": "Kimia Pangan Dasar"
+          },
+          {
+            "kode_mk": "PRE-MIK-201",
+            "nama_mk": "Mikrobiologi Pangan"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0501-003",
+        "nama_mk": "Epidemiologi Dasar",
+        "min_sks": 36,
+        "min_ipk": 2.05,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-STA-101",
+            "nama_mk": "Pengantar Biostatistika"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1202-002",
+        "nama_mk": "Teknologi Pengolahan Kayu",
+        "min_sks": 48,
+        "min_ipk": 2.58,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-HUT-101",
+            "nama_mk": "Sifat Dasar Kayu"
+          },
+          {
+            "kode_mk": "PRE-KIM-201",
+            "nama_mk": "Kimia Kayu"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1504-008",
+        "nama_mk": "Kajian Filologi Arab",
+        "min_sks": 42,
+        "min_ipk": 2.21,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-BAH-101",
+            "nama_mk": "Bahasa Arab Lanjut"
+          },
+          {
+            "kode_mk": "PRE-FIL-201",
+            "nama_mk": "Pengantar Filologi"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0206-010",
+        "nama_mk": "Data Mining dan Pembelajaran Mesin",
+        "min_sks": 55,
+        "min_ipk": 2.99,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-STA-202",
+            "nama_mk": "Statistika Komputasi"
+          },
+          {
+            "kode_mk": "PRE-ALG-203",
+            "nama_mk": "Struktur Data dan Algoritma"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1201-005",
+        "nama_mk": "Manajemen Hutan",
+        "min_sks": 39,
+        "min_ipk": 2.08,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-EKO-102",
+            "nama_mk": "Ekologi Hutan"
+          },
+          {
+            "kode_mk": "PRE-HUT-102",
+            "nama_mk": "Pengantar Kehutanan"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1202-004",
+        "nama_mk": "Pulp dan Kertas",
+        "min_sks": 51,
+        "min_ipk": 2.73,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-KIM-201",
+            "nama_mk": "Kimia Kayu"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0601-008",
+        "nama_mk": "Farmasi Klinis Dasar",
+        "min_sks": 44,
+        "min_ipk": 2.53,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-FAR-201",
+            "nama_mk": "Farmakologi Umum"
+          },
+          {
+            "kode_mk": "PRE-PAT-202",
+            "nama_mk": "Patofisiologi Dasar"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1103-009",
+        "nama_mk": "Bioteknologi Pangan",
+        "min_sks": 58,
+        "min_ipk": 2.95,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-MIK-201",
+            "nama_mk": "Mikrobiologi Pangan"
+          },
+          {
+            "kode_mk": "PRE-BIO-301",
+            "nama_mk": "Biokimia Pangan"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0107-003",
+        "nama_mk": "Statistika Industri",
+        "min_sks": 32,
+        "min_ipk": 2.37,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-STA-201",
+            "nama_mk": "Statistika Matematika"
+          },
+          {
+            "kode_mk": "PRE-RIS-202",
+            "nama_mk": "Pengantar Riset Operasi"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0108-009",
+        "nama_mk": "Sistem Informasi Geografis Lingkungan",
+        "min_sks": 47,
+        "min_ipk": 2.61,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-SIG-101",
+            "nama_mk": "Pengantar Sistem Informasi Geografis"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0902-009",
+        "nama_mk": "Akuntansi Manajemen",
+        "min_sks": 54,
+        "min_ipk": 2.87,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-AKU-201",
+            "nama_mk": "Akuntansi Keuangan Menengah"
+          },
+          {
+            "kode_mk": "PRE-MAN-101",
+            "nama_mk": "Pengantar Manajemen"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1602-004",
+        "nama_mk": "Manajemen Basis Data",
+        "min_sks": 37,
+        "min_ipk": 2.11,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-BAS-101",
+            "nama_mk": "Konsep Basis Data"
+          },
+          {
+            "kode_mk": "PRE-ALG-201",
+            "nama_mk": "Algoritma dan Struktur Data"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1101-003",
+        "nama_mk": "Fisiologi Tumbuhan",
+        "min_sks": 49,
+        "min_ipk": 2.69,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-BOT-101",
+            "nama_mk": "Biologi Tumbuhan"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0104-009",
+        "nama_mk": "Jaringan Komunikasi Data",
+        "min_sks": 43,
+        "min_ipk": 2.44,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-JAR-101",
+            "nama_mk": "Pengantar Jaringan Komputer"
+          },
+          {
+            "kode_mk": "PRE-SIS-204",
+            "nama_mk": "Sistem Operasi Komputer"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1102-004",
+        "nama_mk": "Kewirausahaan Pertanian",
+        "min_sks": 56,
+        "min_ipk": 2.83,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-BIS-102",
+            "nama_mk": "Pengantar Bisnis"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1401-009",
+        "nama_mk": "Teknik Survei Kelautan",
+        "min_sks": 31,
+        "min_ipk": 2.02,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-OSE-101",
+            "nama_mk": "Oseanografi Dasar"
+          },
+          {
+            "kode_mk": "PRE-GEO-201",
+            "nama_mk": "Geodesi"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0109-006",
+        "nama_mk": "Hidrogeologi",
+        "min_sks": 46,
+        "min_ipk": 2.55,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-GEO-101",
+            "nama_mk": "Geologi Fisik"
+          },
+          {
+            "kode_mk": "PRE-HID-201",
+            "nama_mk": "Hidrologi Dasar"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1104-006",
+        "nama_mk": "Diagnosis Penyakit Tumbuhan",
+        "min_sks": 53,
+        "min_ipk": 2.89,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-PAT-201",
+            "nama_mk": "Patologi Tumbuhan Dasar"
+          },
+          {
+            "kode_mk": "PRE-MIK-202",
+            "nama_mk": "Mikologi Pertanian"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1403-007",
+        "nama_mk": "Ekonomi Sumberdaya Perairan",
+        "min_sks": 35,
+        "min_ipk": 2.09,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-EKO-103",
+            "nama_mk": "Pengantar Ekonomi Kelautan"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1301-010",
+        "nama_mk": "Ekonomi Peternakan",
+        "min_sks": 40,
+        "min_ipk": 2.19,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-EKO-101",
+            "nama_mk": "Pengantar Ekonomi Pertanian"
+          },
+          {
+            "kode_mk": "PRE-TER-203",
+            "nama_mk": "Produksi Ternak Dasar"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0201-010",
+        "nama_mk": "Pemodelan Matematika",
+        "min_sks": 57,
+        "min_ipk": 2.97,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-MAT-203",
+            "nama_mk": "Kalkulus Lanjut"
+          },
+          {
+            "kode_mk": "PRE-MAT-204",
+            "nama_mk": "Aljabar Linear"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0107-010",
+        "nama_mk": "Sistem Informasi Manufaktur",
+        "min_sks": 34,
+        "min_ipk": 2.41,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-SIS-101",
+            "nama_mk": "Pengantar Sistem Informasi"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1602-006",
+        "nama_mk": "Desain Antarmuka Pengguna",
+        "min_sks": 48,
+        "min_ipk": 2.65,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-DES-101",
+            "nama_mk": "Pengantar Desain Grafis"
+          },
+          {
+            "kode_mk": "PRE-PSI-201",
+            "nama_mk": "Psikologi Kognitif"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0203-004",
+        "nama_mk": "Genetika",
+        "min_sks": 50,
+        "min_ipk": 2.78,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-BIO-102",
+            "nama_mk": "Biologi Umum"
+          },
+          {
+            "kode_mk": "PRE-BIO-103",
+            "nama_mk": "Biologi Sel"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0101-006",
+        "nama_mk": "Kecerdasan Buatan",
+        "min_sks": 33,
+        "min_ipk": 2.27,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-LOG-201",
+            "nama_mk": "Logika Matematika"
+          },
+          {
+            "kode_mk": "PRE-PRO-202",
+            "nama_mk": "Pemrograman Lanjut"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1004-009",
+        "nama_mk": "Sosiologi Konflik",
+        "min_sks": 42,
+        "min_ipk": 2.39,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-SOS-101",
+            "nama_mk": "Pengantar Sosiologi"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0202-005",
+        "nama_mk": "Jaringan Komputer",
+        "min_sks": 59,
+        "min_ipk": 2.91,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-SIS-204",
+            "nama_mk": "Sistem Operasi Komputer"
+          },
+          {
+            "kode_mk": "PRE-PRO-102",
+            "nama_mk": "Konsep Pemrograman"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0103-006",
+        "nama_mk": "Teknologi Bahan Bangunan",
+        "min_sks": 30,
+        "min_ipk": 2.07,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-FIS-101",
+            "nama_mk": "Fisika Bangunan"
+          },
+          {
+            "kode_mk": "PRE-KIM-203",
+            "nama_mk": "Kimia Material"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1003-003",
+        "nama_mk": "Teori Komunikasi",
+        "min_sks": 47,
+        "min_ipk": 2.62,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-KOM-101",
+            "nama_mk": "Pengantar Ilmu Komunikasi"
+          },
+          {
+            "kode_mk": "PRE-PSI-202",
+            "nama_mk": "Psikologi Komunikasi"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1601-005",
+        "nama_mk": "Pemrograman Web Lanjut",
+        "min_sks": 51,
+        "min_ipk": 2.71,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-PRO-203",
+            "nama_mk": "Pemrograman Web Dasar"
+          },
+          {
+            "kode_mk": "PRE-BAS-101",
+            "nama_mk": "Konsep Basis Data"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1001-004",
+        "nama_mk": "Perbandingan Politik",
+        "min_sks": 38,
+        "min_ipk": 2.18,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-POL-101",
+            "nama_mk": "Pengantar Ilmu Politik"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0102-003",
+        "nama_mk": "Mekanika Fluida",
+        "min_sks": 55,
+        "min_ipk": 2.85,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-FIS-102",
+            "nama_mk": "Fisika Dasar II"
+          },
+          {
+            "kode_mk": "PRE-MAT-205",
+            "nama_mk": "Kalkulus Multivariabel"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1001-006",
+        "nama_mk": "Politik Lokal dan Otonomi Daerah",
+        "min_sks": 40,
+        "min_ipk": 2.31,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-POL-101",
+            "nama_mk": "Pengantar Ilmu Politik"
+          },
+          {
+            "kode_mk": "PRE-ADM-201",
+            "nama_mk": "Administrasi Publik"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1201-006",
+        "nama_mk": "Pengukuran Hutan",
+        "min_sks": 58,
+        "min_ipk": 2.94,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-MAT-101",
+            "nama_mk": "Matematika Dasar"
+          },
+          {
+            "kode_mk": "PRE-HUT-102",
+            "nama_mk": "Pengantar Kehutanan"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1503-007",
+        "nama_mk": "Sejarah Sosial Ekonomi",
+        "min_sks": 32,
+        "min_ipk": 2.04,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-SEJ-101",
+            "nama_mk": "Pengantar Sejarah"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0903-009",
+        "nama_mk": "Kebijakan Fiskal",
+        "min_sks": 45,
+        "min_ipk": 2.5,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-EKO-201",
+            "nama_mk": "Ekonomi Makro I"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1003-010",
+        "nama_mk": "Praktikum Produksi Audio Visual",
+        "min_sks": 53,
+        "min_ipk": 2.82,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-PRO-204",
+            "nama_mk": "Dasar-dasar Produksi Media"
+          },
+          {
+            "kode_mk": "PRE-TEK-205",
+            "nama_mk": "Teknik Pengambilan Gambar"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0901-009",
+        "nama_mk": "Manajemen Strategi",
+        "min_sks": 36,
+        "min_ipk": 2.13,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-MAN-101",
+            "nama_mk": "Pengantar Manajemen"
+          },
+          {
+            "kode_mk": "PRE-MAN-206",
+            "nama_mk": "Manajemen Pemasaran"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1504-006",
+        "nama_mk": "Linguistik Arab Modern",
+        "min_sks": 49,
+        "min_ipk": 2.74,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-BAH-102",
+            "nama_mk": "Tata Bahasa Arab"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0204-007",
+        "nama_mk": "Fisika Zat Padat",
+        "min_sks": 52,
+        "min_ipk": 2.96,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-FIS-201",
+            "nama_mk": "Fisika Modern"
+          },
+          {
+            "kode_mk": "PRE-FIS-301",
+            "nama_mk": "Mekanika Kuantum I"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0104-010",
+        "nama_mk": "Energi Terbarukan",
+        "min_sks": 31,
+        "min_ipk": 2.01,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-FIS-102",
+            "nama_mk": "Fisika Dasar II"
+          },
+          {
+            "kode_mk": "PRE-TER-201",
+            "nama_mk": "Termodinamika"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0202-003",
+        "nama_mk": "Basis Data",
+        "min_sks": 46,
+        "min_ipk": 2.57,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-PRO-101",
+            "nama_mk": "Pengantar Pemrograman"
+          },
+          {
+            "kode_mk": "PRE-LOG-102",
+            "nama_mk": "Logika Informatika"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0108-008",
+        "nama_mk": "Analisis Mengenai Dampak Lingkungan (AMDAL)",
+        "min_sks": 50,
+        "min_ipk": 2.75,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-EKO-202",
+            "nama_mk": "Ekologi Lingkungan"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0903-006",
+        "nama_mk": "Ekonomi Moneter",
+        "min_sks": 39,
+        "min_ipk": 2.22,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-EKO-201",
+            "nama_mk": "Ekonomi Makro I"
+          },
+          {
+            "kode_mk": "PRE-EKO-104",
+            "nama_mk": "Pengantar Ilmu Ekonomi"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1103-006",
+        "nama_mk": "Gizi dan Kesehatan",
+        "min_sks": 57,
+        "min_ipk": 2.88,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-BIO-202",
+            "nama_mk": "Biokimia Gizi"
+          },
+          {
+            "kode_mk": "PRE-GIZ-101",
+            "nama_mk": "Pengantar Ilmu Gizi"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0204-010",
+        "nama_mk": "Elektronika Dasar",
+        "min_sks": 34,
+        "min_ipk": 2.45,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-FIS-102",
+            "nama_mk": "Fisika Dasar II"
+          },
+          {
+            "kode_mk": "PRE-RAN-101",
+            "nama_mk": "Rangkaian Listrik"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1501-010",
+        "nama_mk": "Penulisan Kreatif",
+        "min_sks": 48,
+        "min_ipk": 2.68,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-BAH-103",
+            "nama_mk": "Dasar-dasar Menulis"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0111-010",
+        "nama_mk": "Survei Hidrografi",
+        "min_sks": 51,
+        "min_ipk": 2.79,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-GEO-201",
+            "nama_mk": "Geodesi"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0106-006",
+        "nama_mk": "Sistem Propulsi Kapal",
+        "min_sks": 30,
+        "min_ipk": 2.16,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-MEK-201",
+            "nama_mk": "Mekanika Fluida"
+          },
+          {
+            "kode_mk": "PRE-TER-202",
+            "nama_mk": "Termodinamika Teknik"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0903-004",
+        "nama_mk": "Ekonomi Makro I",
+        "min_sks": 44,
+        "min_ipk": 2.59,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-EKO-104",
+            "nama_mk": "Pengantar Ilmu Ekonomi"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1503-008",
+        "nama_mk": "Arkeologi Dasar",
+        "min_sks": 56,
+        "min_ipk": 2.93,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-SEJ-101",
+            "nama_mk": "Pengantar Sejarah"
+          },
+          {
+            "kode_mk": "PRE-ANT-102",
+            "nama_mk": "Antropologi Budaya"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1102-010",
+        "nama_mk": "E-Bisnis Pertanian",
+        "min_sks": 35,
+        "min_ipk": 2.1,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-BIS-103",
+            "nama_mk": "Pengantar Bisnis Digital"
+          },
+          {
+            "kode_mk": "PRE-MAN-207",
+            "nama_mk": "Manajemen Pemasaran Pertanian"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1002-008",
+        "nama_mk": "Reformasi Birokrasi",
+        "min_sks": 40,
+        "min_ipk": 2.34,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-ADM-201",
+            "nama_mk": "Administrasi Publik"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0102-010",
+        "nama_mk": "Rekayasa Gempa",
+        "min_sks": 59,
+        "min_ipk": 2.98,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-MEK-202",
+            "nama_mk": "Mekanika Bahan"
+          },
+          {
+            "kode_mk": "PRE-STR-301",
+            "nama_mk": "Dinamika Struktur"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1502-007",
+        "nama_mk": "Translation Theory and Practice",
+        "min_sks": 32,
+        "min_ipk": 2.03,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-LIN-101",
+            "nama_mk": "Linguistik Umum"
+          },
+          {
+            "kode_mk": "PRE-BAH-104",
+            "nama_mk": "Bahasa Inggris Akademik"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0109-005",
+        "nama_mk": "Geofisika Umum",
+        "min_sks": 47,
+        "min_ipk": 2.6,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-FIS-103",
+            "nama_mk": "Fisika Dasar I"
+          },
+          {
+            "kode_mk": "PRE-GEO-101",
+            "nama_mk": "Geologi Fisik"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1004-008",
+        "nama_mk": "Sosiologi Bencana",
+        "min_sks": 51,
+        "min_ipk": 2.77,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-SOS-101",
+            "nama_mk": "Pengantar Sosiologi"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1501-009",
+        "nama_mk": "Sosiolinguistik",
+        "min_sks": 30,
+        "min_ipk": 2.14,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-LIN-201",
+            "nama_mk": "Pengantar Linguistik"
+          },
+          {
+            "kode_mk": "PRE-SOS-207",
+            "nama_mk": "Sosiologi Bahasa"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1403-010",
+        "nama_mk": "Konservasi Sumberdaya Ikan",
+        "min_sks": 45,
+        "min_ipk": 2.54,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-BIO-203",
+            "nama_mk": "Biologi Perikanan"
+          },
+          {
+            "kode_mk": "PRE-EKO-204",
+            "nama_mk": "Ekologi Perairan"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1104-005",
+        "nama_mk": "Pestisida dan Aplikasinya",
+        "min_sks": 53,
+        "min_ipk": 2.84,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-KIM-204",
+            "nama_mk": "Kimia Organik"
+          },
+          {
+            "kode_mk": "PRE-ENT-203",
+            "nama_mk": "Entomologi Pertanian"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0701-006",
+        "nama_mk": "Keperawatan Anak",
+        "min_sks": 37,
+        "min_ipk": 2.2,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-KEP-201",
+            "nama_mk": "Asuhan Keperawatan Dasar"
+          },
+          {
+            "kode_mk": "PRE-TUM-203",
+            "nama_mk": "Tumbuh Kembang Anak"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0103-010",
+        "nama_mk": "Metodologi Desain",
+        "min_sks": 40,
+        "min_ipk": 2.36,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-DES-102",
+            "nama_mk": "Dasar-dasar Desain"
+          },
+          {
+            "kode_mk": "PRE-SEJ-103",
+            "nama_mk": "Sejarah Desain"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1201-003",
+        "nama_mk": "Silvikultur Dasar",
+        "min_sks": 58,
+        "min_ipk": 2.9,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-BOT-102",
+            "nama_mk": "Botani Hutan"
+          },
+          {
+            "kode_mk": "PRE-HUT-103",
+            "nama_mk": "Ilmu Tanah Hutan"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0801-005",
+        "nama_mk": "Hukum Internasional",
+        "min_sks": 31,
+        "min_ipk": 2.06,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-HUK-101",
+            "nama_mk": "Pengantar Ilmu Hukum"
+          },
+          {
+            "kode_mk": "PRE-HUK-201",
+            "nama_mk": "Hukum Tata Negara"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0902-006",
+        "nama_mk": "Sistem Informasi Akuntansi",
+        "min_sks": 46,
+        "min_ipk": 2.51,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-AKU-101",
+            "nama_mk": "Pengantar Akuntansi"
+          },
+          {
+            "kode_mk": "PRE-SIS-201",
+            "nama_mk": "Sistem Informasi Manajemen"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1004-004",
+        "nama_mk": "Sosiologi Perkotaan",
+        "min_sks": 50,
+        "min_ipk": 2.7,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-SOS-101",
+            "nama_mk": "Pengantar Sosiologi"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0108-005",
+        "nama_mk": "Hidrologi Lingkungan",
+        "min_sks": 39,
+        "min_ipk": 2.29,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-HID-201",
+            "nama_mk": "Hidrologi Dasar"
+          },
+          {
+            "kode_mk": "PRE-KIM-205",
+            "nama_mk": "Kimia Lingkungan"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0203-010",
+        "nama_mk": "Konservasi Sumber Daya Hayati",
+        "min_sks": 57,
+        "min_ipk": 2.86,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-EKO-105",
+            "nama_mk": "Ekologi Umum"
+          },
+          {
+            "kode_mk": "PRE-BIO-204",
+            "nama_mk": "Biodiversitas"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1002-006",
+        "nama_mk": "Manajemen Pelayanan Publik",
+        "min_sks": 34,
+        "min_ipk": 2.4,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-ADM-201",
+            "nama_mk": "Administrasi Publik"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0103-007",
+        "nama_mk": "Arsitektur Nusantara",
+        "min_sks": 48,
+        "min_ipk": 2.63,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-ARS-101",
+            "nama_mk": "Sejarah Arsitektur"
+          },
+          {
+            "kode_mk": "PRE-SOS-208",
+            "nama_mk": "Sosiologi Arsitektur"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0101-010",
+        "nama_mk": "Data Mining",
+        "min_sks": 51,
+        "min_ipk": 2.72,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-STA-203",
+            "nama_mk": "Statistika Inferensial"
+          },
+          {
+            "kode_mk": "PRE-ALG-201",
+            "nama_mk": "Algoritma dan Struktur Data"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P1103-005",
+        "nama_mk": "Keamanan Pangan",
+        "min_sks": 30,
+        "min_ipk": 2.17,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-MIK-201",
+            "nama_mk": "Mikrobiologi Pangan"
+          }
+        ],
+        "jumlah_mk_prasyarat": 1,
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "kode_mk": "MK-P0501-007",
+        "nama_mk": "Administrasi dan Kebijakan Kesehatan",
+        "min_sks": 45,
+        "min_ipk": 2.56,
+        "daftar_mk_prasyarat": [
+          {
+            "kode_mk": "PRE-KES-102",
+            "nama_mk": "Kesehatan Masyarakat Dasar"
+          },
+          {
+            "kode_mk": "PRE-MAN-102",
+            "nama_mk": "Dasar-dasar Manajemen"
+          }
+        ],
+        "jumlah_mk_prasyarat": 2,
+        "updated_at": "2026-05-05T17:03:46"
+      }
+    ],
+    "pagination": {
+      "total": 80,
+      "page": 1,
+      "page_size": 80,
+      "total_pages": 1
+    },
+    "summary": {
+      "jumlah_mata_kuliah_prasyarat": 80
+    }
+  }
+}

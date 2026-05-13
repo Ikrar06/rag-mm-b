@@ -1,0 +1,700 @@
+{
+  "success": true,
+  "error": null,
+  "data": {
+    "items": [
+      {
+        "nama_gedung": "Gedung Rektorat",
+        "nama_fakultas": "Umum",
+        "status_mku": false,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-GREK-001",
+            "nama_ruangan": "Ruang Rapat Senat Akademik",
+            "lantai": 3,
+            "daya_tampung": 80,
+            "daya_tampung_ujian": 40,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Komputer Dosen",
+              "Kursi Ergonomis",
+              "Meja Rapat",
+              "Meja Rapat Besar",
+              "Papan Flipchart",
+              "Papan Tulis Interaktif",
+              "Penerangan Optimal",
+              "Proyektor",
+              "Sound System",
+              "Ventilasi Baik",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 15,
+        "total_kapasitas_gedung": 1250,
+        "jumlah_ruangan_kuliah_gedung": 10,
+        "jumlah_ruangan_layak_gedung": 6,
+        "updated_at": "2024-05-05T17:03:46"
+      },
+      {
+        "nama_gedung": "Gedung Perpustakaan Pusat",
+        "nama_fakultas": "Umum",
+        "status_mku": true,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-GPER-001",
+            "nama_ruangan": "Ruang Diskusi Kelompok",
+            "lantai": 2,
+            "daya_tampung": 40,
+            "daya_tampung_ujian": 20,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Kursi Ergonomis",
+              "Meja Rapat",
+              "Meja Rapat Besar",
+              "Papan Flipchart",
+              "Penerangan Optimal",
+              "Proyektor",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 20,
+        "total_kapasitas_gedung": 1500,
+        "jumlah_ruangan_kuliah_gedung": 12,
+        "jumlah_ruangan_layak_gedung": 9,
+        "updated_at": "2024-05-05T17:03:46"
+      },
+      {
+        "nama_gedung": "Gedung Pusat Kegiatan Mahasiswa (PKM)",
+        "nama_fakultas": "Umum",
+        "status_mku": false,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-GPKM-001",
+            "nama_ruangan": "Auditorium PKM",
+            "lantai": 1,
+            "daya_tampung": 200,
+            "daya_tampung_ujian": 100,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Komputer Dosen",
+              "Kursi Ergonomis",
+              "Meja Rapat",
+              "Mikrofon",
+              "Panggung",
+              "Papan Tulis Interaktif",
+              "Penerangan Optimal",
+              "Podium",
+              "Proyektor",
+              "Sound System",
+              "Ventilasi Baik",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 10,
+        "total_kapasitas_gedung": 1800,
+        "jumlah_ruangan_kuliah_gedung": 8,
+        "jumlah_ruangan_layak_gedung": 5,
+        "updated_at": "2024-05-05T17:03:46"
+      },
+      {
+        "nama_gedung": "Gedung Kuliah Bersama Prof. Dr. B.J. Habibie",
+        "nama_fakultas": "Umum",
+        "status_mku": true,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-GKBJ-001",
+            "nama_ruangan": "Ruang Perkuliahan Habibie",
+            "lantai": 4,
+            "daya_tampung": 120,
+            "daya_tampung_ujian": 60,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Komputer Dosen",
+              "Kursi Ergonomis",
+              "Papan Tulis Interaktif",
+              "Penerangan Optimal",
+              "Proyektor",
+              "Sound System",
+              "Ventilasi Baik",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 25,
+        "total_kapasitas_gedung": 1950,
+        "jumlah_ruangan_kuliah_gedung": 18,
+        "jumlah_ruangan_layak_gedung": 14,
+        "updated_at": "2024-05-05T17:03:46"
+      },
+      {
+        "nama_gedung": "Fakultas Teknik - Gedung Departemen Arsitektur",
+        "nama_fakultas": "Teknik",
+        "status_mku": false,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-FTGD-001",
+            "nama_ruangan": "Studio Arsitektur",
+            "lantai": 3,
+            "daya_tampung": 50,
+            "daya_tampung_ujian": 25,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Komputer Dosen",
+              "Kursi Ergonomis",
+              "Layar Hijau",
+              "Meja Rapat",
+              "Papan Tulis Interaktif",
+              "Penerangan Optimal",
+              "Peralatan Studio",
+              "Proyektor",
+              "Sound System",
+              "Ventilasi Baik",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 12,
+        "total_kapasitas_gedung": 850,
+        "jumlah_ruangan_kuliah_gedung": 7,
+        "jumlah_ruangan_layak_gedung": 4,
+        "updated_at": "2024-05-05T17:03:46"
+      },
+      {
+        "nama_gedung": "Fakultas Matematika dan Ilmu Pengetahuan Alam - Gedung Departemen Fisika",
+        "nama_fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "status_mku": false,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-FMDP-001",
+            "nama_ruangan": "Laboratorium Fisika Dasar",
+            "lantai": 2,
+            "daya_tampung": 60,
+            "daya_tampung_ujian": 30,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Komputer Dosen",
+              "Kursi Ergonomis",
+              "Meja Kerja Laboratorium",
+              "Papan Tulis Interaktif",
+              "Penerangan Optimal",
+              "Peralatan Lab Khusus",
+              "Proyektor",
+              "Sound System",
+              "Ventilasi Baik",
+              "Wastafel",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 18,
+        "total_kapasitas_gedung": 1100,
+        "jumlah_ruangan_kuliah_gedung": 11,
+        "jumlah_ruangan_layak_gedung": 8,
+        "updated_at": "2024-05-05T17:03:46"
+      },
+      {
+        "nama_gedung": "Fakultas Kedokteran - Gedung Pendidikan Klinik",
+        "nama_fakultas": "Kedokteran",
+        "status_mku": false,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-FKGP-001",
+            "nama_ruangan": "Ruang Praktikum Kedokteran",
+            "lantai": 3,
+            "daya_tampung": 45,
+            "daya_tampung_ujian": 22,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Komputer Dosen",
+              "Kursi Ergonomis",
+              "Meja Kerja Laboratorium",
+              "Papan Tulis Interaktif",
+              "Penerangan Optimal",
+              "Peralatan Lab Khusus",
+              "Proyektor",
+              "Sound System",
+              "Ventilasi Baik",
+              "Wastafel",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 10,
+        "total_kapasitas_gedung": 700,
+        "jumlah_ruangan_kuliah_gedung": 6,
+        "jumlah_ruangan_layak_gedung": 3,
+        "updated_at": "2024-05-05T17:03:46"
+      },
+      {
+        "nama_gedung": "Fakultas Kedokteran Gigi - Gedung Laboratorium Prostodonsia",
+        "nama_fakultas": "Kedokteran Gigi",
+        "status_mku": false,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-FKGG-001",
+            "nama_ruangan": "Laboratorium Prostodonsia",
+            "lantai": 2,
+            "daya_tampung": 35,
+            "daya_tampung_ujian": 17,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Komputer Dosen",
+              "Kursi Ergonomis",
+              "Meja Kerja Laboratorium",
+              "Papan Tulis Interaktif",
+              "Penerangan Optimal",
+              "Peralatan Lab Khusus",
+              "Proyektor",
+              "Sound System",
+              "Ventilasi Baik",
+              "Wastafel",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 8,
+        "total_kapasitas_gedung": 550,
+        "jumlah_ruangan_kuliah_gedung": 5,
+        "jumlah_ruangan_layak_gedung": 2,
+        "updated_at": "2024-05-05T17:03:46"
+      },
+      {
+        "nama_gedung": "Fakultas Kesehatan Masyarakat - Gedung Gizi Masyarakat",
+        "nama_fakultas": "Kesehatan Masyarakat",
+        "status_mku": false,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-FKMG-001",
+            "nama_ruangan": "Ruang Perkuliahan Masyarakat",
+            "lantai": 1,
+            "daya_tampung": 70,
+            "daya_tampung_ujian": 35,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Komputer Dosen",
+              "Kursi Ergonomis",
+              "Papan Tulis Interaktif",
+              "Penerangan Optimal",
+              "Proyektor",
+              "Sound System",
+              "Ventilasi Baik",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 14,
+        "total_kapasitas_gedung": 900,
+        "jumlah_ruangan_kuliah_gedung": 9,
+        "jumlah_ruangan_layak_gedung": 6,
+        "updated_at": "2024-05-05T17:03:46"
+      },
+      {
+        "nama_gedung": "Fakultas Farmasi - Gedung Teknologi Farmasi",
+        "nama_fakultas": "Farmasi",
+        "status_mku": false,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-FFGT-001",
+            "nama_ruangan": "Laboratorium Farmasi",
+            "lantai": 4,
+            "daya_tampung": 55,
+            "daya_tampung_ujian": 27,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Komputer Dosen",
+              "Kursi Ergonomis",
+              "Meja Kerja Laboratorium",
+              "Papan Tulis Interaktif",
+              "Penerangan Optimal",
+              "Peralatan Lab Khusus",
+              "Proyektor",
+              "Sound System",
+              "Ventilasi Baik",
+              "Wastafel",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 11,
+        "total_kapasitas_gedung": 780,
+        "jumlah_ruangan_kuliah_gedung": 7,
+        "jumlah_ruangan_layak_gedung": 4,
+        "updated_at": "2024-05-05T17:03:46"
+      },
+      {
+        "nama_gedung": "Fakultas Keperawatan - Gedung Simulasi Keperawatan",
+        "nama_fakultas": "Keperawatan",
+        "status_mku": false,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-FKGS-001",
+            "nama_ruangan": "Ruang Praktikum Keperawatan",
+            "lantai": 3,
+            "daya_tampung": 30,
+            "daya_tampung_ujian": 15,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Komputer Dosen",
+              "Kursi Ergonomis",
+              "Meja Kerja Laboratorium",
+              "Papan Tulis Interaktif",
+              "Penerangan Optimal",
+              "Peralatan Lab Khusus",
+              "Proyektor",
+              "Sound System",
+              "Ventilasi Baik",
+              "Wastafel",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 9,
+        "total_kapasitas_gedung": 620,
+        "jumlah_ruangan_kuliah_gedung": 6,
+        "jumlah_ruangan_layak_gedung": 3,
+        "updated_at": "2024-05-05T17:03:46"
+      },
+      {
+        "nama_gedung": "Fakultas Hukum - Gedung Seminar Hukum",
+        "nama_fakultas": "Hukum",
+        "status_mku": false,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-FHGS-001",
+            "nama_ruangan": "Ruang Seminar Hukum",
+            "lantai": 2,
+            "daya_tampung": 150,
+            "daya_tampung_ujian": 75,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Komputer Dosen",
+              "Kursi Ergonomis",
+              "Meja Rapat",
+              "Mikrofon",
+              "Panggung",
+              "Papan Tulis Interaktif",
+              "Penerangan Optimal",
+              "Podium",
+              "Proyektor",
+              "Sound System",
+              "Ventilasi Baik",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 13,
+        "total_kapasitas_gedung": 1350,
+        "jumlah_ruangan_kuliah_gedung": 8,
+        "jumlah_ruangan_layak_gedung": 5,
+        "updated_at": "2024-05-05T17:03:46"
+      },
+      {
+        "nama_gedung": "Fakultas Ekonomi dan Bisnis - Gedung Magister Manajemen",
+        "nama_fakultas": "Ekonomi dan Bisnis",
+        "status_mku": false,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-FEBG-001",
+            "nama_ruangan": "Ruang Perkuliahan Manajemen",
+            "lantai": 5,
+            "daya_tampung": 65,
+            "daya_tampung_ujian": 32,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Komputer Dosen",
+              "Kursi Ergonomis",
+              "Meja Rapat",
+              "Papan Tulis Interaktif",
+              "Penerangan Optimal",
+              "Proyektor",
+              "Sound System",
+              "Ventilasi Baik",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 16,
+        "total_kapasitas_gedung": 1050,
+        "jumlah_ruangan_kuliah_gedung": 10,
+        "jumlah_ruangan_layak_gedung": 7,
+        "updated_at": "2024-05-05T17:03:46"
+      },
+      {
+        "nama_gedung": "Fakultas Ilmu Sosial dan Ilmu Politik - Gedung Departemen Komunikasi",
+        "nama_fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "status_mku": false,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-FISI-001",
+            "nama_ruangan": "Ruang Praktikum Komunikasi",
+            "lantai": 2,
+            "daya_tampung": 40,
+            "daya_tampung_ujian": 20,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Komputer Dosen",
+              "Kursi Ergonomis",
+              "Meja Kerja Laboratorium",
+              "Papan Tulis Interaktif",
+              "Penerangan Optimal",
+              "Peralatan Lab Khusus",
+              "Proyektor",
+              "Sound System",
+              "Ventilasi Baik",
+              "Wastafel",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 10,
+        "total_kapasitas_gedung": 750,
+        "jumlah_ruangan_kuliah_gedung": 7,
+        "jumlah_ruangan_layak_gedung": 4,
+        "updated_at": "2024-05-05T17:03:46"
+      },
+      {
+        "nama_gedung": "Fakultas Pertanian - Gedung Agroteknologi",
+        "nama_fakultas": "Pertanian",
+        "status_mku": false,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-FPG-001",
+            "nama_ruangan": "Laboratorium Agroteknologi",
+            "lantai": 1,
+            "daya_tampung": 50,
+            "daya_tampung_ujian": 25,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Komputer Dosen",
+              "Kursi Ergonomis",
+              "Meja Kerja Laboratorium",
+              "Papan Tulis Interaktif",
+              "Penerangan Optimal",
+              "Peralatan Lab Khusus",
+              "Proyektor",
+              "Sound System",
+              "Ventilasi Baik",
+              "Wastafel",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 17,
+        "total_kapasitas_gedung": 1150,
+        "jumlah_ruangan_kuliah_gedung": 10,
+        "jumlah_ruangan_layak_gedung": 7,
+        "updated_at": "2024-05-05T17:03:46"
+      },
+      {
+        "nama_gedung": "Fakultas Kehutanan - Gedung Konservasi Sumber Daya Hutan",
+        "nama_fakultas": "Kehutanan",
+        "status_mku": false,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-FKGK-001",
+            "nama_ruangan": "Ruang Perkuliahan Hutan",
+            "lantai": 3,
+            "daya_tampung": 85,
+            "daya_tampung_ujian": 42,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Komputer Dosen",
+              "Kursi Ergonomis",
+              "Papan Tulis Interaktif",
+              "Penerangan Optimal",
+              "Proyektor",
+              "Sound System",
+              "Ventilasi Baik",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 12,
+        "total_kapasitas_gedung": 980,
+        "jumlah_ruangan_kuliah_gedung": 8,
+        "jumlah_ruangan_layak_gedung": 5,
+        "updated_at": "2024-05-05T17:03:46"
+      },
+      {
+        "nama_gedung": "Fakultas Peternakan - Gedung Teknologi Hasil Ternak",
+        "nama_fakultas": "Peternakan",
+        "status_mku": false,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-FPGT-001",
+            "nama_ruangan": "Laboratorium Ternak",
+            "lantai": 2,
+            "daya_tampung": 40,
+            "daya_tampung_ujian": 20,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Komputer Dosen",
+              "Kursi Ergonomis",
+              "Meja Kerja Laboratorium",
+              "Papan Tulis Interaktif",
+              "Penerangan Optimal",
+              "Peralatan Lab Khusus",
+              "Proyektor",
+              "Sound System",
+              "Ventilasi Baik",
+              "Wastafel",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 10,
+        "total_kapasitas_gedung": 650,
+        "jumlah_ruangan_kuliah_gedung": 7,
+        "jumlah_ruangan_layak_gedung": 4,
+        "updated_at": "2024-05-05T17:03:46"
+      },
+      {
+        "nama_gedung": "Fakultas Ilmu Kelautan dan Perikanan - Gedung Biologi Laut",
+        "nama_fakultas": "Ilmu Kelautan dan Perikanan",
+        "status_mku": false,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-FIKP-001",
+            "nama_ruangan": "Laboratorium Laut",
+            "lantai": 1,
+            "daya_tampung": 30,
+            "daya_tampung_ujian": 15,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Komputer Dosen",
+              "Kursi Ergonomis",
+              "Meja Kerja Laboratorium",
+              "Papan Tulis Interaktif",
+              "Penerangan Optimal",
+              "Peralatan Lab Khusus",
+              "Proyektor",
+              "Sound System",
+              "Ventilasi Baik",
+              "Wastafel",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 15,
+        "total_kapasitas_gedung": 950,
+        "jumlah_ruangan_kuliah_gedung": 9,
+        "jumlah_ruangan_layak_gedung": 6,
+        "updated_at": "2024-05-05T17:03:46"
+      },
+      {
+        "nama_gedung": "Fakultas Ilmu Budaya - Gedung Kajian Bahasa Asing",
+        "nama_fakultas": "Ilmu Budaya",
+        "status_mku": false,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-FIBG-001",
+            "nama_ruangan": "Ruang Diskusi Asing",
+            "lantai": 4,
+            "daya_tampung": 35,
+            "daya_tampung_ujian": 17,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Kursi Ergonomis",
+              "Meja Rapat",
+              "Meja Rapat Besar",
+              "Papan Flipchart",
+              "Penerangan Optimal",
+              "Proyektor",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 11,
+        "total_kapasitas_gedung": 720,
+        "jumlah_ruangan_kuliah_gedung": 8,
+        "jumlah_ruangan_layak_gedung": 5,
+        "updated_at": "2024-05-05T17:03:46"
+      },
+      {
+        "nama_gedung": "Fakultas Vokasi - Gedung Pendidikan D3 Teknik",
+        "nama_fakultas": "Vokasi",
+        "status_mku": false,
+        "daftar_ruangan": [
+          {
+            "kode_ruangan": "R-FVGP-001",
+            "nama_ruangan": "Laboratorium D3",
+            "lantai": 2,
+            "daya_tampung": 45,
+            "daya_tampung_ujian": 22,
+            "daftar_fasilitas": [
+              "AC",
+              "Internet Nirkabel",
+              "Jaringan Listrik",
+              "Komputer Dosen",
+              "Kursi Ergonomis",
+              "Meja Kerja Laboratorium",
+              "Papan Tulis Interaktif",
+              "Penerangan Optimal",
+              "Peralatan Lab Khusus",
+              "Proyektor",
+              "Sound System",
+              "Ventilasi Baik",
+              "Wastafel",
+              "Whiteboard"
+            ]
+          }
+        ],
+        "jumlah_ruangan_gedung": 13,
+        "total_kapasitas_gedung": 880,
+        "jumlah_ruangan_kuliah_gedung": 9,
+        "jumlah_ruangan_layak_gedung": 6,
+        "updated_at": "2024-05-05T17:03:46"
+      }
+    ],
+    "pagination": {
+      "total": 20,
+      "page": 1,
+      "page_size": 20,
+      "total_pages": 1
+    },
+    "summary": {
+      "jumlah_gedung_unhas": 20
+    }
+  }
+}

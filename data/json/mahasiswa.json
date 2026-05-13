@@ -1,0 +1,5409 @@
+{
+  "success": true,
+  "error": null,
+  "data": {
+    "items": [
+      {
+        "nama": "Citra Hadi",
+        "angkatan": 2025,
+        "prodi": "Teknologi Hasil Hutan",
+        "status": "Aktif",
+        "nim": "M1202250001",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Maria Siregar",
+        "angkatan": 2026,
+        "prodi": "Teknik Lingkungan",
+        "status": "Aktif",
+        "nim": "D0108260001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nana Santoso",
+        "angkatan": 2021,
+        "prodi": "Manajemen",
+        "status": "Lulus",
+        "nim": "A0901210001",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Prasetyo Maulana",
+        "angkatan": 2022,
+        "prodi": "Ilmu dan Teknologi Pangan",
+        "status": "Aktif",
+        "nim": "G1103220001",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Anisa Nugraha",
+        "angkatan": 2026,
+        "prodi": "Peternakan",
+        "status": "Aktif",
+        "nim": "I1301260001",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dina Bachtiar",
+        "angkatan": 2026,
+        "prodi": "Ilmu Keperawatan",
+        "status": "Aktif",
+        "nim": "R0701260001",
+        "fakultas": "Keperawatan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Joko Gunawan",
+        "angkatan": 2024,
+        "prodi": "Sistem Informasi",
+        "status": "Aktif",
+        "nim": "H0202240001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yudha Alamsyah",
+        "angkatan": 2023,
+        "prodi": "Teknik Geologi",
+        "status": "Aktif",
+        "nim": "D0109230001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Intan Laksmana",
+        "angkatan": 2024,
+        "prodi": "Ilmu Gizi",
+        "status": "Aktif",
+        "nim": "K0502240001",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Oscar Damayanti",
+        "angkatan": 2021,
+        "prodi": "Sastra Inggris",
+        "status": "Lulus",
+        "nim": "F1502210001",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Hendra Pratama",
+        "angkatan": 2023,
+        "prodi": "Kimia",
+        "status": "Aktif",
+        "nim": "H0205230001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Santi Harahap",
+        "angkatan": 2021,
+        "prodi": "Ilmu Hukum",
+        "status": "Lulus",
+        "nim": "B0801210001",
+        "fakultas": "Hukum",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Farah Prayoga",
+        "angkatan": 2023,
+        "prodi": "Agroteknologi",
+        "status": "Aktif",
+        "nim": "G1101230001",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Mardi Siregar",
+        "angkatan": 2021,
+        "prodi": "Teknik Elektro",
+        "status": "Lulus",
+        "nim": "D0104210001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cynthia Nugraha",
+        "angkatan": 2022,
+        "prodi": "Agrobisnis Perikanan",
+        "status": "Cuti",
+        "nim": "L1404220001",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Rian Santoso",
+        "angkatan": 2024,
+        "prodi": "Kesehatan Masyarakat",
+        "status": "Aktif",
+        "nim": "K0501240001",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Lisa Sugiharto",
+        "angkatan": 2025,
+        "prodi": "Pendidikan Dokter",
+        "status": "Aktif",
+        "nim": "C0301250001",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Aldi Tanjung",
+        "angkatan": 2026,
+        "prodi": "Matematika",
+        "status": "Aktif",
+        "nim": "H0201260001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Tia Santoso",
+        "angkatan": 2026,
+        "prodi": "Teknik Sipil",
+        "status": "Aktif",
+        "nim": "D0102260001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Lia Ramadhan",
+        "angkatan": 2025,
+        "prodi": "Ilmu Gizi",
+        "status": "Aktif",
+        "nim": "K0502250001",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Aditya Saputra",
+        "angkatan": 2026,
+        "prodi": "Administrasi Bisnis",
+        "status": "Aktif",
+        "nim": "V1603260001",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Imelda Putra",
+        "angkatan": 2022,
+        "prodi": "Manajemen Informatika",
+        "status": "Cuti",
+        "nim": "V1602220001",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Angga Cahyo",
+        "angkatan": 2025,
+        "prodi": "Teknik Lingkungan",
+        "status": "Aktif",
+        "nim": "D0108250001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Tony Firmansyah",
+        "angkatan": 2021,
+        "prodi": "Teknik Pertambangan",
+        "status": "Lulus",
+        "nim": "D0110210001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Gita Basri",
+        "angkatan": 2022,
+        "prodi": "Teknik Elektro",
+        "status": "Aktif",
+        "nim": "D0104220001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Teguh Wardani",
+        "angkatan": 2024,
+        "prodi": "Teknik Mesin",
+        "status": "Aktif",
+        "nim": "D0105240001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Bayu Santoso",
+        "angkatan": 2022,
+        "prodi": "Agrobisnis Perikanan",
+        "status": "Cuti",
+        "nim": "L1404220002",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Kevin Nasution",
+        "angkatan": 2025,
+        "prodi": "Manajemen Sumberdaya Perairan",
+        "status": "Aktif",
+        "nim": "L1403250001",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Laila Harahap",
+        "angkatan": 2022,
+        "prodi": "Teknik Industri",
+        "status": "Aktif",
+        "nim": "D0107220001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ida Permata",
+        "angkatan": 2023,
+        "prodi": "Ilmu Politik",
+        "status": "Aktif",
+        "nim": "E1001230001",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Endah Permata",
+        "angkatan": 2023,
+        "prodi": "Peternakan",
+        "status": "Aktif",
+        "nim": "I1301230001",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Candra Wibowo",
+        "angkatan": 2021,
+        "prodi": "Teknik Perkapalan",
+        "status": "Lulus",
+        "nim": "D0106210001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Galih Mulyadi",
+        "angkatan": 2021,
+        "prodi": "Ilmu Sejarah",
+        "status": "Lulus",
+        "nim": "F1503210001",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yulia Wulandari",
+        "angkatan": 2025,
+        "prodi": "Ilmu Hukum",
+        "status": "Aktif",
+        "nim": "B0801250001",
+        "fakultas": "Hukum",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cindy Budianto",
+        "angkatan": 2022,
+        "prodi": "Kesehatan Masyarakat",
+        "status": "Aktif",
+        "nim": "K0501220001",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Bintang Siregar",
+        "angkatan": 2025,
+        "prodi": "Administrasi Bisnis",
+        "status": "Aktif",
+        "nim": "V1603250001",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Putra Siregar",
+        "angkatan": 2026,
+        "prodi": "Biologi",
+        "status": "Aktif",
+        "nim": "H0203260001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Anwar Utami",
+        "angkatan": 2021,
+        "prodi": "Teknik Sipil",
+        "status": "Lulus",
+        "nim": "D0102210001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Daffa Santoso",
+        "angkatan": 2023,
+        "prodi": "Sastra Arab",
+        "status": "Aktif",
+        "nim": "F1504230001",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fajri Santoso",
+        "angkatan": 2026,
+        "prodi": "Informatika",
+        "status": "Aktif",
+        "nim": "D0101260001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Gita Wibowo",
+        "angkatan": 2026,
+        "prodi": "Agribisnis",
+        "status": "Aktif",
+        "nim": "G1102260001",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Monica Puspita",
+        "angkatan": 2024,
+        "prodi": "Psikologi",
+        "status": "Aktif",
+        "nim": "C0302240001",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Erlina Permata",
+        "angkatan": 2021,
+        "prodi": "Teknik Industri",
+        "status": "Lulus",
+        "nim": "D0107210001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cahaya Cahyo",
+        "angkatan": 2023,
+        "prodi": "Sastra Inggris",
+        "status": "Aktif",
+        "nim": "F1502230001",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nadia Ramadhan",
+        "angkatan": 2026,
+        "prodi": "Teknologi Rekayasa Perangkat Lunak",
+        "status": "Aktif",
+        "nim": "V1601260001",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ratna Wibowo",
+        "angkatan": 2024,
+        "prodi": "Teknik Sipil",
+        "status": "Aktif",
+        "nim": "D0102240001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Rian Lestari",
+        "angkatan": 2021,
+        "prodi": "Sistem Informasi",
+        "status": "Lulus",
+        "nim": "H0202210001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nico Cahyo",
+        "angkatan": 2026,
+        "prodi": "Sastra Indonesia",
+        "status": "Aktif",
+        "nim": "F1501260001",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dody Maulana",
+        "angkatan": 2025,
+        "prodi": "Ilmu dan Teknologi Pangan",
+        "status": "Aktif",
+        "nim": "G1103250001",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Siska Puspita",
+        "angkatan": 2021,
+        "prodi": "Biologi",
+        "status": "Lulus",
+        "nim": "H0203210001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Hari Wahyu",
+        "angkatan": 2022,
+        "prodi": "Fisika",
+        "status": "Aktif",
+        "nim": "H0204220001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Bagus Santoso",
+        "angkatan": 2025,
+        "prodi": "Manajemen Informatika",
+        "status": "Aktif",
+        "nim": "V1602250001",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wawan Hidayat",
+        "angkatan": 2022,
+        "prodi": "Manajemen Sumberdaya Perairan",
+        "status": "Aktif",
+        "nim": "L1403220001",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Gani Syafitri",
+        "angkatan": 2023,
+        "prodi": "Ilmu Sejarah",
+        "status": "Aktif",
+        "nim": "F1503230001",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Aldi Siregar",
+        "angkatan": 2022,
+        "prodi": "Ilmu Politik",
+        "status": "Aktif",
+        "nim": "E1001220001",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Candra Hadianto",
+        "angkatan": 2023,
+        "prodi": "Teknik Perkapalan",
+        "status": "Aktif",
+        "nim": "D0106230001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Vina Octavia",
+        "angkatan": 2021,
+        "prodi": "Administrasi Negara",
+        "status": "Lulus",
+        "nim": "E1002210001",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Iqbal Laksmana",
+        "angkatan": 2024,
+        "prodi": "Ilmu Kelautan",
+        "status": "Aktif",
+        "nim": "L1401240001",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Tuti Maulana",
+        "angkatan": 2021,
+        "prodi": "Teknik Industri",
+        "status": "Lulus",
+        "nim": "D0107210002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yulia Pramesti",
+        "angkatan": 2022,
+        "prodi": "Pendidikan Dokter Gigi",
+        "status": "Cuti",
+        "nim": "J0401220001",
+        "fakultas": "Kedokteran Gigi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Bella Santoso",
+        "angkatan": 2024,
+        "prodi": "Kesehatan Masyarakat",
+        "status": "Aktif",
+        "nim": "K0501240002",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Kurniawan Putra",
+        "angkatan": 2024,
+        "prodi": "Arsitektur",
+        "status": "Aktif",
+        "nim": "D0103240001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Budi Prayoga",
+        "angkatan": 2025,
+        "prodi": "Manajemen",
+        "status": "Aktif",
+        "nim": "A0901250001",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Teguh Wahyu",
+        "angkatan": 2026,
+        "prodi": "Farmasi",
+        "status": "Aktif",
+        "nim": "N0601260001",
+        "fakultas": "Farmasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Gilang Pramesti",
+        "angkatan": 2026,
+        "prodi": "Teknologi Hasil Ternak",
+        "status": "Aktif",
+        "nim": "I1302260001",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Erlina Saputra",
+        "angkatan": 2021,
+        "prodi": "Teknik Elektro",
+        "status": "Lulus",
+        "nim": "D0104210002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cicih Setiawan",
+        "angkatan": 2022,
+        "prodi": "Psikologi",
+        "status": "Cuti",
+        "nim": "C0302220001",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Angga Hadi",
+        "angkatan": 2024,
+        "prodi": "Ilmu Komunikasi",
+        "status": "Aktif",
+        "nim": "E1003240001",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Heru Susanto",
+        "angkatan": 2025,
+        "prodi": "Teknik Kelautan",
+        "status": "Aktif",
+        "nim": "D0111250001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Miftah Maulana",
+        "angkatan": 2026,
+        "prodi": "Teknik Pertambangan",
+        "status": "Aktif",
+        "nim": "D0110260001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wira Hidayat",
+        "angkatan": 2023,
+        "prodi": "Pendidikan Dokter Gigi",
+        "status": "Aktif",
+        "nim": "J0401230001",
+        "fakultas": "Kedokteran Gigi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Elisa Hartono",
+        "angkatan": 2026,
+        "prodi": "Teknik Geologi",
+        "status": "Aktif",
+        "nim": "D0109260001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dian Putri",
+        "angkatan": 2024,
+        "prodi": "Matematika",
+        "status": "Aktif",
+        "nim": "H0201240001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Rizky Santoso",
+        "angkatan": 2023,
+        "prodi": "Statistika",
+        "status": "Aktif",
+        "nim": "H0206230001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Pandu Puspita",
+        "angkatan": 2026,
+        "prodi": "Ilmu Kelautan",
+        "status": "Aktif",
+        "nim": "L1401260001",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Linda Nugroho",
+        "angkatan": 2021,
+        "prodi": "Pendidikan Dokter",
+        "status": "Lulus",
+        "nim": "C0301210001",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ujang Hadi",
+        "angkatan": 2022,
+        "prodi": "Agroteknologi",
+        "status": "Cuti",
+        "nim": "G1101220001",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ahmad Hartono",
+        "angkatan": 2023,
+        "prodi": "Proteksi Tanaman",
+        "status": "Aktif",
+        "nim": "G1104230001",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Bayu Saputra",
+        "angkatan": 2022,
+        "prodi": "Akuntansi",
+        "status": "Aktif",
+        "nim": "A0902220001",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Vina Utami",
+        "angkatan": 2025,
+        "prodi": "Ilmu Keperawatan",
+        "status": "Aktif",
+        "nim": "R0701250001",
+        "fakultas": "Keperawatan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Sari Pramesti",
+        "angkatan": 2021,
+        "prodi": "Ilmu Hukum",
+        "status": "Lulus",
+        "nim": "B0801210002",
+        "fakultas": "Hukum",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Jihan Puspita",
+        "angkatan": 2024,
+        "prodi": "Agribisnis",
+        "status": "Aktif",
+        "nim": "G1102240001",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Siti Hasanah",
+        "angkatan": 2026,
+        "prodi": "Antropologi Sosial",
+        "status": "Aktif",
+        "nim": "E1005260001",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Mega Wijaya",
+        "angkatan": 2023,
+        "prodi": "Akuntansi",
+        "status": "Aktif",
+        "nim": "A0902230001",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Taufik Dirgantara",
+        "angkatan": 2026,
+        "prodi": "Sosiologi",
+        "status": "Aktif",
+        "nim": "E1004260001",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ganesha Wibowo",
+        "angkatan": 2025,
+        "prodi": "Peternakan",
+        "status": "Aktif",
+        "nim": "I1301250001",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Abdul Rahman",
+        "angkatan": 2024,
+        "prodi": "Arsitektur",
+        "status": "Aktif",
+        "nim": "D0103240002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wulan Lestari",
+        "angkatan": 2022,
+        "prodi": "Ilmu Komunikasi",
+        "status": "Aktif",
+        "nim": "E1003220001",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Vicky Santoso",
+        "angkatan": 2023,
+        "prodi": "Ekonomi Pembangunan",
+        "status": "Aktif",
+        "nim": "A0903230001",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ulfah Ramadhan",
+        "angkatan": 2021,
+        "prodi": "Teknologi Hasil Ternak",
+        "status": "Drop Out",
+        "nim": "I1302210001",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Irfan Wulandari",
+        "angkatan": 2023,
+        "prodi": "Teknik Elektro",
+        "status": "Aktif",
+        "nim": "D0104230001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Eko Putri",
+        "angkatan": 2022,
+        "prodi": "Manajemen Informatika",
+        "status": "Aktif",
+        "nim": "V1602220002",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dian Puspita",
+        "angkatan": 2025,
+        "prodi": "Teknologi Rekayasa Perangkat Lunak",
+        "status": "Aktif",
+        "nim": "V1601250001",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Obi Budianto",
+        "angkatan": 2026,
+        "prodi": "Informatika",
+        "status": "Aktif",
+        "nim": "D0101260002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yani Wulandari",
+        "angkatan": 2026,
+        "prodi": "Sastra Arab",
+        "status": "Aktif",
+        "nim": "F1504260001",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ega Wijaya",
+        "angkatan": 2024,
+        "prodi": "Pendidikan Dokter Gigi",
+        "status": "Aktif",
+        "nim": "J0401240001",
+        "fakultas": "Kedokteran Gigi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Maya Putri",
+        "angkatan": 2025,
+        "prodi": "Fisika",
+        "status": "Aktif",
+        "nim": "H0204250001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Aditya Setiawan",
+        "angkatan": 2025,
+        "prodi": "Sastra Indonesia",
+        "status": "Aktif",
+        "nim": "F1501250001",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Pandu Wibowo",
+        "angkatan": 2026,
+        "prodi": "Statistika",
+        "status": "Aktif",
+        "nim": "H0206260001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Rina Wijaya",
+        "angkatan": 2021,
+        "prodi": "Pendidikan Dokter",
+        "status": "Lulus",
+        "nim": "C0301210002",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Putra Pramesti",
+        "angkatan": 2024,
+        "prodi": "Teknologi Hasil Hutan",
+        "status": "Aktif",
+        "nim": "M1202240001",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nita Puspita",
+        "angkatan": 2022,
+        "prodi": "Ilmu Keperawatan",
+        "status": "Cuti",
+        "nim": "R0701220001",
+        "fakultas": "Keperawatan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Irfan Utami",
+        "angkatan": 2025,
+        "prodi": "Kesehatan Masyarakat",
+        "status": "Aktif",
+        "nim": "K0501250001",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fikri Susanto",
+        "angkatan": 2026,
+        "prodi": "Ilmu Gizi",
+        "status": "Aktif",
+        "nim": "K0502260001",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Juwita Permata",
+        "angkatan": 2021,
+        "prodi": "Teknik Mesin",
+        "status": "Lulus",
+        "nim": "D0105210001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fajri Hidayat",
+        "angkatan": 2023,
+        "prodi": "Agrobisnis Perikanan",
+        "status": "Aktif",
+        "nim": "L1404230001",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Bayu Ramadhan",
+        "angkatan": 2022,
+        "prodi": "Manajemen Sumberdaya Perairan",
+        "status": "Cuti",
+        "nim": "L1403220002",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Guntur Setiawan",
+        "angkatan": 2024,
+        "prodi": "Budidaya Perairan",
+        "status": "Aktif",
+        "nim": "L1402240001",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Monica Hadianto",
+        "angkatan": 2026,
+        "prodi": "Ilmu Politik",
+        "status": "Aktif",
+        "nim": "E1001260001",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Adi Utami",
+        "angkatan": 2025,
+        "prodi": "Administrasi Negara",
+        "status": "Aktif",
+        "nim": "E1002250001",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Hadi Basuki",
+        "angkatan": 2021,
+        "prodi": "Ilmu Komunikasi",
+        "status": "Lulus",
+        "nim": "E1003210001",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Jajang Iskandar",
+        "angkatan": 2023,
+        "prodi": "Sosiologi",
+        "status": "Aktif",
+        "nim": "E1004230001",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wati Siregar",
+        "angkatan": 2026,
+        "prodi": "Teknologi Rekayasa Perangkat Lunak",
+        "status": "Aktif",
+        "nim": "V1601260002",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Bagus Santoso",
+        "angkatan": 2021,
+        "prodi": "Antropologi Sosial",
+        "status": "Lulus",
+        "nim": "E1005210001",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Imam Lubis",
+        "angkatan": 2023,
+        "prodi": "Agroteknologi",
+        "status": "Aktif",
+        "nim": "G1101230002",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Taufiq Effendi",
+        "angkatan": 2022,
+        "prodi": "Agribisnis",
+        "status": "Aktif",
+        "nim": "G1102220001",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Angga Pratama",
+        "angkatan": 2024,
+        "prodi": "Informatika",
+        "status": "Aktif",
+        "nim": "D0101240001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Herman Mulyadi",
+        "angkatan": 2026,
+        "prodi": "Teknik Geologi",
+        "status": "Aktif",
+        "nim": "D0109260002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ratna Wibowo",
+        "angkatan": 2021,
+        "prodi": "Kehutanan",
+        "status": "Lulus",
+        "nim": "M1201210001",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yoga Santoso",
+        "angkatan": 2022,
+        "prodi": "Ilmu Kelautan",
+        "status": "Aktif",
+        "nim": "L1401220001",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Aldi Permata",
+        "angkatan": 2025,
+        "prodi": "Peternakan",
+        "status": "Aktif",
+        "nim": "I1301250002",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fajri Hidayat",
+        "angkatan": 2026,
+        "prodi": "Teknologi Hasil Ternak",
+        "status": "Aktif",
+        "nim": "I1302260002",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dewi Putra",
+        "angkatan": 2021,
+        "prodi": "Budidaya Perairan",
+        "status": "Lulus",
+        "nim": "L1402210001",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Mardi Basri",
+        "angkatan": 2021,
+        "prodi": "Manajemen Sumberdaya Perairan",
+        "status": "Lulus",
+        "nim": "L1403210001",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ega Maulana",
+        "angkatan": 2023,
+        "prodi": "Teknologi Hasil Hutan",
+        "status": "Aktif",
+        "nim": "M1202230001",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dani Firmansyah",
+        "angkatan": 2024,
+        "prodi": "Sastra Indonesia",
+        "status": "Aktif",
+        "nim": "F1501240001",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Umar Maulana",
+        "angkatan": 2026,
+        "prodi": "Sastra Inggris",
+        "status": "Aktif",
+        "nim": "F1502260001",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Gani Setiawan",
+        "angkatan": 2023,
+        "prodi": "Ilmu Sejarah",
+        "status": "Aktif",
+        "nim": "F1503230002",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fikri Nugroho",
+        "angkatan": 2022,
+        "prodi": "Sastra Arab",
+        "status": "Aktif",
+        "nim": "F1504220001",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fitri Utami",
+        "angkatan": 2025,
+        "prodi": "Teknologi Rekayasa Perangkat Lunak",
+        "status": "Aktif",
+        "nim": "V1601250002",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fauzi Laksmana",
+        "angkatan": 2021,
+        "prodi": "Manajemen Informatika",
+        "status": "Lulus",
+        "nim": "V1602210001",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Agnes Hartono",
+        "angkatan": 2022,
+        "prodi": "Administrasi Bisnis",
+        "status": "Cuti",
+        "nim": "V1603220001",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fatimah Santoso",
+        "angkatan": 2024,
+        "prodi": "Arsitektur",
+        "status": "Aktif",
+        "nim": "D0103240003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fajri Hidayat",
+        "angkatan": 2025,
+        "prodi": "Teknik Sipil",
+        "status": "Aktif",
+        "nim": "D0102250001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Hilda Saputra",
+        "angkatan": 2023,
+        "prodi": "Teknik Elektro",
+        "status": "Aktif",
+        "nim": "D0104230002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ahmad Effendi",
+        "angkatan": 2026,
+        "prodi": "Teknik Mesin",
+        "status": "Aktif",
+        "nim": "D0105260001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Joko Gunawan",
+        "angkatan": 2021,
+        "prodi": "Teknik Perkapalan",
+        "status": "Lulus",
+        "nim": "D0106210002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Esti Wulandari",
+        "angkatan": 2022,
+        "prodi": "Teknik Industri",
+        "status": "Cuti",
+        "nim": "D0107220002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Kiki Saputra",
+        "angkatan": 2023,
+        "prodi": "Teknik Lingkungan",
+        "status": "Aktif",
+        "nim": "D0108230001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Maya Wijaya",
+        "angkatan": 2024,
+        "prodi": "Teknik Geologi",
+        "status": "Aktif",
+        "nim": "D0109240001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Rizky Santoso",
+        "angkatan": 2026,
+        "prodi": "Teknik Pertambangan",
+        "status": "Aktif",
+        "nim": "D0110260002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dewi Putri",
+        "angkatan": 2021,
+        "prodi": "Teknik Kelautan",
+        "status": "Lulus",
+        "nim": "D0111210001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Krisna Purnama",
+        "angkatan": 2025,
+        "prodi": "Matematika",
+        "status": "Aktif",
+        "nim": "H0201250001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Rara Harahap",
+        "angkatan": 2022,
+        "prodi": "Sistem Informasi",
+        "status": "Aktif",
+        "nim": "H0202220001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Budi Basuki",
+        "angkatan": 2023,
+        "prodi": "Biologi",
+        "status": "Aktif",
+        "nim": "H0203230001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Hana Setiawan",
+        "angkatan": 2024,
+        "prodi": "Fisika",
+        "status": "Aktif",
+        "nim": "H0204240001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Bintang Siregar",
+        "angkatan": 2021,
+        "prodi": "Kimia",
+        "status": "Lulus",
+        "nim": "H0205210001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Putri Siregar",
+        "angkatan": 2026,
+        "prodi": "Statistika",
+        "status": "Aktif",
+        "nim": "H0206260002",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wulan Siregar",
+        "angkatan": 2022,
+        "prodi": "Pendidikan Dokter",
+        "status": "Cuti",
+        "nim": "C0301220001",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nana Putra",
+        "angkatan": 2023,
+        "prodi": "Psikologi",
+        "status": "Aktif",
+        "nim": "C0302230001",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fajri Setiawan",
+        "angkatan": 2024,
+        "prodi": "Pendidikan Dokter Gigi",
+        "status": "Aktif",
+        "nim": "J0401240002",
+        "fakultas": "Kedokteran Gigi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dewi Nurul",
+        "angkatan": 2025,
+        "prodi": "Kesehatan Masyarakat",
+        "status": "Aktif",
+        "nim": "K0501250002",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ulfah Wulandari",
+        "angkatan": 2026,
+        "prodi": "Ilmu Gizi",
+        "status": "Aktif",
+        "nim": "K0502260002",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Siska Putri",
+        "angkatan": 2021,
+        "prodi": "Farmasi",
+        "status": "Lulus",
+        "nim": "N0601210001",
+        "fakultas": "Farmasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ika Permata",
+        "angkatan": 2022,
+        "prodi": "Ilmu Keperawatan",
+        "status": "Aktif",
+        "nim": "R0701220002",
+        "fakultas": "Keperawatan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yani Putra",
+        "angkatan": 2023,
+        "prodi": "Ilmu Hukum",
+        "status": "Aktif",
+        "nim": "B0801230001",
+        "fakultas": "Hukum",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Joko Pratama",
+        "angkatan": 2024,
+        "prodi": "Manajemen",
+        "status": "Aktif",
+        "nim": "A0901240001",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ahmad Hidayat",
+        "angkatan": 2026,
+        "prodi": "Akuntansi",
+        "status": "Aktif",
+        "nim": "A0902260001",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Benny Maulana",
+        "angkatan": 2021,
+        "prodi": "Ekonomi Pembangunan",
+        "status": "Lulus",
+        "nim": "A0903210001",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Karina Nugroho",
+        "angkatan": 2022,
+        "prodi": "Ilmu Politik",
+        "status": "Cuti",
+        "nim": "E1001220002",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Agnes Wibowo",
+        "angkatan": 2023,
+        "prodi": "Administrasi Negara",
+        "status": "Aktif",
+        "nim": "E1002230001",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Teguh Wibowo",
+        "angkatan": 2024,
+        "prodi": "Ilmu Komunikasi",
+        "status": "Aktif",
+        "nim": "E1003240002",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Karina Putri",
+        "angkatan": 2025,
+        "prodi": "Sosiologi",
+        "status": "Aktif",
+        "nim": "E1004250001",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Hana Putra",
+        "angkatan": 2026,
+        "prodi": "Antropologi Sosial",
+        "status": "Aktif",
+        "nim": "E1005260002",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Lutfi Hidayat",
+        "angkatan": 2021,
+        "prodi": "Agroteknologi",
+        "status": "Lulus",
+        "nim": "G1101210001",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Anisa Nugroho",
+        "angkatan": 2022,
+        "prodi": "Agribisnis",
+        "status": "Aktif",
+        "nim": "G1102220002",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Willy Santoso",
+        "angkatan": 2023,
+        "prodi": "Ilmu dan Teknologi Pangan",
+        "status": "Aktif",
+        "nim": "G1103230001",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dewi Lestari",
+        "angkatan": 2024,
+        "prodi": "Proteksi Tanaman",
+        "status": "Aktif",
+        "nim": "G1104240001",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Lulu Cahyo",
+        "angkatan": 2025,
+        "prodi": "Kehutanan",
+        "status": "Aktif",
+        "nim": "M1201250001",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cindy Santoso",
+        "angkatan": 2026,
+        "prodi": "Teknologi Hasil Hutan",
+        "status": "Aktif",
+        "nim": "M1202260001",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fikri Maulana",
+        "angkatan": 2021,
+        "prodi": "Peternakan",
+        "status": "Lulus",
+        "nim": "I1301210001",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Willy Wibowo",
+        "angkatan": 2022,
+        "prodi": "Teknologi Hasil Ternak",
+        "status": "Drop Out",
+        "nim": "I1302220001",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cindy Permata",
+        "angkatan": 2023,
+        "prodi": "Ilmu Kelautan",
+        "status": "Aktif",
+        "nim": "L1401230001",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Aditya Putra",
+        "angkatan": 2024,
+        "prodi": "Budidaya Perairan",
+        "status": "Aktif",
+        "nim": "L1402240002",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nurul Setiawan",
+        "angkatan": 2025,
+        "prodi": "Manajemen Sumberdaya Perairan",
+        "status": "Aktif",
+        "nim": "L1403250002",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dina Wulandari",
+        "angkatan": 2026,
+        "prodi": "Agrobisnis Perikanan",
+        "status": "Aktif",
+        "nim": "L1404260001",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ulfah Setiawan",
+        "angkatan": 2021,
+        "prodi": "Sastra Indonesia",
+        "status": "Lulus",
+        "nim": "F1501210001",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Tuti Santoso",
+        "angkatan": 2022,
+        "prodi": "Sastra Inggris",
+        "status": "Aktif",
+        "nim": "F1502220001",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ratna Wulandari",
+        "angkatan": 2023,
+        "prodi": "Ilmu Sejarah",
+        "status": "Aktif",
+        "nim": "F1503230003",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Kartika Nugroho",
+        "angkatan": 2024,
+        "prodi": "Sastra Arab",
+        "status": "Aktif",
+        "nim": "F1504240001",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dian Saputra",
+        "angkatan": 2025,
+        "prodi": "Teknologi Rekayasa Perangkat Lunak",
+        "status": "Aktif",
+        "nim": "V1601250003",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dewi Hastuti",
+        "angkatan": 2026,
+        "prodi": "Manajemen Informatika",
+        "status": "Aktif",
+        "nim": "V1602260001",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Farah Setiawan",
+        "angkatan": 2021,
+        "prodi": "Administrasi Bisnis",
+        "status": "Lulus",
+        "nim": "V1603210001",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Prima Putri",
+        "angkatan": 2022,
+        "prodi": "Informatika",
+        "status": "Cuti",
+        "nim": "D0101220001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Erlina Wulandari",
+        "angkatan": 2023,
+        "prodi": "Teknik Sipil",
+        "status": "Aktif",
+        "nim": "D0102230001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Arif Siregar",
+        "angkatan": 2024,
+        "prodi": "Arsitektur",
+        "status": "Aktif",
+        "nim": "D0103240004",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fitri Wulandari",
+        "angkatan": 2025,
+        "prodi": "Teknik Elektro",
+        "status": "Aktif",
+        "nim": "D0104250001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dewi Kurniawan",
+        "angkatan": 2026,
+        "prodi": "Teknik Mesin",
+        "status": "Aktif",
+        "nim": "D0105260002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cici Puspita",
+        "angkatan": 2021,
+        "prodi": "Teknik Perkapalan",
+        "status": "Lulus",
+        "nim": "D0106210003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fatimah Wijaya",
+        "angkatan": 2022,
+        "prodi": "Teknik Industri",
+        "status": "Aktif",
+        "nim": "D0107220003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ganesha Wulandari",
+        "angkatan": 2023,
+        "prodi": "Teknik Lingkungan",
+        "status": "Aktif",
+        "nim": "D0108230002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Bayu Ramadhan",
+        "angkatan": 2024,
+        "prodi": "Teknik Geologi",
+        "status": "Aktif",
+        "nim": "D0109240002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fendy Nugroho",
+        "angkatan": 2025,
+        "prodi": "Teknik Pertambangan",
+        "status": "Aktif",
+        "nim": "D0110250001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Rizky Santoso",
+        "angkatan": 2026,
+        "prodi": "Teknik Kelautan",
+        "status": "Aktif",
+        "nim": "D0111260001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Toni Hidayat",
+        "angkatan": 2021,
+        "prodi": "Matematika",
+        "status": "Drop Out",
+        "nim": "H0201210001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Indra Putra",
+        "angkatan": 2022,
+        "prodi": "Sistem Informasi",
+        "status": "Cuti",
+        "nim": "H0202220002",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Vania Puspita",
+        "angkatan": 2023,
+        "prodi": "Biologi",
+        "status": "Aktif",
+        "nim": "H0203230002",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Hari Wulandari",
+        "angkatan": 2024,
+        "prodi": "Fisika",
+        "status": "Aktif",
+        "nim": "H0204240002",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dewi Lestari",
+        "angkatan": 2025,
+        "prodi": "Kimia",
+        "status": "Aktif",
+        "nim": "H0205250001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Galih Santoso",
+        "angkatan": 2026,
+        "prodi": "Statistika",
+        "status": "Aktif",
+        "nim": "H0206260003",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Aditya Nugroho",
+        "angkatan": 2021,
+        "prodi": "Pendidikan Dokter",
+        "status": "Lulus",
+        "nim": "C0301210003",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Krisna Purnama",
+        "angkatan": 2022,
+        "prodi": "Psikologi",
+        "status": "Aktif",
+        "nim": "C0302220002",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Hadi Santoso",
+        "angkatan": 2023,
+        "prodi": "Pendidikan Dokter Gigi",
+        "status": "Aktif",
+        "nim": "J0401230002",
+        "fakultas": "Kedokteran Gigi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Lia Lestari",
+        "angkatan": 2024,
+        "prodi": "Kesehatan Masyarakat",
+        "status": "Aktif",
+        "nim": "K0501240003",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nurul Santoso",
+        "angkatan": 2025,
+        "prodi": "Ilmu Gizi",
+        "status": "Aktif",
+        "nim": "K0502250002",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Teguh Pratama",
+        "angkatan": 2026,
+        "prodi": "Farmasi",
+        "status": "Aktif",
+        "nim": "N0601260002",
+        "fakultas": "Farmasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dewi Permata",
+        "angkatan": 2021,
+        "prodi": "Ilmu Keperawatan",
+        "status": "Lulus",
+        "nim": "R0701210001",
+        "fakultas": "Keperawatan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Maya Rahayu",
+        "angkatan": 2022,
+        "prodi": "Ilmu Hukum",
+        "status": "Cuti",
+        "nim": "B0801220001",
+        "fakultas": "Hukum",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Lina Nugroho",
+        "angkatan": 2023,
+        "prodi": "Manajemen",
+        "status": "Aktif",
+        "nim": "A0901230001",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Slamet Santoso",
+        "angkatan": 2024,
+        "prodi": "Akuntansi",
+        "status": "Aktif",
+        "nim": "A0902240001",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Hadi Saputra",
+        "angkatan": 2025,
+        "prodi": "Ekonomi Pembangunan",
+        "status": "Aktif",
+        "nim": "A0903250001",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dian Puspita",
+        "angkatan": 2026,
+        "prodi": "Ilmu Politik",
+        "status": "Aktif",
+        "nim": "E1001260002",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Joko Hidayat",
+        "angkatan": 2021,
+        "prodi": "Administrasi Negara",
+        "status": "Lulus",
+        "nim": "E1002210002",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yuni Puspita",
+        "angkatan": 2022,
+        "prodi": "Ilmu Komunikasi",
+        "status": "Aktif",
+        "nim": "E1003220002",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fajri Pratama",
+        "angkatan": 2023,
+        "prodi": "Sosiologi",
+        "status": "Aktif",
+        "nim": "E1004230002",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wulan Puspita",
+        "angkatan": 2024,
+        "prodi": "Antropologi Sosial",
+        "status": "Aktif",
+        "nim": "E1005240001",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nita Lestari",
+        "angkatan": 2025,
+        "prodi": "Agroteknologi",
+        "status": "Aktif",
+        "nim": "G1101250001",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Santi Nugroho",
+        "angkatan": 2026,
+        "prodi": "Agribisnis",
+        "status": "Aktif",
+        "nim": "G1102260002",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dewi Kurniawan",
+        "angkatan": 2021,
+        "prodi": "Ilmu dan Teknologi Pangan",
+        "status": "Lulus",
+        "nim": "G1103210001",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Joko Puspita",
+        "angkatan": 2022,
+        "prodi": "Proteksi Tanaman",
+        "status": "Aktif",
+        "nim": "G1104220001",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Muhammad Setiawan",
+        "angkatan": 2023,
+        "prodi": "Kehutanan",
+        "status": "Aktif",
+        "nim": "M1201230001",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Jihan Permata",
+        "angkatan": 2024,
+        "prodi": "Teknologi Hasil Hutan",
+        "status": "Aktif",
+        "nim": "M1202240002",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Lina Sari",
+        "angkatan": 2025,
+        "prodi": "Peternakan",
+        "status": "Aktif",
+        "nim": "I1301250003",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Farah Setiawan",
+        "angkatan": 2026,
+        "prodi": "Teknologi Hasil Ternak",
+        "status": "Aktif",
+        "nim": "I1302260003",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Gilang Pratama",
+        "angkatan": 2021,
+        "prodi": "Ilmu Kelautan",
+        "status": "Lulus",
+        "nim": "L1401210001",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Maya Hidayat",
+        "angkatan": 2022,
+        "prodi": "Budidaya Perairan",
+        "status": "Cuti",
+        "nim": "L1402220001",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Putri Lestari",
+        "angkatan": 2023,
+        "prodi": "Manajemen Sumberdaya Perairan",
+        "status": "Aktif",
+        "nim": "L1403230001",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nuri Santoso",
+        "angkatan": 2024,
+        "prodi": "Agrobisnis Perikanan",
+        "status": "Aktif",
+        "nim": "L1404240001",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Putri Wulandari",
+        "angkatan": 2025,
+        "prodi": "Sastra Indonesia",
+        "status": "Aktif",
+        "nim": "F1501250002",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Elisa Puspita",
+        "angkatan": 2026,
+        "prodi": "Sastra Inggris",
+        "status": "Aktif",
+        "nim": "F1502260002",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Miftah Nugroho",
+        "angkatan": 2021,
+        "prodi": "Ilmu Sejarah",
+        "status": "Lulus",
+        "nim": "F1503210002",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Hana Saputra",
+        "angkatan": 2022,
+        "prodi": "Sastra Arab",
+        "status": "Aktif",
+        "nim": "F1504220002",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Vina Putri",
+        "angkatan": 2023,
+        "prodi": "Teknologi Rekayasa Perangkat Lunak",
+        "status": "Aktif",
+        "nim": "V1601230001",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Putra Hidayat",
+        "angkatan": 2024,
+        "prodi": "Manajemen Informatika",
+        "status": "Aktif",
+        "nim": "V1602240001",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Arif Wijaya",
+        "angkatan": 2025,
+        "prodi": "Administrasi Bisnis",
+        "status": "Aktif",
+        "nim": "V1603250002",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yusuf Hidayat",
+        "angkatan": 2026,
+        "prodi": "Informatika",
+        "status": "Aktif",
+        "nim": "D0101260003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cahaya Santoso",
+        "angkatan": 2021,
+        "prodi": "Teknik Sipil",
+        "status": "Lulus",
+        "nim": "D0102210002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dewi Utami",
+        "angkatan": 2022,
+        "prodi": "Arsitektur",
+        "status": "Cuti",
+        "nim": "D0103220001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Erlina Ramadhan",
+        "angkatan": 2023,
+        "prodi": "Teknik Elektro",
+        "status": "Aktif",
+        "nim": "D0104230003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Gita Wulandari",
+        "angkatan": 2024,
+        "prodi": "Teknik Mesin",
+        "status": "Aktif",
+        "nim": "D0105240002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Herman Permata",
+        "angkatan": 2025,
+        "prodi": "Teknik Perkapalan",
+        "status": "Aktif",
+        "nim": "D0106250001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Indra Putra",
+        "angkatan": 2026,
+        "prodi": "Teknik Industri",
+        "status": "Aktif",
+        "nim": "D0107260001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Joko Setiawan",
+        "angkatan": 2021,
+        "prodi": "Teknik Lingkungan",
+        "status": "Drop Out",
+        "nim": "D0108210001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Kartika Sari",
+        "angkatan": 2022,
+        "prodi": "Teknik Geologi",
+        "status": "Aktif",
+        "nim": "D0109220001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Lestari Puspita",
+        "angkatan": 2023,
+        "prodi": "Teknik Pertambangan",
+        "status": "Aktif",
+        "nim": "D0110230001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Muhammad Hidayat",
+        "angkatan": 2024,
+        "prodi": "Teknik Kelautan",
+        "status": "Aktif",
+        "nim": "D0111240001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nurul Lestari",
+        "angkatan": 2025,
+        "prodi": "Matematika",
+        "status": "Aktif",
+        "nim": "H0201250002",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Putri Kurniawan",
+        "angkatan": 2026,
+        "prodi": "Sistem Informasi",
+        "status": "Aktif",
+        "nim": "H0202260001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Rizky Ramadhan",
+        "angkatan": 2021,
+        "prodi": "Biologi",
+        "status": "Lulus",
+        "nim": "H0203210002",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Siti Aditya",
+        "angkatan": 2022,
+        "prodi": "Fisika",
+        "status": "Cuti",
+        "nim": "H0204220002",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Taufik Pratama",
+        "angkatan": 2023,
+        "prodi": "Kimia",
+        "status": "Aktif",
+        "nim": "H0205230002",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Umar Permata",
+        "angkatan": 2024,
+        "prodi": "Statistika",
+        "status": "Aktif",
+        "nim": "H0206240001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Vina Saputra",
+        "angkatan": 2025,
+        "prodi": "Pendidikan Dokter",
+        "status": "Aktif",
+        "nim": "C0301250002",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wati Wulandari",
+        "angkatan": 2026,
+        "prodi": "Psikologi",
+        "status": "Aktif",
+        "nim": "C0302260001",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yusuf Hakim",
+        "angkatan": 2021,
+        "prodi": "Pendidikan Dokter Gigi",
+        "status": "Lulus",
+        "nim": "J0401210001",
+        "fakultas": "Kedokteran Gigi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Zahra Fauzi",
+        "angkatan": 2022,
+        "prodi": "Kesehatan Masyarakat",
+        "status": "Aktif",
+        "nim": "K0501220002",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Anisa Siregar",
+        "angkatan": 2023,
+        "prodi": "Ilmu Gizi",
+        "status": "Aktif",
+        "nim": "K0502230001",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Bayu Tambunan",
+        "angkatan": 2024,
+        "prodi": "Farmasi",
+        "status": "Aktif",
+        "nim": "N0601240001",
+        "fakultas": "Farmasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cahaya Nainggolan",
+        "angkatan": 2025,
+        "prodi": "Ilmu Keperawatan",
+        "status": "Aktif",
+        "nim": "R0701250002",
+        "fakultas": "Keperawatan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dian Harahap",
+        "angkatan": 2026,
+        "prodi": "Ilmu Hukum",
+        "status": "Aktif",
+        "nim": "B0801260001",
+        "fakultas": "Hukum",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Endah Panjaitan",
+        "angkatan": 2021,
+        "prodi": "Manajemen",
+        "status": "Lulus",
+        "nim": "A0901210002",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fajar Simanjuntak",
+        "angkatan": 2022,
+        "prodi": "Akuntansi",
+        "status": "Cuti",
+        "nim": "A0902220002",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Gilang Sihombing",
+        "angkatan": 2023,
+        "prodi": "Ekonomi Pembangunan",
+        "status": "Aktif",
+        "nim": "A0903230002",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Indra Hasibuan",
+        "angkatan": 2024,
+        "prodi": "Ilmu Politik",
+        "status": "Aktif",
+        "nim": "E1001240001",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Kurniawan Lubab",
+        "angkatan": 2025,
+        "prodi": "Administrasi Negara",
+        "status": "Aktif",
+        "nim": "E1002250002",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Linda Pardede",
+        "angkatan": 2026,
+        "prodi": "Ilmu Komunikasi",
+        "status": "Aktif",
+        "nim": "E1003260001",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Mega Budianto",
+        "angkatan": 2021,
+        "prodi": "Sosiologi",
+        "status": "Lulus",
+        "nim": "E1004210001",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nita Cahyo",
+        "angkatan": 2022,
+        "prodi": "Antropologi Sosial",
+        "status": "Aktif",
+        "nim": "E1005220001",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Pandu Dirgantara",
+        "angkatan": 2023,
+        "prodi": "Agroteknologi",
+        "status": "Aktif",
+        "nim": "G1101230003",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Rina Effendi",
+        "angkatan": 2024,
+        "prodi": "Agribisnis",
+        "status": "Aktif",
+        "nim": "G1102240002",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Setiawan Gunawan",
+        "angkatan": 2025,
+        "prodi": "Ilmu dan Teknologi Pangan",
+        "status": "Aktif",
+        "nim": "G1103250002",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Tia Hartono",
+        "angkatan": 2026,
+        "prodi": "Proteksi Tanaman",
+        "status": "Aktif",
+        "nim": "G1104260001",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wahyu Indrawan",
+        "angkatan": 2021,
+        "prodi": "Kehutanan",
+        "status": "Lulus",
+        "nim": "M1201210002",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yuni Jaya",
+        "angkatan": 2022,
+        "prodi": "Teknologi Hasil Hutan",
+        "status": "Drop Out",
+        "nim": "M1202220001",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Adi Kartika",
+        "angkatan": 2023,
+        "prodi": "Peternakan",
+        "status": "Aktif",
+        "nim": "I1301230002",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Bagus Laksmana",
+        "angkatan": 2024,
+        "prodi": "Teknologi Hasil Ternak",
+        "status": "Aktif",
+        "nim": "I1302240001",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cindy Mulyadi",
+        "angkatan": 2025,
+        "prodi": "Ilmu Kelautan",
+        "status": "Aktif",
+        "nim": "L1401250001",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Daffa Nasution",
+        "angkatan": 2026,
+        "prodi": "Budidaya Perairan",
+        "status": "Aktif",
+        "nim": "L1402260001",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Elisa Octavia",
+        "angkatan": 2021,
+        "prodi": "Manajemen Sumberdaya Perairan",
+        "status": "Lulus",
+        "nim": "L1403210002",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fikri Prayoga",
+        "angkatan": 2022,
+        "prodi": "Agrobisnis Perikanan",
+        "status": "Aktif",
+        "nim": "L1404220003",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Gita Rahayu",
+        "angkatan": 2023,
+        "prodi": "Sastra Indonesia",
+        "status": "Aktif",
+        "nim": "F1501230001",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Hendra Susanto",
+        "angkatan": 2024,
+        "prodi": "Sastra Inggris",
+        "status": "Aktif",
+        "nim": "F1502240001",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ika Trihadi",
+        "angkatan": 2025,
+        "prodi": "Ilmu Sejarah",
+        "status": "Aktif",
+        "nim": "F1503250001",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Juwita Umar",
+        "angkatan": 2026,
+        "prodi": "Sastra Arab",
+        "status": "Aktif",
+        "nim": "F1504260002",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Kevin Wardani",
+        "angkatan": 2021,
+        "prodi": "Teknologi Rekayasa Perangkat Lunak",
+        "status": "Lulus",
+        "nim": "V1601210001",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Laila Yulianti",
+        "angkatan": 2022,
+        "prodi": "Manajemen Informatika",
+        "status": "Cuti",
+        "nim": "V1602220003",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Mira Zulfa",
+        "angkatan": 2023,
+        "prodi": "Administrasi Bisnis",
+        "status": "Aktif",
+        "nim": "V1603230001",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nanda Aminah",
+        "angkatan": 2024,
+        "prodi": "Informatika",
+        "status": "Aktif",
+        "nim": "D0101240002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Oscar Basuki",
+        "angkatan": 2025,
+        "prodi": "Teknik Sipil",
+        "status": "Aktif",
+        "nim": "D0102250002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Prima Citra",
+        "angkatan": 2026,
+        "prodi": "Arsitektur",
+        "status": "Aktif",
+        "nim": "D0103260001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Rian Damayanti",
+        "angkatan": 2021,
+        "prodi": "Teknik Elektro",
+        "status": "Lulus",
+        "nim": "D0104210003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Sari Erlina",
+        "angkatan": 2022,
+        "prodi": "Teknik Mesin",
+        "status": "Aktif",
+        "nim": "D0105220001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Teguh Fajar",
+        "angkatan": 2023,
+        "prodi": "Teknik Perkapalan",
+        "status": "Aktif",
+        "nim": "D0106230002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ulfah Gusnadi",
+        "angkatan": 2024,
+        "prodi": "Teknik Industri",
+        "status": "Aktif",
+        "nim": "D0107240001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Vicky Handoko",
+        "angkatan": 2025,
+        "prodi": "Teknik Lingkungan",
+        "status": "Aktif",
+        "nim": "D0108250002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wulan Irawan",
+        "angkatan": 2026,
+        "prodi": "Teknik Geologi",
+        "status": "Aktif",
+        "nim": "D0109260003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yoga Jumadi",
+        "angkatan": 2021,
+        "prodi": "Teknik Pertambangan",
+        "status": "Lulus",
+        "nim": "D0110210002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Zulfan Khalid",
+        "angkatan": 2022,
+        "prodi": "Teknik Kelautan",
+        "status": "Cuti",
+        "nim": "D0111220001",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Andi Lubis",
+        "angkatan": 2023,
+        "prodi": "Matematika",
+        "status": "Aktif",
+        "nim": "H0201230001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Bella Marpaung",
+        "angkatan": 2024,
+        "prodi": "Sistem Informasi",
+        "status": "Aktif",
+        "nim": "H0202240002",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cinta Nasution",
+        "angkatan": 2025,
+        "prodi": "Biologi",
+        "status": "Aktif",
+        "nim": "H0203250001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dodi Oktaviani",
+        "angkatan": 2026,
+        "prodi": "Fisika",
+        "status": "Aktif",
+        "nim": "H0204260001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Erlina Prabowo",
+        "angkatan": 2021,
+        "prodi": "Kimia",
+        "status": "Drop Out",
+        "nim": "H0205210002",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fitri Rahman",
+        "angkatan": 2022,
+        "prodi": "Statistika",
+        "status": "Aktif",
+        "nim": "H0206220001",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Galih Sugiharto",
+        "angkatan": 2023,
+        "prodi": "Pendidikan Dokter",
+        "status": "Aktif",
+        "nim": "C0301230001",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Hadi Tanjung",
+        "angkatan": 2024,
+        "prodi": "Psikologi",
+        "status": "Aktif",
+        "nim": "C0302240002",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Intan Utomo",
+        "angkatan": 2025,
+        "prodi": "Pendidikan Dokter Gigi",
+        "status": "Aktif",
+        "nim": "J0401250001",
+        "fakultas": "Kedokteran Gigi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Jajang Wahyu",
+        "angkatan": 2026,
+        "prodi": "Kesehatan Masyarakat",
+        "status": "Aktif",
+        "nim": "K0501260001",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Karina Yanto",
+        "angkatan": 2021,
+        "prodi": "Ilmu Gizi",
+        "status": "Lulus",
+        "nim": "K0502210001",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Lutfi Zainal",
+        "angkatan": 2022,
+        "prodi": "Farmasi",
+        "status": "Aktif",
+        "nim": "N0601220001",
+        "fakultas": "Farmasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Monica Anwar",
+        "angkatan": 2023,
+        "prodi": "Ilmu Keperawatan",
+        "status": "Aktif",
+        "nim": "R0701230001",
+        "fakultas": "Keperawatan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nia Bachtiar",
+        "angkatan": 2024,
+        "prodi": "Ilmu Hukum",
+        "status": "Aktif",
+        "nim": "B0801240001",
+        "fakultas": "Hukum",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Obi Candra",
+        "angkatan": 2025,
+        "prodi": "Manajemen",
+        "status": "Aktif",
+        "nim": "A0901250002",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Prasetyo Dwiyanto",
+        "angkatan": 2026,
+        "prodi": "Akuntansi",
+        "status": "Aktif",
+        "nim": "A0902260002",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ria Edi",
+        "angkatan": 2021,
+        "prodi": "Ekonomi Pembangunan",
+        "status": "Lulus",
+        "nim": "A0903210002",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Sigit Farida",
+        "angkatan": 2022,
+        "prodi": "Ilmu Politik",
+        "status": "Cuti",
+        "nim": "E1001220003",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Toni Gani",
+        "angkatan": 2023,
+        "prodi": "Administrasi Negara",
+        "status": "Aktif",
+        "nim": "E1002230002",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ulfa Handayani",
+        "angkatan": 2024,
+        "prodi": "Ilmu Komunikasi",
+        "status": "Aktif",
+        "nim": "E1003240003",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Vino Ismail",
+        "angkatan": 2025,
+        "prodi": "Sosiologi",
+        "status": "Aktif",
+        "nim": "E1004250002",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wira Joko",
+        "angkatan": 2026,
+        "prodi": "Antropologi Sosial",
+        "status": "Aktif",
+        "nim": "E1005260003",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yanti Kasih",
+        "angkatan": 2021,
+        "prodi": "Agroteknologi",
+        "status": "Lulus",
+        "nim": "G1101210002",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Zaki Lukman",
+        "angkatan": 2022,
+        "prodi": "Agribisnis",
+        "status": "Aktif",
+        "nim": "G1102220003",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Arif Meilani",
+        "angkatan": 2023,
+        "prodi": "Ilmu dan Teknologi Pangan",
+        "status": "Aktif",
+        "nim": "G1103230002",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Bintang Ningrum",
+        "angkatan": 2024,
+        "prodi": "Proteksi Tanaman",
+        "status": "Aktif",
+        "nim": "G1104240002",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cici Oktavian",
+        "angkatan": 2025,
+        "prodi": "Kehutanan",
+        "status": "Aktif",
+        "nim": "M1201250002",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dina Purnomo",
+        "angkatan": 2026,
+        "prodi": "Teknologi Hasil Hutan",
+        "status": "Aktif",
+        "nim": "M1202260002",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Elang Rasyid",
+        "angkatan": 2021,
+        "prodi": "Peternakan",
+        "status": "Lulus",
+        "nim": "I1301210002",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fauzi Syafitri",
+        "angkatan": 2022,
+        "prodi": "Teknologi Hasil Ternak",
+        "status": "Drop Out",
+        "nim": "I1302220002",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Guntur Tirta",
+        "angkatan": 2023,
+        "prodi": "Ilmu Kelautan",
+        "status": "Aktif",
+        "nim": "L1401230002",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Herman Umar",
+        "angkatan": 2024,
+        "prodi": "Budidaya Perairan",
+        "status": "Aktif",
+        "nim": "L1402240003",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Imelda Vina",
+        "angkatan": 2025,
+        "prodi": "Manajemen Sumberdaya Perairan",
+        "status": "Aktif",
+        "nim": "L1403250003",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Jaka Wibowo",
+        "angkatan": 2026,
+        "prodi": "Agrobisnis Perikanan",
+        "status": "Aktif",
+        "nim": "L1404260002",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Keisha Yusuf",
+        "angkatan": 2021,
+        "prodi": "Sastra Indonesia",
+        "status": "Lulus",
+        "nim": "F1501210002",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Lia Zulfikar",
+        "angkatan": 2022,
+        "prodi": "Sastra Inggris",
+        "status": "Aktif",
+        "nim": "F1502220002",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Miftah Alamsyah",
+        "angkatan": 2023,
+        "prodi": "Ilmu Sejarah",
+        "status": "Aktif",
+        "nim": "F1503230004",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nico Basri",
+        "angkatan": 2024,
+        "prodi": "Sastra Arab",
+        "status": "Aktif",
+        "nim": "F1504240002",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Olivia Chairul",
+        "angkatan": 2025,
+        "prodi": "Teknologi Rekayasa Perangkat Lunak",
+        "status": "Aktif",
+        "nim": "V1601250004",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Panca Dwi",
+        "angkatan": 2026,
+        "prodi": "Manajemen Informatika",
+        "status": "Aktif",
+        "nim": "V1602260002",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Rahma Eka",
+        "angkatan": 2021,
+        "prodi": "Administrasi Bisnis",
+        "status": "Lulus",
+        "nim": "V1603210002",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Sandy Firmansyah",
+        "angkatan": 2022,
+        "prodi": "Informatika",
+        "status": "Cuti",
+        "nim": "D0101220002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Tuti Guntur",
+        "angkatan": 2023,
+        "prodi": "Teknik Sipil",
+        "status": "Aktif",
+        "nim": "D0102230002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ujang Hadi",
+        "angkatan": 2024,
+        "prodi": "Arsitektur",
+        "status": "Aktif",
+        "nim": "D0103240005",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Vania Iskandar",
+        "angkatan": 2025,
+        "prodi": "Teknik Elektro",
+        "status": "Aktif",
+        "nim": "D0104250002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wina Junaedi",
+        "angkatan": 2026,
+        "prodi": "Teknik Mesin",
+        "status": "Aktif",
+        "nim": "D0105260003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yudha Karim",
+        "angkatan": 2021,
+        "prodi": "Teknik Perkapalan",
+        "status": "Lulus",
+        "nim": "D0106210004",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Zulfa Lutfi",
+        "angkatan": 2022,
+        "prodi": "Teknik Industri",
+        "status": "Aktif",
+        "nim": "D0107220004",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Abdul Maulana",
+        "angkatan": 2023,
+        "prodi": "Teknik Lingkungan",
+        "status": "Aktif",
+        "nim": "D0108230003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Aditya Ningsih",
+        "angkatan": 2024,
+        "prodi": "Teknik Geologi",
+        "status": "Aktif",
+        "nim": "D0109240003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Angga Ongko",
+        "angkatan": 2025,
+        "prodi": "Teknik Pertambangan",
+        "status": "Aktif",
+        "nim": "D0110250002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Candra Prasetya",
+        "angkatan": 2026,
+        "prodi": "Teknik Kelautan",
+        "status": "Aktif",
+        "nim": "D0111260002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dani Ridwan",
+        "angkatan": 2021,
+        "prodi": "Matematika",
+        "status": "Lulus",
+        "nim": "H0201210002",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Esti Sudirman",
+        "angkatan": 2022,
+        "prodi": "Sistem Informasi",
+        "status": "Drop Out",
+        "nim": "H0202220003",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ferry Tjahyadi",
+        "angkatan": 2023,
+        "prodi": "Biologi",
+        "status": "Aktif",
+        "nim": "H0203230003",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Gede Ulfah",
+        "angkatan": 2024,
+        "prodi": "Fisika",
+        "status": "Aktif",
+        "nim": "H0204240003",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Hilda Vera",
+        "angkatan": 2025,
+        "prodi": "Kimia",
+        "status": "Aktif",
+        "nim": "H0205250002",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Imam Wicaksono",
+        "angkatan": 2026,
+        "prodi": "Statistika",
+        "status": "Aktif",
+        "nim": "H0206260004",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Jerry Yanuar",
+        "angkatan": 2021,
+        "prodi": "Pendidikan Dokter",
+        "status": "Lulus",
+        "nim": "C0301210004",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Kiki Zakaria",
+        "angkatan": 2022,
+        "prodi": "Psikologi",
+        "status": "Aktif",
+        "nim": "C0302220003",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Lisa Amelia",
+        "angkatan": 2023,
+        "prodi": "Pendidikan Dokter Gigi",
+        "status": "Aktif",
+        "nim": "J0401230003",
+        "fakultas": "Kedokteran Gigi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Maria Bagas",
+        "angkatan": 2024,
+        "prodi": "Kesehatan Masyarakat",
+        "status": "Aktif",
+        "nim": "K0501240004",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nuri Chaerul",
+        "angkatan": 2025,
+        "prodi": "Ilmu Gizi",
+        "status": "Aktif",
+        "nim": "K0502250003",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Pipit Dewanto",
+        "angkatan": 2026,
+        "prodi": "Farmasi",
+        "status": "Aktif",
+        "nim": "N0601260003",
+        "fakultas": "Farmasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Putra Eko",
+        "angkatan": 2021,
+        "prodi": "Ilmu Keperawatan",
+        "status": "Lulus",
+        "nim": "R0701210002",
+        "fakultas": "Keperawatan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ratna Fachri",
+        "angkatan": 2022,
+        "prodi": "Ilmu Hukum",
+        "status": "Cuti",
+        "nim": "B0801220002",
+        "fakultas": "Hukum",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Santi Gita",
+        "angkatan": 2023,
+        "prodi": "Manajemen",
+        "status": "Aktif",
+        "nim": "A0901230002",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Teddy Hadianto",
+        "angkatan": 2024,
+        "prodi": "Akuntansi",
+        "status": "Aktif",
+        "nim": "A0902240002",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Umi Irene",
+        "angkatan": 2025,
+        "prodi": "Ekonomi Pembangunan",
+        "status": "Aktif",
+        "nim": "A0903250002",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Vivi Junaidi",
+        "angkatan": 2026,
+        "prodi": "Ilmu Politik",
+        "status": "Aktif",
+        "nim": "E1001260003",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wawan Kusuma",
+        "angkatan": 2021,
+        "prodi": "Administrasi Negara",
+        "status": "Lulus",
+        "nim": "E1002210003",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yulia Lina",
+        "angkatan": 2022,
+        "prodi": "Ilmu Komunikasi",
+        "status": "Aktif",
+        "nim": "E1003220003",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Zidan Marlina",
+        "angkatan": 2023,
+        "prodi": "Sosiologi",
+        "status": "Aktif",
+        "nim": "E1004230003",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Agnes Nugraha",
+        "angkatan": 2024,
+        "prodi": "Antropologi Sosial",
+        "status": "Aktif",
+        "nim": "E1005240002",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Benny Okta",
+        "angkatan": 2025,
+        "prodi": "Agroteknologi",
+        "status": "Aktif",
+        "nim": "G1101250002",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cynthia Prima",
+        "angkatan": 2026,
+        "prodi": "Agribisnis",
+        "status": "Aktif",
+        "nim": "G1102260003",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dika Ria",
+        "angkatan": 2021,
+        "prodi": "Ilmu dan Teknologi Pangan",
+        "status": "Lulus",
+        "nim": "G1103210002",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ema Siswanto",
+        "angkatan": 2022,
+        "prodi": "Proteksi Tanaman",
+        "status": "Aktif",
+        "nim": "G1104220002",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Farah Tatang",
+        "angkatan": 2023,
+        "prodi": "Kehutanan",
+        "status": "Aktif",
+        "nim": "M1201230002",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ghani Usman",
+        "angkatan": 2024,
+        "prodi": "Teknologi Hasil Hutan",
+        "status": "Aktif",
+        "nim": "M1202240003",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Heru Veronica",
+        "angkatan": 2025,
+        "prodi": "Peternakan",
+        "status": "Aktif",
+        "nim": "I1301250004",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Iqbal Wahyuni",
+        "angkatan": 2026,
+        "prodi": "Teknologi Hasil Ternak",
+        "status": "Aktif",
+        "nim": "I1302260004",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Julia Yusril",
+        "angkatan": 2021,
+        "prodi": "Ilmu Kelautan",
+        "status": "Lulus",
+        "nim": "L1401210002",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Krisna Zulaika",
+        "angkatan": 2022,
+        "prodi": "Budidaya Perairan",
+        "status": "Cuti",
+        "nim": "L1402220002",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Lina Amelia",
+        "angkatan": 2023,
+        "prodi": "Manajemen Sumberdaya Perairan",
+        "status": "Aktif",
+        "nim": "L1403230002",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Mardi Bagas",
+        "angkatan": 2024,
+        "prodi": "Agrobisnis Perikanan",
+        "status": "Aktif",
+        "nim": "L1404240002",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nadia Chaerul",
+        "angkatan": 2025,
+        "prodi": "Sastra Indonesia",
+        "status": "Aktif",
+        "nim": "F1501250003",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Oni Dewanto",
+        "angkatan": 2026,
+        "prodi": "Sastra Inggris",
+        "status": "Aktif",
+        "nim": "F1502260003",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Prety Eko",
+        "angkatan": 2021,
+        "prodi": "Ilmu Sejarah",
+        "status": "Lulus",
+        "nim": "F1503210003",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Riska Fachri",
+        "angkatan": 2022,
+        "prodi": "Sastra Arab",
+        "status": "Aktif",
+        "nim": "F1504220003",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Slamet Gita",
+        "angkatan": 2023,
+        "prodi": "Teknologi Rekayasa Perangkat Lunak",
+        "status": "Aktif",
+        "nim": "V1601230002",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Tony Hadianto",
+        "angkatan": 2024,
+        "prodi": "Manajemen Informatika",
+        "status": "Aktif",
+        "nim": "V1602240002",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Umar Irene",
+        "angkatan": 2025,
+        "prodi": "Administrasi Bisnis",
+        "status": "Aktif",
+        "nim": "V1603250003",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Veronica Junaidi",
+        "angkatan": 2026,
+        "prodi": "Informatika",
+        "status": "Aktif",
+        "nim": "D0101260004",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Willy Kusuma",
+        "angkatan": 2021,
+        "prodi": "Teknik Sipil",
+        "status": "Lulus",
+        "nim": "D0102210003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yanuar Lina",
+        "angkatan": 2022,
+        "prodi": "Arsitektur",
+        "status": "Cuti",
+        "nim": "D0103220002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Zahra Marlina",
+        "angkatan": 2023,
+        "prodi": "Teknik Elektro",
+        "status": "Aktif",
+        "nim": "D0104230004",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Aldi Nugraha",
+        "angkatan": 2024,
+        "prodi": "Teknik Mesin",
+        "status": "Aktif",
+        "nim": "D0105240003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Brenda Okta",
+        "angkatan": 2025,
+        "prodi": "Teknik Perkapalan",
+        "status": "Aktif",
+        "nim": "D0106250002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cicih Prima",
+        "angkatan": 2026,
+        "prodi": "Teknik Industri",
+        "status": "Aktif",
+        "nim": "D0107260002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dian Ria",
+        "angkatan": 2021,
+        "prodi": "Teknik Lingkungan",
+        "status": "Drop Out",
+        "nim": "D0108210002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ega Siswanto",
+        "angkatan": 2022,
+        "prodi": "Teknik Geologi",
+        "status": "Aktif",
+        "nim": "D0109220002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fendy Tatang",
+        "angkatan": 2023,
+        "prodi": "Teknik Pertambangan",
+        "status": "Aktif",
+        "nim": "D0110230002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ganda Usman",
+        "angkatan": 2024,
+        "prodi": "Teknik Kelautan",
+        "status": "Aktif",
+        "nim": "D0111240002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Hari Veronica",
+        "angkatan": 2025,
+        "prodi": "Matematika",
+        "status": "Aktif",
+        "nim": "H0201250003",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ida Wahyuni",
+        "angkatan": 2026,
+        "prodi": "Sistem Informasi",
+        "status": "Aktif",
+        "nim": "H0202260002",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Jihan Yusril",
+        "angkatan": 2021,
+        "prodi": "Biologi",
+        "status": "Lulus",
+        "nim": "H0203210003",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Kiki Zulaika",
+        "angkatan": 2022,
+        "prodi": "Fisika",
+        "status": "Cuti",
+        "nim": "H0204220003",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Lulu Amelia",
+        "angkatan": 2023,
+        "prodi": "Kimia",
+        "status": "Aktif",
+        "nim": "H0205230003",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Maya Bagas",
+        "angkatan": 2024,
+        "prodi": "Statistika",
+        "status": "Aktif",
+        "nim": "H0206240002",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nana Chaerul",
+        "angkatan": 2025,
+        "prodi": "Pendidikan Dokter",
+        "status": "Aktif",
+        "nim": "C0301250003",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Oki Dewanto",
+        "angkatan": 2026,
+        "prodi": "Psikologi",
+        "status": "Aktif",
+        "nim": "C0302260002",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Parto Eko",
+        "angkatan": 2021,
+        "prodi": "Pendidikan Dokter Gigi",
+        "status": "Lulus",
+        "nim": "J0401210002",
+        "fakultas": "Kedokteran Gigi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Putra Fachri",
+        "angkatan": 2022,
+        "prodi": "Kesehatan Masyarakat",
+        "status": "Aktif",
+        "nim": "K0501220003",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Rara Gita",
+        "angkatan": 2023,
+        "prodi": "Ilmu Gizi",
+        "status": "Aktif",
+        "nim": "K0502230002",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Siska Hadianto",
+        "angkatan": 2024,
+        "prodi": "Farmasi",
+        "status": "Aktif",
+        "nim": "N0601240002",
+        "fakultas": "Farmasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Taufiq Irene",
+        "angkatan": 2025,
+        "prodi": "Ilmu Keperawatan",
+        "status": "Aktif",
+        "nim": "R0701250003",
+        "fakultas": "Keperawatan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Umar Junaidi",
+        "angkatan": 2026,
+        "prodi": "Ilmu Hukum",
+        "status": "Aktif",
+        "nim": "B0801260002",
+        "fakultas": "Hukum",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Vira Kusuma",
+        "angkatan": 2021,
+        "prodi": "Manajemen",
+        "status": "Lulus",
+        "nim": "A0901210003",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wanda Lina",
+        "angkatan": 2022,
+        "prodi": "Akuntansi",
+        "status": "Cuti",
+        "nim": "A0902220003",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yuniar Marlina",
+        "angkatan": 2023,
+        "prodi": "Ekonomi Pembangunan",
+        "status": "Aktif",
+        "nim": "A0903230003",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Zulkifli Nugraha",
+        "angkatan": 2024,
+        "prodi": "Ilmu Politik",
+        "status": "Aktif",
+        "nim": "E1001240002",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Joko Gunawan",
+        "angkatan": 2025,
+        "prodi": "Administrasi Negara",
+        "status": "Aktif",
+        "nim": "E1002250003",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Vivi Wulandari",
+        "angkatan": 2026,
+        "prodi": "Ilmu Komunikasi",
+        "status": "Aktif",
+        "nim": "E1003260002",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Bayu Hidayat",
+        "angkatan": 2021,
+        "prodi": "Sosiologi",
+        "status": "Lulus",
+        "nim": "E1004210002",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Joko Setiawan",
+        "angkatan": 2022,
+        "prodi": "Antropologi Sosial",
+        "status": "Aktif",
+        "nim": "E1005220002",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dewi Kurniawan",
+        "angkatan": 2023,
+        "prodi": "Agroteknologi",
+        "status": "Aktif",
+        "nim": "G1101230004",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nurul Ramadhan",
+        "angkatan": 2024,
+        "prodi": "Agribisnis",
+        "status": "Aktif",
+        "nim": "G1102240003",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Putri Aditya",
+        "angkatan": 2025,
+        "prodi": "Ilmu dan Teknologi Pangan",
+        "status": "Aktif",
+        "nim": "G1103250003",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Rizky Pratama",
+        "angkatan": 2026,
+        "prodi": "Proteksi Tanaman",
+        "status": "Aktif",
+        "nim": "G1104260002",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Siti Permata",
+        "angkatan": 2021,
+        "prodi": "Kehutanan",
+        "status": "Lulus",
+        "nim": "M1201210003",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Taufik Saputra",
+        "angkatan": 2022,
+        "prodi": "Teknologi Hasil Hutan",
+        "status": "Drop Out",
+        "nim": "M1202220002",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Umar Wulandari",
+        "angkatan": 2023,
+        "prodi": "Peternakan",
+        "status": "Aktif",
+        "nim": "I1301230003",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Vina Hakim",
+        "angkatan": 2024,
+        "prodi": "Teknologi Hasil Ternak",
+        "status": "Aktif",
+        "nim": "I1302240002",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wati Fauzi",
+        "angkatan": 2025,
+        "prodi": "Ilmu Kelautan",
+        "status": "Aktif",
+        "nim": "L1401250002",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yusuf Siregar",
+        "angkatan": 2026,
+        "prodi": "Budidaya Perairan",
+        "status": "Aktif",
+        "nim": "L1402260002",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Zahra Tambunan",
+        "angkatan": 2021,
+        "prodi": "Manajemen Sumberdaya Perairan",
+        "status": "Lulus",
+        "nim": "L1403210003",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Anisa Nainggolan",
+        "angkatan": 2022,
+        "prodi": "Agrobisnis Perikanan",
+        "status": "Aktif",
+        "nim": "L1404220004",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Bayu Harahap",
+        "angkatan": 2023,
+        "prodi": "Sastra Indonesia",
+        "status": "Aktif",
+        "nim": "F1501230002",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cahaya Panjaitan",
+        "angkatan": 2024,
+        "prodi": "Sastra Inggris",
+        "status": "Aktif",
+        "nim": "F1502240002",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dian Simanjuntak",
+        "angkatan": 2025,
+        "prodi": "Ilmu Sejarah",
+        "status": "Aktif",
+        "nim": "F1503250002",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Endah Sihombing",
+        "angkatan": 2026,
+        "prodi": "Sastra Arab",
+        "status": "Aktif",
+        "nim": "F1504260003",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fajar Hasibuan",
+        "angkatan": 2021,
+        "prodi": "Teknologi Rekayasa Perangkat Lunak",
+        "status": "Lulus",
+        "nim": "V1601210002",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Gilang Lubab",
+        "angkatan": 2022,
+        "prodi": "Manajemen Informatika",
+        "status": "Cuti",
+        "nim": "V1602220004",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Indra Pardede",
+        "angkatan": 2023,
+        "prodi": "Administrasi Bisnis",
+        "status": "Aktif",
+        "nim": "V1603230002",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Kurniawan Budianto",
+        "angkatan": 2024,
+        "prodi": "Informatika",
+        "status": "Aktif",
+        "nim": "D0101240003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Linda Cahyo",
+        "angkatan": 2025,
+        "prodi": "Teknik Sipil",
+        "status": "Aktif",
+        "nim": "D0102250003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Mega Dirgantara",
+        "angkatan": 2026,
+        "prodi": "Arsitektur",
+        "status": "Aktif",
+        "nim": "D0103260002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nita Effendi",
+        "angkatan": 2021,
+        "prodi": "Teknik Elektro",
+        "status": "Lulus",
+        "nim": "D0104210004",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Pandu Gunawan",
+        "angkatan": 2022,
+        "prodi": "Teknik Mesin",
+        "status": "Aktif",
+        "nim": "D0105220002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Rina Hartono",
+        "angkatan": 2023,
+        "prodi": "Teknik Perkapalan",
+        "status": "Aktif",
+        "nim": "D0106230003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Setiawan Indrawan",
+        "angkatan": 2024,
+        "prodi": "Teknik Industri",
+        "status": "Aktif",
+        "nim": "D0107240002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Tia Jaya",
+        "angkatan": 2025,
+        "prodi": "Teknik Lingkungan",
+        "status": "Aktif",
+        "nim": "D0108250003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wahyu Kartika",
+        "angkatan": 2026,
+        "prodi": "Teknik Geologi",
+        "status": "Aktif",
+        "nim": "D0109260004",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yuni Laksmana",
+        "angkatan": 2021,
+        "prodi": "Teknik Pertambangan",
+        "status": "Lulus",
+        "nim": "D0110210003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Adi Mulyadi",
+        "angkatan": 2022,
+        "prodi": "Teknik Kelautan",
+        "status": "Cuti",
+        "nim": "D0111220002",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Bagus Nasution",
+        "angkatan": 2023,
+        "prodi": "Matematika",
+        "status": "Aktif",
+        "nim": "H0201230002",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cindy Octavia",
+        "angkatan": 2024,
+        "prodi": "Sistem Informasi",
+        "status": "Aktif",
+        "nim": "H0202240003",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Daffa Prayoga",
+        "angkatan": 2025,
+        "prodi": "Biologi",
+        "status": "Aktif",
+        "nim": "H0203250002",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Elisa Rahayu",
+        "angkatan": 2026,
+        "prodi": "Fisika",
+        "status": "Aktif",
+        "nim": "H0204260002",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fikri Susanto",
+        "angkatan": 2021,
+        "prodi": "Kimia",
+        "status": "Lulus",
+        "nim": "H0205210003",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Gita Trihadi",
+        "angkatan": 2022,
+        "prodi": "Statistika",
+        "status": "Aktif",
+        "nim": "H0206220002",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Hendra Umar",
+        "angkatan": 2023,
+        "prodi": "Pendidikan Dokter",
+        "status": "Aktif",
+        "nim": "C0301230002",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ika Wardani",
+        "angkatan": 2024,
+        "prodi": "Psikologi",
+        "status": "Aktif",
+        "nim": "C0302240003",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Juwita Yulianti",
+        "angkatan": 2025,
+        "prodi": "Pendidikan Dokter Gigi",
+        "status": "Aktif",
+        "nim": "J0401250002",
+        "fakultas": "Kedokteran Gigi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Kevin Zulfa",
+        "angkatan": 2026,
+        "prodi": "Kesehatan Masyarakat",
+        "status": "Aktif",
+        "nim": "K0501260002",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Laila Aminah",
+        "angkatan": 2021,
+        "prodi": "Ilmu Gizi",
+        "status": "Lulus",
+        "nim": "K0502210002",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Mira Basuki",
+        "angkatan": 2022,
+        "prodi": "Farmasi",
+        "status": "Cuti",
+        "nim": "N0601220002",
+        "fakultas": "Farmasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nanda Citra",
+        "angkatan": 2023,
+        "prodi": "Ilmu Keperawatan",
+        "status": "Aktif",
+        "nim": "R0701230002",
+        "fakultas": "Keperawatan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Oscar Damayanti",
+        "angkatan": 2024,
+        "prodi": "Ilmu Hukum",
+        "status": "Aktif",
+        "nim": "B0801240002",
+        "fakultas": "Hukum",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Prima Erlina",
+        "angkatan": 2025,
+        "prodi": "Manajemen",
+        "status": "Aktif",
+        "nim": "A0901250003",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Rian Fajar",
+        "angkatan": 2026,
+        "prodi": "Akuntansi",
+        "status": "Aktif",
+        "nim": "A0902260003",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Sari Gusnadi",
+        "angkatan": 2021,
+        "prodi": "Ekonomi Pembangunan",
+        "status": "Drop Out",
+        "nim": "A0903210003",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Teguh Handoko",
+        "angkatan": 2022,
+        "prodi": "Ilmu Politik",
+        "status": "Aktif",
+        "nim": "E1001220004",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ulfah Irawan",
+        "angkatan": 2023,
+        "prodi": "Administrasi Negara",
+        "status": "Aktif",
+        "nim": "E1002230003",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Vicky Jumadi",
+        "angkatan": 2024,
+        "prodi": "Ilmu Komunikasi",
+        "status": "Aktif",
+        "nim": "E1003240004",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wulan Khalid",
+        "angkatan": 2025,
+        "prodi": "Sosiologi",
+        "status": "Aktif",
+        "nim": "E1004250003",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yoga Lubis",
+        "angkatan": 2026,
+        "prodi": "Antropologi Sosial",
+        "status": "Aktif",
+        "nim": "E1005260004",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Zulfan Marpaung",
+        "angkatan": 2021,
+        "prodi": "Agroteknologi",
+        "status": "Lulus",
+        "nim": "G1101210003",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Andi Nasution",
+        "angkatan": 2022,
+        "prodi": "Agribisnis",
+        "status": "Aktif",
+        "nim": "G1102220004",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Bella Oktaviani",
+        "angkatan": 2023,
+        "prodi": "Ilmu dan Teknologi Pangan",
+        "status": "Aktif",
+        "nim": "G1103230003",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cinta Prabowo",
+        "angkatan": 2024,
+        "prodi": "Proteksi Tanaman",
+        "status": "Aktif",
+        "nim": "G1104240003",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dodi Rahman",
+        "angkatan": 2025,
+        "prodi": "Kehutanan",
+        "status": "Aktif",
+        "nim": "M1201250003",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Erlina Sugiharto",
+        "angkatan": 2026,
+        "prodi": "Teknologi Hasil Hutan",
+        "status": "Aktif",
+        "nim": "M1202260003",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fitri Tanjung",
+        "angkatan": 2021,
+        "prodi": "Peternakan",
+        "status": "Lulus",
+        "nim": "I1301210003",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Galih Utomo",
+        "angkatan": 2022,
+        "prodi": "Teknologi Hasil Ternak",
+        "status": "Cuti",
+        "nim": "I1302220003",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Hadi Wahyu",
+        "angkatan": 2023,
+        "prodi": "Ilmu Kelautan",
+        "status": "Aktif",
+        "nim": "L1401230003",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Intan Yanto",
+        "angkatan": 2024,
+        "prodi": "Budidaya Perairan",
+        "status": "Aktif",
+        "nim": "L1402240004",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Jajang Zainal",
+        "angkatan": 2025,
+        "prodi": "Manajemen Sumberdaya Perairan",
+        "status": "Aktif",
+        "nim": "L1403250004",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Karina Anwar",
+        "angkatan": 2026,
+        "prodi": "Agrobisnis Perikanan",
+        "status": "Aktif",
+        "nim": "L1404260003",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Lutfi Bachtiar",
+        "angkatan": 2021,
+        "prodi": "Sastra Indonesia",
+        "status": "Lulus",
+        "nim": "F1501210003",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Monica Candra",
+        "angkatan": 2022,
+        "prodi": "Sastra Inggris",
+        "status": "Aktif",
+        "nim": "F1502220003",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nia Dwiyanto",
+        "angkatan": 2023,
+        "prodi": "Ilmu Sejarah",
+        "status": "Aktif",
+        "nim": "F1503230005",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Obi Edi",
+        "angkatan": 2024,
+        "prodi": "Sastra Arab",
+        "status": "Aktif",
+        "nim": "F1504240003",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Prasetyo Farida",
+        "angkatan": 2025,
+        "prodi": "Teknologi Rekayasa Perangkat Lunak",
+        "status": "Aktif",
+        "nim": "V1601250005",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ria Gani",
+        "angkatan": 2026,
+        "prodi": "Manajemen Informatika",
+        "status": "Aktif",
+        "nim": "V1602260003",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Sigit Handayani",
+        "angkatan": 2021,
+        "prodi": "Administrasi Bisnis",
+        "status": "Lulus",
+        "nim": "V1603210003",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Toni Ismail",
+        "angkatan": 2022,
+        "prodi": "Informatika",
+        "status": "Cuti",
+        "nim": "D0101220003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ulfa Joko",
+        "angkatan": 2023,
+        "prodi": "Teknik Sipil",
+        "status": "Aktif",
+        "nim": "D0102230003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Vino Kasih",
+        "angkatan": 2024,
+        "prodi": "Arsitektur",
+        "status": "Aktif",
+        "nim": "D0103240006",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wira Lukman",
+        "angkatan": 2025,
+        "prodi": "Teknik Elektro",
+        "status": "Aktif",
+        "nim": "D0104250003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yanti Meilani",
+        "angkatan": 2026,
+        "prodi": "Teknik Mesin",
+        "status": "Aktif",
+        "nim": "D0105260004",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Zaki Ningrum",
+        "angkatan": 2021,
+        "prodi": "Teknik Perkapalan",
+        "status": "Lulus",
+        "nim": "D0106210005",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Arif Oktavian",
+        "angkatan": 2022,
+        "prodi": "Teknik Industri",
+        "status": "Aktif",
+        "nim": "D0107220005",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Bintang Purnomo",
+        "angkatan": 2023,
+        "prodi": "Teknik Lingkungan",
+        "status": "Aktif",
+        "nim": "D0108230004",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cici Rasyid",
+        "angkatan": 2024,
+        "prodi": "Teknik Geologi",
+        "status": "Aktif",
+        "nim": "D0109240004",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dina Syafitri",
+        "angkatan": 2025,
+        "prodi": "Teknik Pertambangan",
+        "status": "Aktif",
+        "nim": "D0110250003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Elang Tirta",
+        "angkatan": 2026,
+        "prodi": "Teknik Kelautan",
+        "status": "Aktif",
+        "nim": "D0111260003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fauzi Umar",
+        "angkatan": 2021,
+        "prodi": "Matematika",
+        "status": "Lulus",
+        "nim": "H0201210003",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Guntur Vina",
+        "angkatan": 2022,
+        "prodi": "Sistem Informasi",
+        "status": "Drop Out",
+        "nim": "H0202220004",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Herman Wibowo",
+        "angkatan": 2023,
+        "prodi": "Biologi",
+        "status": "Aktif",
+        "nim": "H0203230004",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Imelda Yusuf",
+        "angkatan": 2024,
+        "prodi": "Fisika",
+        "status": "Aktif",
+        "nim": "H0204240004",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Jaka Zulfikar",
+        "angkatan": 2025,
+        "prodi": "Kimia",
+        "status": "Aktif",
+        "nim": "H0205250003",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Keisha Alamsyah",
+        "angkatan": 2026,
+        "prodi": "Statistika",
+        "status": "Aktif",
+        "nim": "H0206260005",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Lia Basri",
+        "angkatan": 2021,
+        "prodi": "Pendidikan Dokter",
+        "status": "Lulus",
+        "nim": "C0301210005",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Miftah Chairul",
+        "angkatan": 2022,
+        "prodi": "Psikologi",
+        "status": "Aktif",
+        "nim": "C0302220004",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nico Dwi",
+        "angkatan": 2023,
+        "prodi": "Pendidikan Dokter Gigi",
+        "status": "Aktif",
+        "nim": "J0401230004",
+        "fakultas": "Kedokteran Gigi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Olivia Eka",
+        "angkatan": 2024,
+        "prodi": "Kesehatan Masyarakat",
+        "status": "Aktif",
+        "nim": "K0501240005",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Panca Firmansyah",
+        "angkatan": 2025,
+        "prodi": "Ilmu Gizi",
+        "status": "Aktif",
+        "nim": "K0502250004",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Rahma Guntur",
+        "angkatan": 2026,
+        "prodi": "Farmasi",
+        "status": "Aktif",
+        "nim": "N0601260004",
+        "fakultas": "Farmasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Sandy Hadi",
+        "angkatan": 2021,
+        "prodi": "Ilmu Keperawatan",
+        "status": "Lulus",
+        "nim": "R0701210003",
+        "fakultas": "Keperawatan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Tuti Iskandar",
+        "angkatan": 2022,
+        "prodi": "Ilmu Hukum",
+        "status": "Cuti",
+        "nim": "B0801220003",
+        "fakultas": "Hukum",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ujang Junaedi",
+        "angkatan": 2023,
+        "prodi": "Manajemen",
+        "status": "Aktif",
+        "nim": "A0901230003",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Vania Karim",
+        "angkatan": 2024,
+        "prodi": "Akuntansi",
+        "status": "Aktif",
+        "nim": "A0902240003",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wina Lutfi",
+        "angkatan": 2025,
+        "prodi": "Ekonomi Pembangunan",
+        "status": "Aktif",
+        "nim": "A0903250003",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yudha Maulana",
+        "angkatan": 2026,
+        "prodi": "Ilmu Politik",
+        "status": "Aktif",
+        "nim": "E1001260004",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Zulfa Ningsih",
+        "angkatan": 2021,
+        "prodi": "Administrasi Negara",
+        "status": "Lulus",
+        "nim": "E1002210004",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Abdul Ongko",
+        "angkatan": 2022,
+        "prodi": "Ilmu Komunikasi",
+        "status": "Aktif",
+        "nim": "E1003220004",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Aditya Prasetya",
+        "angkatan": 2023,
+        "prodi": "Sosiologi",
+        "status": "Aktif",
+        "nim": "E1004230004",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Angga Ridwan",
+        "angkatan": 2024,
+        "prodi": "Antropologi Sosial",
+        "status": "Aktif",
+        "nim": "E1005240003",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Candra Sudirman",
+        "angkatan": 2025,
+        "prodi": "Agroteknologi",
+        "status": "Aktif",
+        "nim": "G1101250003",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dani Tjahyadi",
+        "angkatan": 2026,
+        "prodi": "Agribisnis",
+        "status": "Aktif",
+        "nim": "G1102260004",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Esti Ulfah",
+        "angkatan": 2021,
+        "prodi": "Ilmu dan Teknologi Pangan",
+        "status": "Lulus",
+        "nim": "G1103210003",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ferry Vera",
+        "angkatan": 2022,
+        "prodi": "Proteksi Tanaman",
+        "status": "Aktif",
+        "nim": "G1104220003",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Gede Wicaksono",
+        "angkatan": 2023,
+        "prodi": "Kehutanan",
+        "status": "Aktif",
+        "nim": "M1201230003",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Hilda Yanuar",
+        "angkatan": 2024,
+        "prodi": "Teknologi Hasil Hutan",
+        "status": "Aktif",
+        "nim": "M1202240004",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Imam Zakaria",
+        "angkatan": 2025,
+        "prodi": "Peternakan",
+        "status": "Aktif",
+        "nim": "I1301250005",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Jerry Amelia",
+        "angkatan": 2026,
+        "prodi": "Teknologi Hasil Ternak",
+        "status": "Aktif",
+        "nim": "I1302260005",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Kiki Bagas",
+        "angkatan": 2021,
+        "prodi": "Ilmu Kelautan",
+        "status": "Lulus",
+        "nim": "L1401210003",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Lisa Chaerul",
+        "angkatan": 2022,
+        "prodi": "Budidaya Perairan",
+        "status": "Cuti",
+        "nim": "L1402220003",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Maria Dewanto",
+        "angkatan": 2023,
+        "prodi": "Manajemen Sumberdaya Perairan",
+        "status": "Aktif",
+        "nim": "L1403230003",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nuri Eko",
+        "angkatan": 2024,
+        "prodi": "Agrobisnis Perikanan",
+        "status": "Aktif",
+        "nim": "L1404240003",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Pipit Fachri",
+        "angkatan": 2025,
+        "prodi": "Sastra Indonesia",
+        "status": "Aktif",
+        "nim": "F1501250004",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Putra Gita",
+        "angkatan": 2026,
+        "prodi": "Sastra Inggris",
+        "status": "Aktif",
+        "nim": "F1502260004",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ratna Hadianto",
+        "angkatan": 2021,
+        "prodi": "Ilmu Sejarah",
+        "status": "Lulus",
+        "nim": "F1503210004",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Santi Irene",
+        "angkatan": 2022,
+        "prodi": "Sastra Arab",
+        "status": "Aktif",
+        "nim": "F1504220004",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Teddy Junaidi",
+        "angkatan": 2023,
+        "prodi": "Teknologi Rekayasa Perangkat Lunak",
+        "status": "Aktif",
+        "nim": "V1601230003",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Umi Kusuma",
+        "angkatan": 2024,
+        "prodi": "Manajemen Informatika",
+        "status": "Aktif",
+        "nim": "V1602240003",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Vivi Lina",
+        "angkatan": 2025,
+        "prodi": "Administrasi Bisnis",
+        "status": "Aktif",
+        "nim": "V1603250004",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wawan Marlina",
+        "angkatan": 2026,
+        "prodi": "Informatika",
+        "status": "Aktif",
+        "nim": "D0101260005",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yulia Nugraha",
+        "angkatan": 2021,
+        "prodi": "Teknik Sipil",
+        "status": "Lulus",
+        "nim": "D0102210004",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Zidan Okta",
+        "angkatan": 2022,
+        "prodi": "Arsitektur",
+        "status": "Cuti",
+        "nim": "D0103220003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Agnes Prima",
+        "angkatan": 2023,
+        "prodi": "Teknik Elektro",
+        "status": "Aktif",
+        "nim": "D0104230005",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Benny Ria",
+        "angkatan": 2024,
+        "prodi": "Teknik Mesin",
+        "status": "Aktif",
+        "nim": "D0105240004",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cynthia Siswanto",
+        "angkatan": 2025,
+        "prodi": "Teknik Perkapalan",
+        "status": "Aktif",
+        "nim": "D0106250003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dika Tatang",
+        "angkatan": 2026,
+        "prodi": "Teknik Industri",
+        "status": "Aktif",
+        "nim": "D0107260003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ema Usman",
+        "angkatan": 2021,
+        "prodi": "Teknik Lingkungan",
+        "status": "Lulus",
+        "nim": "D0108210003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Farah Veronica",
+        "angkatan": 2022,
+        "prodi": "Teknik Geologi",
+        "status": "Aktif",
+        "nim": "D0109220003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ghani Wahyuni",
+        "angkatan": 2023,
+        "prodi": "Teknik Pertambangan",
+        "status": "Aktif",
+        "nim": "D0110230003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Heru Yusril",
+        "angkatan": 2024,
+        "prodi": "Teknik Kelautan",
+        "status": "Aktif",
+        "nim": "D0111240003",
+        "fakultas": "Teknik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Iqbal Zulaika",
+        "angkatan": 2025,
+        "prodi": "Matematika",
+        "status": "Aktif",
+        "nim": "H0201250004",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Julia Amelia",
+        "angkatan": 2026,
+        "prodi": "Sistem Informasi",
+        "status": "Aktif",
+        "nim": "H0202260003",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Krisna Bagas",
+        "angkatan": 2021,
+        "prodi": "Biologi",
+        "status": "Drop Out",
+        "nim": "H0203210004",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Lina Chaerul",
+        "angkatan": 2022,
+        "prodi": "Fisika",
+        "status": "Aktif",
+        "nim": "H0204220004",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Mardi Dewanto",
+        "angkatan": 2023,
+        "prodi": "Kimia",
+        "status": "Aktif",
+        "nim": "H0205230004",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nadia Eko",
+        "angkatan": 2024,
+        "prodi": "Statistika",
+        "status": "Aktif",
+        "nim": "H0206240003",
+        "fakultas": "Matematika dan Ilmu Pengetahuan Alam",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Oni Fachri",
+        "angkatan": 2025,
+        "prodi": "Pendidikan Dokter",
+        "status": "Aktif",
+        "nim": "C0301250004",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Prety Gita",
+        "angkatan": 2026,
+        "prodi": "Psikologi",
+        "status": "Aktif",
+        "nim": "C0302260003",
+        "fakultas": "Kedokteran",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Riska Hadianto",
+        "angkatan": 2021,
+        "prodi": "Pendidikan Dokter Gigi",
+        "status": "Lulus",
+        "nim": "J0401210003",
+        "fakultas": "Kedokteran Gigi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Slamet Irene",
+        "angkatan": 2022,
+        "prodi": "Kesehatan Masyarakat",
+        "status": "Cuti",
+        "nim": "K0501220004",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Tony Junaidi",
+        "angkatan": 2023,
+        "prodi": "Ilmu Gizi",
+        "status": "Aktif",
+        "nim": "K0502230003",
+        "fakultas": "Kesehatan Masyarakat",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Umar Kusuma",
+        "angkatan": 2024,
+        "prodi": "Farmasi",
+        "status": "Aktif",
+        "nim": "N0601240003",
+        "fakultas": "Farmasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Veronica Lina",
+        "angkatan": 2025,
+        "prodi": "Ilmu Keperawatan",
+        "status": "Aktif",
+        "nim": "R0701250004",
+        "fakultas": "Keperawatan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Willy Marlina",
+        "angkatan": 2026,
+        "prodi": "Ilmu Hukum",
+        "status": "Aktif",
+        "nim": "B0801260003",
+        "fakultas": "Hukum",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yanuar Nugraha",
+        "angkatan": 2021,
+        "prodi": "Manajemen",
+        "status": "Lulus",
+        "nim": "A0901210004",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Zahra Okta",
+        "angkatan": 2022,
+        "prodi": "Akuntansi",
+        "status": "Aktif",
+        "nim": "A0902220004",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Aldi Prima",
+        "angkatan": 2023,
+        "prodi": "Ekonomi Pembangunan",
+        "status": "Aktif",
+        "nim": "A0903230004",
+        "fakultas": "Ekonomi dan Bisnis",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Brenda Ria",
+        "angkatan": 2024,
+        "prodi": "Ilmu Politik",
+        "status": "Aktif",
+        "nim": "E1001240003",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Cicih Siswanto",
+        "angkatan": 2025,
+        "prodi": "Administrasi Negara",
+        "status": "Aktif",
+        "nim": "E1002250004",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Dian Tatang",
+        "angkatan": 2026,
+        "prodi": "Ilmu Komunikasi",
+        "status": "Aktif",
+        "nim": "E1003260003",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ega Usman",
+        "angkatan": 2021,
+        "prodi": "Sosiologi",
+        "status": "Lulus",
+        "nim": "E1004210003",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Fendy Veronica",
+        "angkatan": 2022,
+        "prodi": "Antropologi Sosial",
+        "status": "Aktif",
+        "nim": "E1005220003",
+        "fakultas": "Ilmu Sosial dan Ilmu Politik",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ganda Wahyuni",
+        "angkatan": 2023,
+        "prodi": "Agroteknologi",
+        "status": "Aktif",
+        "nim": "G1101230005",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Hari Yusril",
+        "angkatan": 2024,
+        "prodi": "Agribisnis",
+        "status": "Aktif",
+        "nim": "G1102240004",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Ida Zulaika",
+        "angkatan": 2025,
+        "prodi": "Ilmu dan Teknologi Pangan",
+        "status": "Aktif",
+        "nim": "G1103250004",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Jihan Amelia",
+        "angkatan": 2026,
+        "prodi": "Proteksi Tanaman",
+        "status": "Aktif",
+        "nim": "G1104260003",
+        "fakultas": "Pertanian",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Kiki Bagas",
+        "angkatan": 2021,
+        "prodi": "Kehutanan",
+        "status": "Lulus",
+        "nim": "M1201210004",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Lulu Chaerul",
+        "angkatan": 2022,
+        "prodi": "Teknologi Hasil Hutan",
+        "status": "Drop Out",
+        "nim": "M1202220003",
+        "fakultas": "Kehutanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Maya Dewanto",
+        "angkatan": 2023,
+        "prodi": "Peternakan",
+        "status": "Aktif",
+        "nim": "I1301230004",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Nana Eko",
+        "angkatan": 2024,
+        "prodi": "Teknologi Hasil Ternak",
+        "status": "Aktif",
+        "nim": "I1302240003",
+        "fakultas": "Peternakan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Oki Fachri",
+        "angkatan": 2025,
+        "prodi": "Ilmu Kelautan",
+        "status": "Aktif",
+        "nim": "L1401250003",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Parto Gita",
+        "angkatan": 2026,
+        "prodi": "Budidaya Perairan",
+        "status": "Aktif",
+        "nim": "L1402260003",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Putra Hadianto",
+        "angkatan": 2021,
+        "prodi": "Manajemen Sumberdaya Perairan",
+        "status": "Lulus",
+        "nim": "L1403210004",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Rara Irene",
+        "angkatan": 2022,
+        "prodi": "Agrobisnis Perikanan",
+        "status": "Aktif",
+        "nim": "L1404220005",
+        "fakultas": "Ilmu Kelautan dan Perikanan",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Siska Junaidi",
+        "angkatan": 2023,
+        "prodi": "Sastra Indonesia",
+        "status": "Aktif",
+        "nim": "F1501230003",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Taufiq Kusuma",
+        "angkatan": 2024,
+        "prodi": "Sastra Inggris",
+        "status": "Aktif",
+        "nim": "F1502240003",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Umar Lina",
+        "angkatan": 2025,
+        "prodi": "Ilmu Sejarah",
+        "status": "Aktif",
+        "nim": "F1503250003",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Vira Marlina",
+        "angkatan": 2026,
+        "prodi": "Sastra Arab",
+        "status": "Aktif",
+        "nim": "F1504260004",
+        "fakultas": "Ilmu Budaya",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Wanda Nugraha",
+        "angkatan": 2021,
+        "prodi": "Teknologi Rekayasa Perangkat Lunak",
+        "status": "Lulus",
+        "nim": "V1601210003",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Yuniar Okta",
+        "angkatan": 2022,
+        "prodi": "Manajemen Informatika",
+        "status": "Cuti",
+        "nim": "V1602220005",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      },
+      {
+        "nama": "Zulkifli Prima",
+        "angkatan": 2023,
+        "prodi": "Administrasi Bisnis",
+        "status": "Aktif",
+        "nim": "V1603230003",
+        "fakultas": "Vokasi",
+        "updated_at": "2026-05-05T17:03:46"
+      }
+    ],
+    "pagination": {
+      "total": 599,
+      "page": 1,
+      "page_size": 599,
+      "total_pages": 1
+    },
+    "summary": {
+      "jumlah_mahasiswa_sample": 599,
+      "jumlah_aktif_sample": 451
+    }
+  }
+}
