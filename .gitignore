@@ -7,8 +7,10 @@ __pycache__/
 dist/
 build/
 
-# Environment
+# Environment — jangan pernah commit file .env apapun
 .env
+.env.*
+*.env
 
 # Qdrant storage
 qdrant_storage/
