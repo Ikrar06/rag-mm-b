@@ -393,10 +393,10 @@ def _narrate_summary_kelas(s: dict) -> str:
     )
 
 def _narrate_summary_jadwal(s: dict) -> str:
-    n = s.get("jumlah_jadwal_per_hari") or s.get("jumlah_jadwal")
+    n = s.get("jumlah_jadwal_aktif") or s.get("jumlah_jadwal_per_hari") or s.get("jumlah_jadwal")
     if not n:
         return ""
-    return f"Terdapat {n} jadwal perkuliahan yang terjadwal per hari di Universitas Hasanuddin."
+    return f"Terdapat {n} jadwal perkuliahan aktif di Universitas Hasanuddin."
 
 def _narrate_summary_fasilitas(s: dict) -> str:
     return (
@@ -411,21 +411,48 @@ def _narrate_summary_pmb(s: dict) -> str:
     )
 
 def _narrate_summary_mahasiswa(s: dict) -> str:
-    n = s.get("jumlah_mahasiswa_aktif") or s.get("jumlah_mahasiswa")
+    total = s.get("jumlah_mahasiswa_sample") or s.get("jumlah_mahasiswa_aktif") or s.get("jumlah_mahasiswa")
+    aktif = s.get("jumlah_aktif_sample") or s.get("jumlah_mahasiswa_aktif")
+    if not total:
+        return ""
+    if aktif:
+        return (
+            f"Data sampel mahasiswa Universitas Hasanuddin mencakup {total} mahasiswa, "
+            f"dengan {aktif} di antaranya berstatus aktif."
+        )
+    return f"Jumlah mahasiswa aktif Universitas Hasanuddin saat ini adalah {total} mahasiswa."
+
+def _narrate_summary_pengumuman(s: dict) -> str:
+    n = s.get("jumlah_pengumuman")
     if not n:
         return ""
-    return f"Jumlah mahasiswa aktif Universitas Hasanuddin saat ini adalah {n:,} mahasiswa.".replace(",", ".")
+    return f"Terdapat {n} pengumuman yang telah diterbitkan oleh Universitas Hasanuddin."
+
+def _narrate_summary_prodi(s: dict) -> str:
+    n = s.get("jumlah_prodi_unhas")
+    if not n:
+        return ""
+    return f"Universitas Hasanuddin memiliki {n} program studi yang tersebar di berbagai fakultas."
+
+def _narrate_summary_rps(s: dict) -> str:
+    n = s.get("jumlah_rps")
+    if not n:
+        return ""
+    return f"Terdapat {n} Rencana Pembelajaran Semester (RPS) yang tersedia di Universitas Hasanuddin."
 
 SUMMARY_NARRATORS = {
     "fakultas":    _narrate_summary_fakultas,
+    "prodi":       _narrate_summary_prodi,
     "jenjang":     _narrate_summary_jenjang,
     "kurikulum":   _narrate_summary_kurikulum,
     "mata-kuliah": _narrate_summary_mata_kuliah,
     "prasyarat":   _narrate_summary_prasyarat,
+    "rps":         _narrate_summary_rps,
     "kelas":       _narrate_summary_kelas,
     "jadwal":      _narrate_summary_jadwal,
     "fasilitas":   _narrate_summary_fasilitas,
     "pmb":         _narrate_summary_pmb,
+    "pengumuman":  _narrate_summary_pengumuman,
     "mahasiswa":   _narrate_summary_mahasiswa,
 }
 

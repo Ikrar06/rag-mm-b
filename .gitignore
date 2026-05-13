@@ -27,9 +27,10 @@ data/narratives/
 Thumbs.db
 
 # Model files (local downloads)
-/models/
+# bge-reranker: public HuggingFace model, download ulang via setup script
+models/bge-reranker-v2-m3/
 *.bin
-*.safetensors
+# *.safetensors di-track via Git LFS (lihat .gitattributes)
 
 *.md
 !README.md
