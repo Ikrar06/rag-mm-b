@@ -3,8 +3,10 @@
 import logging
 import os
 import time
+import uuid
 
 import httpx
+import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -42,16 +44,23 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
-# ── Request timing middleware ─────────────────────────────────────────────────
+# ── Request timing + correlation ID middleware ────────────────────────────────
 @app.middleware("http")
 async def log_request_timing(request: Request, call_next):
+    # Gunakan X-Request-ID dari client jika ada, atau generate baru
+    request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())[:8]
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(request_id=request_id)
+
     start = time.perf_counter()
     response = await call_next(request)
     duration_ms = round((time.perf_counter() - start) * 1000, 2)
+
     logger.info(
         f"http_request method={request.method} path={request.url.path} "
-        f"status={response.status_code} duration_ms={duration_ms}"
+        f"status={response.status_code} duration_ms={duration_ms} request_id={request_id}"
     )
+    response.headers["X-Request-ID"] = request_id
     return response
 
 app.include_router(chat_router)

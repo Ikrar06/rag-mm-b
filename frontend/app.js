@@ -135,6 +135,31 @@ async function checkHealth() {
 
 // ─── Chat UI ──────────────────────────────────────────────────────────────────
 
+const MODE_LABELS = {
+    "rag":                  "RAG",
+    "rag_low_relevance":    "RAG (low)",
+    "cache_hit":            "Cache",
+    "chitchat":             "Chitchat",
+    "identity":             "Chitchat",
+    "out_of_scope":         "Out of scope",
+    "blocked":              "Blocked",
+    "blocked_moderation":   "Blocked (mod)",
+    "clarification_needed": "Klarifikasi?",
+    "get_info_private":     "Private API",
+};
+
+function formatDebugBar(d) {
+    const mode  = MODE_LABELS[d.mode] || d.mode;
+    const time  = `${d.total_time_s}s`;
+    const intent = d.intent
+        ? ` · Intent: ${d.intent} (${d.intent_confidence != null ? d.intent_confidence.toFixed(2) : "?"})`
+        : "";
+    const score = d.top_score != null && d.top_score > 0 ? ` · Score: ${d.top_score}` : "";
+    const srcs  = d.sources_returned != null ? ` · Srcs: ${d.sources_returned}` : "";
+    const model = d.model ? ` · ${d.model}` : "";
+    return `${mode} · ${time}${intent}${score}${srcs}${model}`;
+}
+
 function safeMd(text) {
     // Escape "YYYY. " at start of paragraph so marked doesn't treat it as an ordered list.
     // e.g. "2026. Untuk..." → "2026\. Untuk..."
@@ -148,22 +173,7 @@ function addMessage(content, type, sources = [], debug = null) {
     let html = `<div class="message-content">${safeMd(content)}</div>`;
 
     if (debug) {
-        const modeMap = {
-            "rag": "RAG",
-            "rag_low_relevance": "RAG (low)",
-            "cache_hit": "Cache",
-            "chitchat": "Chitchat",
-            "identity": "Chitchat",
-            "blocked": "Blocked",
-        };
-        const modeLabel = modeMap[debug.mode] || debug.mode;
-        const time = `${debug.total_time_s}s`;
-        const score = debug.top_score != null ? ` · Score: ${debug.top_score}` : "";
-        const sources_info = debug.sources_returned != null
-            ? ` · Sources: ${debug.sources_returned}`
-            : "";
-        const model = debug.model ? ` · ${debug.model}` : "";
-        html += `<div class="debug-bar">${modeLabel} · ${time}${score}${sources_info}${model}</div>`;
+        html += `<div class="debug-bar">${formatDebugBar(debug)}</div>`;
     }
 
     if (sources && sources.length > 0) {
@@ -292,19 +302,9 @@ async function sendMessage(userQuery) {
 
                     // Append debug bar + sources to botMsg (outside contentEl, same as addMessage)
                     if (event.debug) {
-                        const modeMap = {
-                            "rag": "RAG", "rag_low_relevance": "RAG (low)",
-                            "cache_hit": "Cache", "chitchat": "Chitchat",
-                            "identity": "Chitchat", "blocked": "Blocked",
-                        };
-                        const d = event.debug;
-                        const modeLabel = modeMap[d.mode] || d.mode;
-                        const score = d.top_score != null ? ` · Score: ${d.top_score}` : "";
-                        const srcs = d.sources_returned != null ? ` · Sources: ${d.sources_returned}` : "";
-                        const mdl = d.model ? ` · ${d.model}` : "";
                         const debugEl = document.createElement("div");
                         debugEl.className = "debug-bar";
-                        debugEl.textContent = `${modeLabel} · ${d.total_time_s}s${score}${srcs}${mdl}`;
+                        debugEl.textContent = formatDebugBar(event.debug);
                         botMsg.appendChild(debugEl);
                     }
 
