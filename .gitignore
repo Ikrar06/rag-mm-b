@@ -7,10 +7,12 @@ __pycache__/
 dist/
 build/
 
-# Environment — jangan pernah commit file .env apapun
+# Environment — .env adalah file runtime aktif, jangan di-commit
 .env
-.env.*
 *.env
+# .env.dev dan .env.poc adalah template tim, boleh di-commit
+!.env.dev
+!.env.poc
 
 # Qdrant storage
 qdrant_storage/
