@@ -16,14 +16,15 @@ Tim 3 (Evaluasi) ─────────────────────
 3. [Intent Classifier (IndoBERT)](#intent-classifier-indobert)
 4. [Logging](#logging)
 5. [Struktur Folder](#struktur-folder)
-6. [Setup Dev (RTX 3060)](#setup-dev-rtx-3060)
-7. [Setup POC (L40S 48GB — IOH)](#setup-poc-l40s-48gb--ioh)
-8. [Data Pipeline: JSON → Narasi → Qdrant](#data-pipeline-json--narasi--qdrant)
-9. [API Reference](#api-reference)
-10. [Environment Variables](#environment-variables)
-11. [Untuk Tim 1 (BE + FE)](#untuk-tim-1-be--fe)
-12. [Untuk Tim 3 (Evaluasi)](#untuk-tim-3-evaluasi)
-13. [Progress](#progress)
+6. [Environments (Dev / POC / Production)](#environments)
+7. [Setup Dev (RTX 3060)](#setup-dev-rtx-3060)
+8. [Setup POC (L40S 48GB)](#setup-poc-l40s-48gb)
+9. [Data Pipeline: JSON → Narasi → Qdrant](#data-pipeline-json--narasi--qdrant)
+10. [API Reference](#api-reference)
+11. [Environment Variables](#environment-variables)
+12. [Untuk Tim 1 (BE + FE)](#untuk-tim-1-be--fe)
+13. [Untuk Tim 3 (Evaluasi)](#untuk-tim-3-evaluasi)
+14. [Progress](#progress)
 
 ---
 
@@ -67,7 +68,7 @@ Pengecekan regex berbasis daftar kata kunci berbahaya sebelum query menyentuh mo
 Kategori yang diblokir: senjata, bahan peledak, narkoba, serangan siber, prompt injection (`"ignore instruction"`, `"abaikan instruksi"`, dll).
 
 #### L2 — Moderation Model
-Llama Guard 3 1B (Meta) via Ollama untuk deteksi konten berbahaya yang lebih nuanced dari regex. Di lingkungan **dev dinonaktifkan** (`MODERATION_BACKEND=passthrough`) karena VRAM tidak cukup di RTX 3060 bersamaan model lain. Aktif di **POC** (L40S 48GB). Mengembalikan mode `blocked_moderation`.
+Llama Guard 3 1B (Meta) via Ollama untuk deteksi konten berbahaya yang lebih nuanced dari regex. Di lingkungan **dev dinonaktifkan** (`MODERATION_BACKEND=passthrough`) karena VRAM tidak cukup di RTX 3060 bersamaan model lain. Aktif di **POC** dengan URL Ollama terpisah dari LLM utama (`MODERATION_BASE_URL=http://ollama:11434`, `LLM_BASE_URL=http://vllm:8001`). Mengembalikan mode `blocked_moderation`.
 
 #### L3 — Intent Classifier
 IndoBERT fine-tuned 4-kelas (lihat [seksi Intent Classifier](#intent-classifier-indobert)). Menentukan alur routing query:
@@ -121,56 +122,14 @@ Regex post-processing pada jawaban akhir sebagai backstop. Meredact:
 
 ---
 
-## Logging
-
-Pipeline menggunakan **structlog** dengan output JSON untuk kompatibilitas dengan log aggregator (ELK, Loki, dll.).
-
-### Format Log
-
-Setiap request HTTP otomatis mendapat **correlation ID** (`request_id`) yang diteruskan ke semua log dalam satu request:
-
-```json
-{
-  "event": "http_request method=POST path=/api/query status=200 duration_ms=4231.5 request_id=a3f9b1c2",
-  "request_id": "a3f9b1c2",
-  "timestamp": "2026-05-14T10:23:45.123456Z",
-  "level": "info"
-}
-```
-
-Client bisa mengirim `X-Request-ID` header sendiri, atau sistem generate otomatis (8 karakter hex). Header dikembalikan di response sebagai `X-Request-ID`.
-
-### Log Penting yang Dihasilkan Pipeline
-
-| Event | Level | Keterangan |
-|---|---|---|
-| `http_request` | INFO | Setiap request masuk: method, path, status, duration |
-| `intent_classifier_loaded` | INFO | Saat model IndoBERT pertama kali di-load ke memori |
-| `cache_hit` | DEBUG | Query dijawab dari Redis |
-| `rag_low_relevance` | WARNING | Top reranker score di bawah threshold |
-| `stream_error` | ERROR | Error saat streaming response |
-| `db_init_failed` | ERROR | PostgreSQL tidak terhubung saat startup |
-| `chat_error` | ERROR | Error di `/api/chat` endpoint |
-
-### Konfigurasi Log Level
-
-```bash
-# Di .env
-LOG_LEVEL=INFO    # INFO (default) / DEBUG / WARNING / ERROR
-```
-
-Mode `DEBUG` menampilkan detail tiap tahap pipeline (retrieval scores, intent confidence, cache status).
-
----
-
 ## Tech Stack
 
-| Komponen | Dev (RTX 3060) | POC (L40S IOH) |
+| Komponen | Dev (RTX 3060) | POC (L40S 48GB) |
 |---|---|---|
 | LLM | Qwen2.5:7b via Ollama | Qwen3-VL-8B via vLLM |
 | Embedding | Qwen3-Embedding-0.6B (in-process, GPU) | Qwen3-Embedding-0.6B via TEI |
 | Re-ranker | BGE-Reranker-v2-M3 (in-process) | BGE-Reranker-v2-M3 via TEI |
-| Moderation | passthrough (skip) | Llama Guard 3 1B via Ollama |
+| Moderation | passthrough (skip) | Llama Guard 3 1B via Ollama (lebih cocok untuk model kecil daripada vLLM) |
 | Intent Classifier | IndoBERT (in-process) | IndoBERT (in-process) |
 | Vector DB | Qdrant (Docker) | Qdrant (Docker) |
 | Framework | LlamaIndex | LlamaIndex |
@@ -232,6 +191,48 @@ hf upload ikrarrr/rag-unhas-intent-classifier models/intent_classifier .
 
 ---
 
+## Logging
+
+Pipeline menggunakan **structlog** dengan output JSON untuk kompatibilitas dengan log aggregator (ELK, Loki, dll.).
+
+### Format Log
+
+Setiap request HTTP otomatis mendapat **correlation ID** (`request_id`) yang diteruskan ke semua log dalam satu request:
+
+```json
+{
+  "event": "http_request method=POST path=/api/query status=200 duration_ms=4231.5 request_id=a3f9b1c2",
+  "request_id": "a3f9b1c2",
+  "timestamp": "2026-05-14T10:23:45.123456Z",
+  "level": "info"
+}
+```
+
+Client bisa mengirim `X-Request-ID` header sendiri, atau sistem generate otomatis (8 karakter hex). Header dikembalikan di response sebagai `X-Request-ID`.
+
+### Log Penting yang Dihasilkan Pipeline
+
+| Event | Level | Keterangan |
+|---|---|---|
+| `http_request` | INFO | Setiap request masuk: method, path, status, duration |
+| `intent_classifier_loaded` | INFO | Saat model IndoBERT pertama kali di-load ke memori |
+| `cache_hit` | DEBUG | Query dijawab dari Redis |
+| `rag_low_relevance` | WARNING | Top reranker score di bawah threshold |
+| `stream_error` | ERROR | Error saat streaming response |
+| `db_init_failed` | ERROR | PostgreSQL tidak terhubung saat startup |
+| `chat_error` | ERROR | Error di `/api/chat` endpoint |
+
+### Konfigurasi Log Level
+
+```bash
+# Di .env
+LOG_LEVEL=INFO    # INFO (default) / DEBUG / WARNING / ERROR
+```
+
+Mode `DEBUG` menampilkan detail tiap tahap pipeline (retrieval scores, intent confidence, cache status).
+
+---
+
 ## Struktur Folder
 
 ```
@@ -281,20 +282,82 @@ rag-prototype/
 │   └── bge-reranker-v2-m3/      # Pre-trained reranker (HF: BAAI/bge-reranker-v2-m3)
 ├── scripts/
 │   ├── preprocess-template.py   # JSON → teks narasi (.txt)
-│   ├── download_models.py       # Download semua model dari HuggingFace
+│   ├── index_documents.py       # Helper untuk indexing dokumen
+│   ├── download_models.py       # Download model dari HuggingFace (intent + reranker)
 │   └── start_demo.ps1           # Script demo (Windows)
 ├── frontend/
 │   ├── index.html
 │   ├── style.css
 │   └── app.js
-├── docker-compose.yml           # Base compose
-├── docker-compose.dev.yml       # Dev: Qdrant + Redis + PostgreSQL
-├── docker-compose.poc.yml       # POC: semua service termasuk vLLM + TEI
+├── docker-compose.yml           # Base compose minimal (Qdrant saja)
+├── docker-compose.dev.yml       # Dev: Qdrant + Redis + PostgreSQL (LLM via Ollama di host)
+├── docker-compose.poc.yml       # POC: backend container + DB services (vLLM/TEI/Ollama dicomment)
+├── Dockerfile                   # Build image backend untuk POC
+├── .dockerignore                # Exclude venv, models, data besar dari build context
 ├── .env.dev                     # Template env untuk dev
-├── .env.poc                     # Template env untuk POC/production
+├── .env.poc                     # Template env untuk POC
 ├── requirements.txt
 └── CLAUDE.md
 ```
+
+---
+
+## Environments
+
+Sistem ini didesain untuk 3 level deployment, dari yang paling ringan ke paling besar. Setiap level punya tujuan, infrastruktur, dan tradeoff berbeda.
+
+### Perbandingan 3 Environment
+
+| Aspek | **Dev** | **POC** | **True Production** |
+|---|---|---|---|
+| **Tujuan** | Development, debugging, demo lokal | Staging di server GPU, load testing, demo ke stakeholder | Layanan publik UNHAS untuk ribuan user |
+| **Compose file** | `docker-compose.dev.yml` | `docker-compose.poc.yml` | K8s manifests (belum dibuat) |
+| **Hardware** | Laptop RTX 3060 12GB | Server L40S 48GB (1 host) | Multi-host cluster + managed services |
+| **Orkestrasi** | docker-compose | docker-compose | Kubernetes / ECS |
+| **LLM** | Ollama (`qwen2.5:7b`) di host | vLLM (`Qwen3-VL-8B`) di container | vLLM cluster + autoscale |
+| **Embedding/Reranker** | In-process (HuggingFace + sentence-transformers) | TEI service terpisah | TEI cluster atau managed inference |
+| **PostgreSQL** | Container, password hardcoded `dev` | Container, password dari env var | **Managed DB** (RDS / Cloud SQL) — HA, backup otomatis, replica |
+| **Redis** | Container `redis:alpine` 512MB | Container `redis-stack` 4GB (RedisSearch) | **Managed cache** (ElastiCache / Memorystore) — cluster mode |
+| **Object Storage** | Tidak ada (vision feature off) | Container MinIO | **S3 / GCS** — durabilitas 11 nines |
+| **Backend** | Jalan di host (`uvicorn --reload`) | Container, single replica | Multiple replica + HPA + service mesh |
+| **Moderation (L2)** | `passthrough` (skip, VRAM tidak cukup) | Llama Guard 3 1B via Ollama (instance terpisah dari vLLM) | Managed safety API (OpenAI Moderation, AWS Comprehend) — zero-ops |
+| **TLS / HTTPS** | HTTP saja (localhost) | nginx/Traefik reverse proxy manual | Managed Load Balancer + cert otomatis |
+| **High Availability** | Tidak ada | Tidak ada (host mati = semua mati) | Multi-zone, auto-failover |
+| **Auto-scaling** | Tidak | Manual (`docker compose --scale`) | HPA berdasarkan CPU/QPS |
+| **Secrets** | `.env.dev` (hardcoded `dev`) | `.env` di server (file biasa) | Vault / AWS Secrets Manager |
+| **Logging** | `stdout` di terminal | `docker logs` di host | Centralized (ELK / Loki / Datadog) |
+| **Monitoring** | Tidak ada | Prometheus + Grafana (opsional) | Full observability stack + alerting |
+| **Rate limit** | 20 req/menit | 8 req/menit (text), 2/menit (vision) | Per-user quota + WAF rate limit |
+| **Disaster Recovery** | Tidak ada | Manual backup script | Snapshot otomatis + cross-region replication |
+| **Target user load** | 1 user (developer) | < 500 concurrent | 30.000+ mahasiswa UNHAS |
+
+### Kapan Pakai yang Mana?
+
+**Dev:**
+- Coding fitur baru di laptop sendiri
+- Reproduce bug yang dilaporkan
+- Demo ke teman / dosen secara lokal
+- Eksperimen prompt template, hyperparameter
+
+**POC:**
+- Demo arsitektur lengkap ke stakeholder UNHAS
+- Load testing dengan beban realistis (puluhan-ratusan user)
+- Validasi sebelum migrasi ke production sungguhan
+- MVP untuk pilot user terbatas (mis. 1 fakultas)
+- Testing fitur vision dengan vLLM multimodal
+
+**True Production:**
+- Layanan publik untuk seluruh mahasiswa UNHAS
+- Requirement SLA uptime > 99.5%
+- Audit / compliance (data perlindungan personal)
+- Skala dinamis sesuai jam sibuk akademik
+
+> **Strategi migrasi POC → Production:** POC compose sengaja didesain agar **arsitekturnya sudah mendekati production** — 1 container Docker mapping ke 1 Deployment Kubernetes. Saat migrasi, fokus utamanya bukan refactor kode tapi:
+> 1. Lepas service stateful (PostgreSQL, Redis, MinIO) → ganti ke managed service
+> 2. Convert `docker-compose.poc.yml` → K8s manifests (atau Helm chart)
+> 3. Tambah Ingress + cert-manager untuk HTTPS
+> 4. Set up HPA, PDB, NetworkPolicy
+> 5. Centralized logging + monitoring stack
 
 ---
 
@@ -401,33 +464,497 @@ uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 
 ---
 
-## Setup POC (L40S 48GB — IOH)
+## Setup POC (L40S 48GB)
 
-### 1. Konfigurasi Environment
+> **Posisi POC:** Staging deployment di server GPU untuk demo, load testing, dan validasi sebelum production sungguhan. **Bukan production-grade.** Lihat tabel [Environments](#environments) untuk perbedaan POC vs true production.
+>
+> Service yang membutuhkan GPU (vLLM, TEI, Ollama) dan monitoring stack dicomment di `docker-compose.poc.yml` karena konfigurasinya menyesuaikan infrastruktur server — uncomment dan sesuaikan sebelum deploy.
+
+### Arsitektur Service POC
+
+```
+   Internet
+      │
+      ▼
+  [Reverse Proxy / Load Balancer]   ← nginx/Traefik (di luar compose)
+      │
+      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     Docker Network: ragchat                     │
+│                                                                 │
+│   [Backend :8000] ──────────┬─────────────────────────────────  │
+│         │                   │                                   │
+│         ├──▶ [vLLM :8001]              (GPU — LLM serving)      │
+│         ├──▶ [Ollama :11434]           (GPU — Llama Guard 3)    │
+│         ├──▶ [TEI Embed :8002]         (CPU/GPU — Embedding)    │
+│         ├──▶ [TEI Rerank :8003]        (CPU/GPU — Reranker)     │
+│         ├──▶ [Qdrant :6333]            (Vector DB)              │
+│         ├──▶ [PostgreSQL :5432]        (Session DB)             │
+│         ├──▶ [Redis :6379]             (Semantic cache)         │
+│         └──▶ [MinIO :9000]             (Image storage)          │
+│                                                                 │
+│   Monitoring (opsional):                                        │
+│         [Prometheus]   ◀── scrape /metrics dari backend          │
+│         [Grafana :3000] ◀── dashboard performance + RAG         │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Semua service berkomunikasi via **Docker internal network** — tidak ada port yang terbuka ke publik kecuali backend port 8000 (di belakang reverse proxy untuk HTTPS).
+
+### Prasyarat Hardware & Software
+
+| Komponen | Minimum | Direkomendasikan |
+|---|---|---|
+| GPU | NVIDIA dengan VRAM 24GB | NVIDIA L40S 48GB |
+| CUDA | 12.1+ | 12.2+ |
+| RAM | 32 GB | 64 GB |
+| Disk | 100 GB SSD (model + data + image storage) | 500 GB NVMe |
+| OS | Ubuntu 22.04 LTS / Debian 12 | Ubuntu 22.04 LTS |
+| Docker | Docker Engine 24.0+ | Docker Engine 26.0+ |
+| Docker Compose | v2.20+ | v2.27+ |
+| NVIDIA Container Toolkit | latest | latest |
+| Python | 3.11 (untuk persiapan model lokal) | 3.11 |
+
+### 1. Persiapan Server
+
+#### 1.1 Install Docker & NVIDIA Container Toolkit
+
+```bash
+# Docker Engine
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER
+newgrp docker
+
+# NVIDIA Container Toolkit (wajib untuk GPU dalam container)
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
+    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+    sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+
+sudo apt update && sudo apt install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+
+# Verifikasi GPU dapat diakses dari container
+docker run --rm --gpus all nvidia/cuda:12.2.0-base-ubuntu22.04 nvidia-smi
+```
+
+#### 1.2 Clone Repository
+
+```bash
+git clone https://github.com/Ikrar06/rag-prototype
+cd rag-prototype
+```
+
+### 2. Persiapan Model & Data
+
+Model dan data perlu disiapkan **sebelum** container backend di-build, karena akan di-mount sebagai volume read-only.
+
+#### 2.1 Install Python Dependencies (Lokal)
+
+```bash
+python3.11 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+#### 2.2 Download Model
+
+```bash
+python scripts/download_models.py
+```
+
+Output: `models/intent_classifier/` (~500MB) + `models/bge-reranker-v2-m3/` (~2.3GB).
+
+> **Catatan:** Model **LLM** (Qwen3-VL-8B) dan **Embedding** (Qwen3-Embedding-0.6B) tidak perlu didownload manual — di-load otomatis oleh vLLM dan TEI saat startup dari HuggingFace cache di volume `hf_cache`.
+
+#### 2.3 Generate Narasi & Index Data
+
+```bash
+# 1. Pastikan file JSON ada di data/json/
+ls data/json/   # fakultas.json, prodi.json, mahasiswa.json, dst.
+
+# 2. Generate narasi teks
+python scripts/preprocess-template.py
+
+# 3. Hasilnya di data/narratives/<endpoint>/*.txt
+```
+
+Indexing ke Qdrant dilakukan **setelah** Qdrant container jalan (step 5).
+
+### 3. Konfigurasi Environment
 
 ```bash
 cp .env.poc .env
-# Edit CHANGE_ME values:
-# - MINIO_ACCESS_KEY, MINIO_SECRET_KEY, MINIO_USER, MINIO_PASSWORD
-# - DATABASE_URL (password postgres)
-# - JWT_SECRET (gunakan string random panjang)
-# - UNHAS_API_BASE_URL (isi jika endpoint UNHAS sudah siap)
+nano .env   # atau editor favorit
 ```
 
-### 2. Jalankan Semua Service
+#### 3.1 Variable Wajib Diganti (CHANGE_ME)
+
+| Variable | Wajib | Keterangan |
+|---|---|---|
+| `JWT_SECRET` | ✅ | String random ≥ 32 byte. Generate: `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `POSTGRES_PASSWORD` | ✅ | Password PostgreSQL container |
+| `DATABASE_URL` | ✅ | Ganti `CHANGE_ME` di string dengan password yang sama di atas |
+| `MINIO_USER` | ✅ | Username admin MinIO |
+| `MINIO_PASSWORD` | ✅ | Password admin MinIO (min 8 karakter) |
+| `MINIO_ACCESS_KEY` | ✅ | Access key untuk API MinIO (bisa sama dengan `MINIO_USER`) |
+| `MINIO_SECRET_KEY` | ✅ | Secret key untuk API MinIO (bisa sama dengan `MINIO_PASSWORD`) |
+| `ALLOWED_ORIGINS` | ✅ | Domain frontend production, dipisah koma |
+| `UNHAS_API_BASE_URL` | ❌ | Base URL API UNHAS — kosongkan jika belum tersedia |
+
+#### 3.2 Perbedaan Env POC vs Dev
+
+| Variable | Dev | POC |
+|---|---|---|
+| `LLM_PROVIDER` | `ollama` | `vllm` |
+| `LLM_MODEL` | `qwen2.5:7b` | `Qwen/Qwen3-VL-8B-Instruct` |
+| `LLM_BASE_URL` | `http://localhost:11434` | `http://vllm:8001` |
+| `LLM_SUPPORTS_VISION` | `false` | `true` |
+| `LLM_MAX_TOKENS` | `1024` | `2048` |
+| `EMBED_PROVIDER` | `huggingface` (in-process) | `tei` (service terpisah) |
+| `EMBED_BASE_URL` | — | `http://tei-embed:8002` |
+| `RERANKER_PROVIDER` | `sentence_transformers` | `tei` |
+| `RERANKER_BASE_URL` | — | `http://tei-rerank:8003` |
+| `MODERATION_BACKEND` | `passthrough` | `ollama` (Llama Guard 3 via instance Ollama terpisah) |
+| `MODERATION_BASE_URL` | — | `http://ollama:11434` (terpisah dari `LLM_BASE_URL`) |
+| `QDRANT_URL` | `http://localhost:6333` | `http://qdrant:6333` |
+| `REDIS_URL` | `redis://localhost:6379/0` | `redis://redis:6379/0` |
+| `DATABASE_URL` | `postgresql://...@localhost:5432/...` | `postgresql+asyncpg://...@postgres:5432/...` |
+| `RATE_LIMIT_TEXT_PER_MINUTE` | `20` | `8` |
+| `RATE_LIMIT_VISION_PER_MINUTE` | — | `2` |
+| `LOG_LEVEL` | `DEBUG` | `INFO` |
+| `INTENT_MODEL_PATH` | `models/intent_classifier` | `/app/models/intent_classifier` |
+| `STORAGE_BACKEND` | — | `minio` |
+
+### 4. Uncomment & Konfigurasi Service GPU
+
+Edit `docker-compose.poc.yml`, uncomment dan sesuaikan blok berikut:
+
+#### 4.1 vLLM (LLM Server)
+
+```yaml
+vllm:
+  image: vllm/vllm-openai:latest
+  command: >
+    --model Qwen/Qwen3-VL-8B-Instruct
+    --port 8001
+    --max-model-len 8192
+    --gpu-memory-utilization 0.92
+    --max-num-seqs 64
+    --limit-mm-per-prompt image=2
+    --enable-prefix-caching
+    --served-model-name qwen3-vl-8b
+  volumes:
+    - hf_cache:/root/.cache/huggingface
+  restart: unless-stopped
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+```
+
+Parameter penting:
+
+| Flag | Fungsi | Rekomendasi |
+|---|---|---|
+| `--gpu-memory-utilization` | % VRAM untuk model | `0.92` untuk L40S 48GB; turunkan ke `0.85` jika OOM |
+| `--max-model-len` | Max context length token | `8192` (cukup untuk RAG + history) |
+| `--max-num-seqs` | Max concurrent requests | `64` untuk 50–100 user, `128` untuk lebih |
+| `--limit-mm-per-prompt image=2` | Max gambar per request | `2` (sesuai konfigurasi backend) |
+| `--enable-prefix-caching` | Cache prefix prompt | Wajib aktif (hemat VRAM + latency) |
+
+#### 4.2 TEI — Text Embeddings Inference
+
+```yaml
+tei-embed:
+  image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+  command: --model-id Qwen/Qwen3-Embedding-0.6B --port 8002
+  ports:
+    - "8002"
+  restart: unless-stopped
+
+tei-rerank:
+  image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+  command: --model-id BAAI/bge-reranker-v2-m3 --port 8003
+  ports:
+    - "8003"
+  restart: unless-stopped
+```
+
+> **GPU vs CPU:** Ganti `cpu-latest` ke `cuda12.2-latest` untuk akselerasi GPU. Embedding/reranker cukup ringan untuk CPU jika user < 100 concurrent.
+
+#### 4.3 Ollama untuk Moderasi (Llama Guard 3)
+
+```yaml
+ollama:
+  image: ollama/ollama:latest
+  volumes:
+    - ollama_data:/root/.ollama
+  restart: unless-stopped
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+```
+
+Setelah container jalan, pull model Llama Guard:
+```bash
+docker compose -f docker-compose.poc.yml exec ollama ollama pull llama-guard3:1b
+```
+
+#### 4.4 Monitoring (Opsional)
+
+```yaml
+prometheus:
+  image: prom/prometheus:latest
+  volumes:
+    - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    - prometheus_data:/prometheus
+  restart: unless-stopped
+
+grafana:
+  image: grafana/grafana:latest
+  environment:
+    GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+  volumes:
+    - grafana_data:/var/lib/grafana
+  ports:
+    - "3000:3000"
+  restart: unless-stopped
+```
+
+Aktifkan volume di bagian bawah file:
+```yaml
+volumes:
+  pg_data:
+  redis_data:
+  qdrant_data:
+  minio_data:
+  hf_cache:           # uncomment
+  ollama_data:        # uncomment
+  prometheus_data:    # uncomment jika monitoring aktif
+  grafana_data:       # uncomment jika monitoring aktif
+```
+
+Buat `monitoring/prometheus.yml`:
+```yaml
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: 'backend'
+    static_configs:
+      - targets: ['backend:8000']
+    metrics_path: /metrics
+```
+
+### 5. Build & Jalankan Services
 
 ```bash
+# Build image backend (sekitar 5-10 menit, tergantung jaringan)
+docker compose -f docker-compose.poc.yml build backend
+
+# Jalankan semua service
+docker compose -f docker-compose.poc.yml up -d
+
+# Cek status
+docker compose -f docker-compose.poc.yml ps
+```
+
+Output yang diharapkan: semua service `running` atau `healthy`.
+
+Ikuti log backend saat startup pertama:
+```bash
+docker compose -f docker-compose.poc.yml logs -f backend
+```
+
+> **Catatan vLLM:** Saat pertama kali jalan, vLLM akan download model dari HuggingFace (~16GB). Tunggu sampai log menunjukkan `Uvicorn running on http://0.0.0.0:8001`. Untuk model gated (perlu HF token), tambahkan environment variable di service vLLM:
+> ```yaml
+> environment:
+>   HF_TOKEN: ${HF_TOKEN}
+> ```
+
+### 6. Setup Post-Deploy
+
+#### 6.1 Buat Bucket MinIO
+
+```bash
+# Akses console MinIO via browser: http://server-ip:9001
+# Login dengan MINIO_USER / MINIO_PASSWORD
+# Buat bucket dengan nama sesuai MINIO_BUCKET (default: ragchat-images)
+
+# Atau via CLI:
+docker compose -f docker-compose.poc.yml exec minio \
+  mc alias set local http://localhost:9000 $MINIO_USER $MINIO_PASSWORD
+
+docker compose -f docker-compose.poc.yml exec minio \
+  mc mb local/ragchat-images
+```
+
+#### 6.2 Index Data ke Qdrant
+
+```bash
+# Index narasi yang sudah di-generate di step 2.3
+docker compose -f docker-compose.poc.yml exec backend \
+  python backend/services/index_narratives.py --force
+```
+
+#### 6.3 Seed User Awal (Opsional)
+
+User otomatis di-seed dari `data/users.json` saat backend startup. Untuk seed manual:
+```bash
+docker compose -f docker-compose.poc.yml exec backend \
+  python -c "from backend.services.auth import seed_users_from_json; seed_users_from_json()"
+```
+
+### 7. Verifikasi Deployment
+
+#### 7.1 Health Check
+
+```bash
+curl http://localhost:8000/api/health
+```
+
+Response yang diharapkan:
+```json
+{
+  "status": "healthy",
+  "ollama": true,
+  "qdrant": true,
+  "postgres": true,
+  "redis": true,
+  "intent_model": true
+}
+```
+
+`"status": "degraded"` berarti ada service yang belum terhubung — cek `docker compose logs <service_name>`.
+
+#### 7.2 Test Query
+
+```bash
+curl -X POST http://localhost:8000/api/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "apa syarat cuti akademik?",
+    "history": [],
+    "role": "public"
+  }'
+```
+
+#### 7.3 Swagger UI
+
+Buka di browser: `http://server-ip:8000/docs`
+
+### 8. Reverse Proxy + HTTPS (Production)
+
+Untuk production, **JANGAN** expose port 8000 langsung. Pakai reverse proxy dengan HTTPS:
+
+Contoh konfigurasi **nginx**:
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name chatbot.unhas.ac.id;
+
+    ssl_certificate     /etc/letsencrypt/live/chatbot.unhas.ac.id/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/chatbot.unhas.ac.id/privkey.pem;
+
+    location / {
+        proxy_pass http://localhost:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # SSE streaming
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 180s;
+    }
+}
+```
+
+### 9. Maintenance & Operations
+
+#### 9.1 Update Image
+
+```bash
+# Pull image latest
+docker compose -f docker-compose.poc.yml pull
+
+# Rebuild backend (jika ada perubahan kode)
+docker compose -f docker-compose.poc.yml build backend
+
+# Restart dengan image baru
 docker compose -f docker-compose.poc.yml up -d
 ```
 
-Service yang jalan: vLLM, TEI Embedding, TEI Reranker, Qdrant, PostgreSQL, Redis, MinIO.
-
-### 3. Index Data
+#### 9.2 Backup Data
 
 ```bash
-python scripts/preprocess-template.py
-python backend/services/index_narratives.py --force
+# Backup volume PostgreSQL
+docker compose -f docker-compose.poc.yml exec postgres \
+  pg_dump -U ragchat ragchat > backup_$(date +%Y%m%d).sql
+
+# Backup volume Qdrant
+docker run --rm -v rag-prototype_qdrant_data:/data -v $(pwd):/backup \
+  alpine tar czf /backup/qdrant_$(date +%Y%m%d).tar.gz /data
 ```
+
+#### 9.3 Scale Backend
+
+```bash
+# Scale ke 2 replica (butuh load balancer di depan)
+docker compose -f docker-compose.poc.yml up -d --scale backend=2
+```
+
+#### 9.4 View Logs
+
+```bash
+# Backend log saja
+docker compose -f docker-compose.poc.yml logs -f backend
+
+# Semua service, last 100 baris
+docker compose -f docker-compose.poc.yml logs --tail=100
+
+# Filter log dengan request_id tertentu
+docker compose -f docker-compose.poc.yml logs backend | grep "request_id=a3f9b1c2"
+```
+
+### 10. Troubleshooting
+
+| Masalah | Penyebab | Solusi |
+|---|---|---|
+| `vllm` OOM saat startup | VRAM tidak cukup | Turunkan `--gpu-memory-utilization` ke 0.85 atau `--max-model-len` ke 4096 |
+| `backend` tidak connect ke `vllm` | Service belum ready | Tambah `depends_on: vllm: condition: service_healthy` |
+| Health check `intent_model: false` | Model belum di-mount | Pastikan `./models` di host sudah ada, restart backend |
+| `MinIO` bucket not found | Bucket belum dibuat | Jalankan step 6.1 |
+| Query selalu `out_of_scope` | Intent model salah load | Cek log: `intent_classifier_loaded path=...` |
+| Streaming response stuck | nginx buffering aktif | Tambah `proxy_buffering off;` di nginx config |
+| `degraded` di health check | Ada service `false` | Cek `docker compose logs <service>` untuk yang false |
+
+### 11. Production Checklist
+
+Sebelum go-live, pastikan:
+
+- [ ] Semua `CHANGE_ME` di `.env` sudah diganti dengan nilai random
+- [ ] `JWT_SECRET` minimal 32 byte hex
+- [ ] HTTPS aktif di reverse proxy (Let's Encrypt atau cert lain)
+- [ ] `ALLOWED_ORIGINS` sudah dibatasi ke domain production
+- [ ] Firewall: hanya port 443 (HTTPS) yang terbuka publik
+- [ ] Backup otomatis PostgreSQL + Qdrant terjadwal (cron)
+- [ ] Log rotation aktif (`logrotate` atau setara)
+- [ ] Monitoring (Prometheus + Grafana) aktif dengan alert
+- [ ] Rate limit production-grade di `.env` (default `8/min` text, `2/min` vision)
+- [ ] Test query end-to-end dengan beberapa role (`public`, `mahasiswa`, `admin`)
+- [ ] Verifikasi MinIO bucket policy (private read, presigned URL untuk download)
 
 ---
 
@@ -690,7 +1217,7 @@ def evaluate_query(question: str, expected_answer: str = None):
 - [x] Redis semantic cache
 - [x] Rate limiting (slowapi)
 - [x] Layer 1: Harmful keyword filter
-- [x] Layer 2: Moderation (Llama Guard 3, passthrough di dev)
+- [x] Layer 2: Moderation (Llama Guard 3 via Ollama dengan URL terpisah dari LLM utama)
 - [x] Layer 3: Intent classifier (IndoBERT 4-kelas)
 - [x] Layer 4: Private API handler (function calling, fallback ke RAG)
 - [x] Layer 6: Output filter (redact AI names, stack, NIM, JWT, URL)

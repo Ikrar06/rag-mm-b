@@ -2,6 +2,9 @@
 
 Dev:  MODERATION_BACKEND=passthrough  (skip, no HTTP call)
 POC:  MODERATION_BACKEND=ollama       (llama-guard3:1b via local Ollama)
+
+URL Ollama dibaca dari MODERATION_BASE_URL (default ke LLM_BASE_URL untuk
+backward-compat dev). Di POC harus diset terpisah karena LLM utama vLLM.
 """
 
 import logging
@@ -9,7 +12,7 @@ from enum import Enum
 
 import httpx
 
-from backend.config import LLM_BASE_URL, MODERATION_BACKEND, MODERATION_MODEL
+from backend.config import MODERATION_BASE_URL, MODERATION_BACKEND, MODERATION_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +58,7 @@ def _check_ollama(text: str) -> tuple[bool, str]:
     prompt = _PROMPT.format(message=text[:500])
     try:
         resp = httpx.post(
-            f"{LLM_BASE_URL}/api/generate",
+            f"{MODERATION_BASE_URL}/api/generate",
             json={"model": MODERATION_MODEL, "prompt": prompt, "stream": False},
             timeout=8.0,
         )

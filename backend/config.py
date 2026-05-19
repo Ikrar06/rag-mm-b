@@ -145,10 +145,15 @@ INTENT_CONFIDENCE_THRESHOLD = float(os.getenv("INTENT_CONFIDENCE_THRESHOLD", "0.
 # Moderation (Layer 2 — Llama Guard 3)
 # Dev:  passthrough (skip)
 # POC:  ollama      (llama-guard3:1b via Ollama)
+#
+# MODERATION_BASE_URL: URL Ollama untuk moderasi. Default ke LLM_BASE_URL untuk
+# backward-compat (dev), tapi di POC harus diset terpisah karena LLM utama
+# pakai vLLM (LLM_BASE_URL=http://vllm:8001), sementara moderasi tetap di Ollama.
 # =============================================================================
 
 MODERATION_BACKEND = os.getenv("MODERATION_BACKEND", "passthrough")
 MODERATION_MODEL = os.getenv("MODERATION_MODEL", "llama-guard3:1b")
+MODERATION_BASE_URL = os.getenv("MODERATION_BASE_URL", LLM_BASE_URL)
 
 # =============================================================================
 # Rate Limiting

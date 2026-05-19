@@ -1,0 +1,43 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# Environment
+.env
+.env.*
+!.env.dev
+!.env.poc
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large data — mount sebagai volume
+qdrant_storage/
+models/
+data/pdfs/*.pdf
+data/images/
+data/narratives/
+*.bin
+*.safetensors
+
+# Docs (tidak perlu di image)
+*.md
+README.md
+
+# Logs
+logs/
+*.log
