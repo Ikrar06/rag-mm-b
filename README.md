@@ -786,6 +786,7 @@ docker compose -f docker-compose.poc.yml logs backend | grep "request_id=a3f9b1c
 
 | Masalah | Penyebab | Solusi |
 |---|---|---|
+| Build backend gagal: `zlib.h: No such file or directory` | Header zlib tidak terinstall di base image | Pastikan `zlib1g-dev` ada di Dockerfile (sudah include di repo terbaru) |
 | `vllm` OOM saat startup | VRAM tidak cukup | Edit `--gpu-memory-utilization 0.85` → `0.75` di compose |
 | vLLM stuck "Downloading..." berjam-jam | Network lambat / firewall HF | Set `HF_HUB_ENABLE_HF_TRANSFER=1` (sudah default) |
 | `ollama list` kosong | Lupa pull model | Jalankan Step 6 |
