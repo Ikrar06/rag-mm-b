@@ -29,6 +29,9 @@ pymupdf>=1.24.0
 
 # Document Parsing & Chunking
 unstructured[pdf]>=0.16.0
+pdfplumber>=0.11.0
+markdownify>=0.13.0
+pillow>=10.0.0
 
 # Auth
 python-jose[cryptography]>=3.3.0

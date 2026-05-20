@@ -83,6 +83,26 @@ CHUNK_SIZE = 512
 CHUNK_OVERLAP = 50
 
 # =============================================================================
+# PDF Processing (production-grade indexing)
+# =============================================================================
+
+# Strategy: "fast" (PyMuPDF only) atau "hi_res" (Unstructured.io layout-aware)
+# - fast: cepat, cocok untuk PDF text-heavy (SOP)
+# - hi_res: lambat tapi extract table+image structure, cocok untuk Pedoman/Manual
+# - auto: deteksi otomatis per file (rekomendasi)
+PDF_EXTRACTION_STRATEGY = os.getenv("PDF_EXTRACTION_STRATEGY", "auto")
+
+# Image extraction & description
+PDF_EXTRACT_IMAGES = os.getenv("PDF_EXTRACT_IMAGES", "true").lower() == "true"
+PDF_DESCRIBE_IMAGES = os.getenv("PDF_DESCRIBE_IMAGES", "auto").lower()  # auto | true | false
+PDF_MIN_IMAGE_SIZE_KB = int(os.getenv("PDF_MIN_IMAGE_SIZE_KB", "20"))  # skip image < 20KB (decorative)
+PDF_MAX_IMAGE_DIM = int(os.getenv("PDF_MAX_IMAGE_DIM", "1280"))         # resize besar untuk hemat token VL
+
+# Table handling
+PDF_EXTRACT_TABLES = os.getenv("PDF_EXTRACT_TABLES", "true").lower() == "true"
+PDF_TABLE_MAX_CHARS = int(os.getenv("PDF_TABLE_MAX_CHARS", "2000"))      # keep table utuh jika < ini
+
+# =============================================================================
 # RAG Pipeline
 # =============================================================================
 

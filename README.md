@@ -19,12 +19,14 @@ Tim 3 (Evaluasi) ─────────────────────
 6. [Environments (Dev / POC / Production)](#environments)
 7. [Setup Dev (RTX 3060)](#setup-dev-rtx-3060)
 8. [Setup POC (L40S 48GB)](#setup-poc-l40s-48gb)
-9. [Data Pipeline: JSON → Narasi → Qdrant](#data-pipeline-json--narasi--qdrant)
-10. [API Reference](#api-reference)
-11. [Environment Variables](#environment-variables)
-12. [Untuk Tim 1 (BE + FE)](#untuk-tim-1-be--fe)
-13. [Untuk Tim 3 (Evaluasi)](#untuk-tim-3-evaluasi)
-14. [Progress](#progress)
+9. [Sumber Data RAG](#sumber-data-rag)
+10. [Data Pipeline: JSON → Narasi → Qdrant](#data-pipeline-json--narasi--qdrant)
+11. [PDF Indexing (Production-Grade)](#pdf-indexing-production-grade)
+12. [API Reference](#api-reference)
+13. [Environment Variables](#environment-variables)
+14. [Untuk Tim 1 (BE + FE)](#untuk-tim-1-be--fe)
+15. [Untuk Tim 3 (Evaluasi)](#untuk-tim-3-evaluasi)
+16. [Progress](#progress)
 
 ---
 
@@ -817,6 +819,33 @@ Sebelum go-live, pastikan:
 
 ---
 
+## Sumber Data RAG
+
+Sistem mengindex **dua sumber data komplementer** ke dalam **satu Qdrant collection** (`unhas_docs`). Setiap chunk punya field `source_type` di metadata untuk identifikasi asalnya:
+
+| Sumber | `source_type` | Isi | Pipeline | Sifat |
+|---|---|---|---|---|
+| **API SatuData UNHAS** (JSON) | `narrative` | Data tabular akademik: fakultas, prodi, mahasiswa, jadwal, mata kuliah, dll | JSON → narasi teks via `preprocess-template.py` → index | Data live, sering update |
+| **PDF Resmi UNHAS** | `pdf` | Dokumen formal: SOP, Pedoman, Rubrik, Manual aplikasi, dll | PDF → layout extraction (text + table + image description) → index | Data statis, jarang update |
+
+**Kenapa dua sumber dipakai bersamaan:**
+
+- **JSON narrative** bagus untuk pertanyaan **faktual numerik** (jumlah mahasiswa, daftar prodi, kuota kelas) — datanya selalu fresh dari API.
+- **PDF resmi** bagus untuk pertanyaan **prosedural** (cara cuti, syarat skripsi, format formulir) — datanya otoritatif tapi statis.
+
+**Saat user query**, retrieval di Qdrant mencari chunk paling relevan secara semantik **tanpa peduli source_type**. Reranker BGE meranking berdasarkan konteks query. Misal:
+- Query "berapa jumlah mahasiswa FT?" → kemungkinan match chunk dari `mahasiswa.json` (source_type=narrative)
+- Query "bagaimana cara cuti akademik?" → kemungkinan match chunk dari `SOP_Cuti.pdf` (source_type=pdf)
+- Query "siapa wali akademik saya?" → match chunk procedural (PDF) + faktual (JSON dosen, jika ada)
+
+**Catatan untuk Tim 3 (Evaluasi):** field `source_type` di response `sources[].source_type` (planned) bisa dipakai sebagai dimensi evaluasi — apakah retrieval menarik dari sumber yang tepat untuk tipe pertanyaan tertentu.
+
+Detail per sumber:
+- **Sumber 1** — JSON Narrative: lihat section [Data Pipeline: JSON → Narasi → Qdrant](#data-pipeline-json--narasi--qdrant)
+- **Sumber 2** — PDF Resmi: lihat section [PDF Indexing (Production-Grade)](#pdf-indexing-production-grade)
+
+---
+
 ## Data Pipeline: JSON → Narasi → Qdrant
 
 Data akademik UNHAS dari API berbentuk tabular (JSON). Sebelum di-embed ke Qdrant, data dikonversi ke teks narasi bahasa Indonesia agar bisa di-retrieve secara semantik.
@@ -852,6 +881,149 @@ Qdrant collection: unhas_docs
 | `pmb.json` | publik | Penerimaan mahasiswa baru |
 | `pengumuman.json` | publik | Pengumuman resmi |
 | `mahasiswa.json` | publik | NIM, nama, prodi, status |
+
+---
+
+## PDF Indexing (Production-Grade)
+
+Selain narasi JSON, RAG core juga mengindex dokumen PDF resmi UNHAS (SOP, Pedoman, Rubrik, dll) di `data/pdfs/`. Pipeline indexing dirancang untuk handle PDF dengan konten campuran: teks, tabel, gambar diagram, dan scan dokumen.
+
+### Strategi Extraction
+
+Setiap PDF di-route ke salah satu strategi berdasarkan karakteristiknya:
+
+| Strategy | Library | Kapan dipakai | Output |
+|---|---|---|---|
+| **fast** | PyMuPDF + PaddleOCR fallback | PDF text-heavy (SOP, surat resmi) | Text per halaman |
+| **hi_res** | Unstructured.io `partition_pdf` | PDF rich (Pedoman, Manual dengan tabel/gambar) | Element terstruktur: Title, Text, Table, Image |
+| **auto** | Detektor heuristik | Default — pilih otomatis per file | Pilih fast/hi_res berdasarkan kepadatan gambar |
+
+Konfigurasi via `.env`:
+```bash
+PDF_EXTRACTION_STRATEGY=auto         # auto | fast | hi_res
+PDF_EXTRACT_TABLES=true              # extract tabel ke Markdown
+PDF_EXTRACT_IMAGES=true              # extract gambar untuk description
+PDF_DESCRIBE_IMAGES=auto             # auto: deskripsikan kalau LLM_SUPPORTS_VISION
+PDF_MIN_IMAGE_SIZE_KB=20             # skip gambar < 20 KB (icon/logo)
+PDF_TABLE_MAX_CHARS=2000             # tabel < 2000 char → digabung dengan section
+```
+
+### Element Types yang Diproses
+
+| Element | Treatment | Element_type di metadata |
+|---|---|---|
+| Title/Heading | Awal section baru, di-prepend ke chunk | `Title` |
+| NarrativeText, ListItem | Digabung sampai mendekati CHUNK_SIZE | `NarrativeText` |
+| Table | Convert HTML → Markdown; chunk independen jika besar | `Table` |
+| Image (informative) | Describe via vision LLM → text chunk | `ImageDescription` |
+| Image (dekoratif) | Skip (logo, tanda tangan, header decoration) | — |
+| Header/Footer/PageNumber | Selalu skip | — |
+
+**Klasifikasi image informative vs dekoratif:**
+1. Heuristic awal: ukuran file < `PDF_MIN_IMAGE_SIZE_KB` atau dimensi terlalu kecil → skip
+2. Aspect ratio ekstrem (mis. line separator > 15:1) → skip
+3. Sisanya dikirim ke Qwen-VL untuk deskripsi. Jika hasil deskripsi diawali `DEKORATIF` atau `TIDAK JELAS`, chunk tidak disimpan.
+
+### Kapan Vision Model Dipanggil & Dimana Output-nya?
+
+**Vision model HANYA dipanggil saat indexing**, tidak saat user query:
+
+| Operasi | Vision dipanggil? |
+|---|---|
+| User chat di `/api/query` atau `/api/chat` | ❌ Tidak |
+| Indexing PDF, strategy `fast` | ❌ Tidak (text-only) |
+| Indexing PDF, strategy `hi_res`, `LLM_SUPPORTS_VISION=false` (dev) | ❌ Tidak (graceful skip) |
+| Indexing PDF, strategy `hi_res`, `LLM_SUPPORTS_VISION=true` (POC) | ✅ Per gambar informative |
+
+**Alur deskripsi gambar → chunk Qdrant:**
+
+```
+Image element (Unstructured.io)
+   ↓ base64 di memory
+describe_image(image_bytes)
+   → POST ke vLLM /v1/chat/completions (atau Ollama /api/generate)
+   → return string deskripsi: "Diagram alur pengajuan cuti..."
+   ↓
+Replace element Image → element ImageDescription (text)
+   ↓
+Smart chunking → chunk independen:
+   text: "## {section}\n\n[Deskripsi Gambar] {deskripsi dari vision LLM}"
+   metadata: { element_type: "ImageDescription", page, file_name, ... }
+   ↓
+Embed teks deskripsi via Qwen3-Embedding → vector 1024-dim
+   ↓
+Upsert ke Qdrant collection `unhas_docs`
+```
+
+**Yang disimpan vs tidak:**
+
+| Item | Disimpan? | Lokasi |
+|---|---|---|
+| Teks deskripsi gambar | ✅ | Qdrant chunk (`element_type=ImageDescription`) |
+| Vector embedding teks deskripsi | ✅ | Qdrant (searchable via ANN) |
+| Metadata (file, page, section) | ✅ | Qdrant payload |
+| Image bytes asli (PNG/JPG) | ❌ | Dibuang setelah dideskripsikan — hemat storage |
+| In-memory description cache | ⚠️ Sementara | Hilang saat process restart, tujuannya skip duplicate call di run yang sama |
+
+**Kenapa tidak simpan image asli:** RAG retrieval pakai semantic similarity di vector teks. Image asli tidak punya nilai untuk pencarian ulang. Sources yang dikembalikan ke user cuma `file_name + page`, bukan gambar.
+
+**Saat user query:** sistem hanya semantic search di Qdrant, retrieval chunk teks (termasuk yang `element_type=ImageDescription`), kirim ke LLM utama sebagai context. Vision LLM **tidak dipanggil ulang**.
+
+**Implikasi cost:** Vision LLM = one-time cost saat indexing per file. Re-indexing pun cuma proses file yang content hash-nya berubah (lihat section incremental di bawah). Untuk 28 PDF dengan rata-rata 20 gambar informative per file, total ~560 panggilan vision LLM untuk first-time indexing, lalu hampir nol untuk update rutin.
+
+### Incremental Indexing dengan Content Hash
+
+Setiap PDF di-hash (SHA256) dan disimpan di metadata Qdrant. Saat re-index:
+
+| Kondisi | Aksi |
+|---|---|
+| File baru (belum ada di Qdrant) | Index full |
+| File ada, hash sama | Skip (no-op) |
+| File ada, hash berbeda | Delete chunks lama → index ulang |
+
+Ini menghemat waktu re-index drastis. Untuk PDF set 28 file, biasanya cuma 1-2 file yang berubah per update — sisanya skip.
+
+### Cara Indexing
+
+```powershell
+# Append (skip yang sudah ada, hanya proses file baru/berubah)
+python scripts/index_documents.py
+
+# Force full re-index (hapus semua chunks PDF lama)
+python scripts/index_documents.py --force
+
+# Custom directory
+python scripts/index_documents.py /path/to/pdfs --force
+```
+
+Atau via API:
+```bash
+curl -X POST http://localhost:8000/api/index \
+  -H "Content-Type: application/json" \
+  -d '{"directory":"data/pdfs","force":true}'
+```
+
+### Performance & Resource
+
+| Operasi | Waktu (per page) | Resource |
+|---|---|---|
+| Strategy `fast` (text-only) | ~0.1s | CPU |
+| Strategy `fast` + OCR fallback | ~2-5s | GPU (PaddleOCR) |
+| Strategy `hi_res` (layout detection) | ~5-15s | CPU (heavy) |
+| Image description (Qwen-VL) | ~2-5s per image | GPU (vLLM) |
+| Embedding chunk | ~50ms per chunk | GPU/CPU |
+
+Untuk 28 PDF UNHAS dengan rata-rata 20 halaman dan 3 gambar informatif per halaman:
+- First-time full index: ~30-90 menit (tergantung strategy auto-detection)
+- Incremental update 1-2 file: ~1-5 menit
+
+### Filter Berdasarkan Element Type di Retrieval
+
+Metadata `element_type` di setiap chunk bisa dipakai untuk targeting retrieval. Contoh query:
+- "Berapa nominal UKT 2025 untuk fakultas teknik?" → cenderung match chunk `element_type=Table`
+- "Bagaimana diagram alur pengajuan cuti?" → cenderung match `element_type=ImageDescription`
+
+Sistem reranker BGE otomatis mempertimbangkan konteks teks, tapi untuk advanced filtering (mis. filter HARD pakai Qdrant filter), bisa ditambahkan di pipeline retrieval.
 
 ---
 
@@ -1067,7 +1239,7 @@ def evaluate_query(question: str, expected_answer: str = None):
 ## Progress
 
 - [x] RAG pipeline (retrieval + rerank + generation)
-- [x] PDF indexing (PaddleOCR + Unstructured.io)
+- [x] PDF indexing production-grade (layout-aware, table→markdown, image→vision description, content hash incremental)
 - [x] JSON narrative pipeline (preprocess-template + index_narratives)
 - [x] Multi-turn conversation dengan history
 - [x] Streaming response (SSE)
