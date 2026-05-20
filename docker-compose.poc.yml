@@ -1,15 +1,17 @@
 version: "3.8"
 
-# POC environment — L40S 48GB, managed sebagian oleh IOH
+# POC environment — server GPU (rekomendasi L40S 48GB atau setara)
 # Jalankan dengan: docker compose -f docker-compose.poc.yml up -d
 #
-# Yang Anda provision: postgres, redis, qdrant, minio, backend
-# Yang IOH provision:  vllm, tei-embed, tei-rerank, monitoring stack
-#
-# Sebelum jalankan: copy .env.poc ke .env, fill semua credentials production
+# Sebelum jalankan:
+#   1. cp .env.poc .env
+#   2. Edit .env: ganti semua CHANGE_ME (JWT_SECRET, POSTGRES_PASSWORD, MINIO_*, dll)
+#   3. (opsional) Set HF_TOKEN di .env jika butuh akses gated model
+#   4. docker compose -f docker-compose.poc.yml build backend
+#   5. docker compose -f docker-compose.poc.yml up -d
 
 services:
-  # ── YANG ANDA PROVISION ──────────────────────────────────────────────────
+  # ── Database & Storage ──────────────────────────────────────────────────
 
   postgres:
     image: postgres:16
@@ -47,7 +49,73 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
     volumes:
       - minio_data:/data
+    ports:
+      - "9001:9001"   # Console UI untuk buat bucket
     restart: unless-stopped
+
+  # ── LLM Serving (GPU) ──────────────────────────────────────────────────
+
+  vllm:
+    image: vllm/vllm-openai:latest
+    command: >
+      --model Qwen/Qwen3-VL-8B-Instruct
+      --port 8001
+      --max-model-len 8192
+      --gpu-memory-utilization 0.85
+      --max-num-seqs 64
+      --limit-mm-per-prompt image=2
+      --enable-prefix-caching
+      --served-model-name qwen3-vl-8b
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+      HF_HUB_ENABLE_HF_TRANSFER: "1"
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ── Embedding & Reranker (CPU, hemat VRAM) ─────────────────────────────
+
+  tei-embed:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    command: --model-id Qwen/Qwen3-Embedding-0.6B --port 8002
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - hf_cache:/data
+    restart: unless-stopped
+
+  tei-rerank:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    command: --model-id BAAI/bge-reranker-v2-m3 --port 8003
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - hf_cache:/data
+    restart: unless-stopped
+
+  # ── Moderation (Llama Guard 3 via Ollama, instance terpisah dari LLM) ──
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ── Backend Application ────────────────────────────────────────────────
 
   backend:
     build:
@@ -63,8 +131,16 @@ services:
         condition: service_started
       minio:
         condition: service_started
+      vllm:
+        condition: service_started
+      tei-embed:
+        condition: service_started
+      tei-rerank:
+        condition: service_started
+      ollama:
+        condition: service_started
     volumes:
-      - ./models:/app/models:ro            # model intent classifier + reranker (read-only)
+      - ./models:/app/models:ro
       - ./data/narratives:/app/data/narratives:ro
       - ./data/json:/app/data/json:ro
     ports:
@@ -77,57 +153,35 @@ services:
       retries: 3
       start_period: 60s
     deploy:
-      replicas: 1   # scale up dengan: docker compose up -d --scale backend=2
+      replicas: 1
 
-  # ── YANG IOH PROVISION (reference config — IOH yang setup) ──────────────
+  # ── Monitoring Stack ───────────────────────────────────────────────────
 
-  # vllm:
-  #   image: vllm/vllm-openai:latest
-  #   command: >
-  #     --model Qwen/Qwen3-VL-8B-Instruct
-  #     --port 8001
-  #     --max-model-len 8192
-  #     --gpu-memory-utilization 0.92
-  #     --max-num-seqs 64
-  #     --limit-mm-per-prompt image=2
-  #     --enable-prefix-caching
-  #     --served-model-name qwen3-vl-8b
-  #   volumes:
-  #     - hf_cache:/root/.cache/huggingface
-  #   deploy:
-  #     resources:
-  #       reservations:
-  #         devices:
-  #           - driver: nvidia
-  #             count: 1
-  #             capabilities: [gpu]
-  #
-  # tei-embed:
-  #   image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
-  #   command: --model-id Qwen/Qwen3-Embedding-0.6B --port 8002
-  #
-  # tei-rerank:
-  #   image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
-  #   command: --model-id BAAI/bge-reranker-v2-m3 --port 8003
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    restart: unless-stopped
 
-  # ── MONITORING (IOH provision) ────────────────────────────────────────────
-
-  # prometheus:
-  #   image: prom/prometheus:latest
-  #   volumes:
-  #     - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-  #
-  # grafana:
-  #   image: grafana/grafana:latest
-  #   volumes:
-  #     - grafana_data:/var/lib/grafana
-  #   ports:
-  #     - "3000:3000"
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
 
 volumes:
   pg_data:
   redis_data:
   qdrant_data:
   minio_data:
-  # hf_cache:
-  # grafana_data:
+  hf_cache:
+  ollama_data:
+  prometheus_data:
+  grafana_data:

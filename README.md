@@ -467,8 +467,8 @@ uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ## Setup POC (L40S 48GB)
 
 > **Posisi POC:** Staging deployment di server GPU untuk demo, load testing, dan validasi sebelum production sungguhan. **Bukan production-grade.** Lihat tabel [Environments](#environments) untuk perbedaan POC vs true production.
->
-> Service yang membutuhkan GPU (vLLM, TEI, Ollama) dan monitoring stack dicomment di `docker-compose.poc.yml` karena konfigurasinya menyesuaikan infrastruktur server — uncomment dan sesuaikan sebelum deploy.
+
+Semua service di `docker-compose.poc.yml` sudah aktif (tidak ada yang di-comment). Tinggal `cp .env.poc .env`, isi credential, dan `docker compose up`.
 
 ### Arsitektur Service POC
 
@@ -484,341 +484,210 @@ uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 │                                                                 │
 │   [Backend :8000] ──────────┬─────────────────────────────────  │
 │         │                   │                                   │
-│         ├──▶ [vLLM :8001]              (GPU — LLM serving)      │
-│         ├──▶ [Ollama :11434]           (GPU — Llama Guard 3)    │
-│         ├──▶ [TEI Embed :8002]         (CPU/GPU — Embedding)    │
-│         ├──▶ [TEI Rerank :8003]        (CPU/GPU — Reranker)     │
+│         ├──▶ [vLLM :8001]              (GPU — Qwen3-VL-8B)      │
+│         ├──▶ [Ollama :11434]           (GPU — Llama Guard 3 1B) │
+│         ├──▶ [TEI Embed :8002]         (CPU — Embedding)        │
+│         ├──▶ [TEI Rerank :8003]        (CPU — Reranker)         │
 │         ├──▶ [Qdrant :6333]            (Vector DB)              │
 │         ├──▶ [PostgreSQL :5432]        (Session DB)             │
-│         ├──▶ [Redis :6379]             (Semantic cache)         │
-│         └──▶ [MinIO :9000]             (Image storage)          │
+│         ├──▶ [Redis Stack :6379]       (Semantic cache)         │
+│         └──▶ [MinIO :9000]             (Image storage utk vision RAG) │
 │                                                                 │
-│   Monitoring (opsional):                                        │
-│         [Prometheus]   ◀── scrape /metrics dari backend          │
-│         [Grafana :3000] ◀── dashboard performance + RAG         │
+│   [Prometheus :9090] ◀── scrape /metrics dari backend            │
+│   [Grafana :3000]    ◀── dashboard performance                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-Semua service berkomunikasi via **Docker internal network** — tidak ada port yang terbuka ke publik kecuali backend port 8000 (di belakang reverse proxy untuk HTTPS).
+### Prasyarat
 
-### Prasyarat Hardware & Software
-
-| Komponen | Minimum | Direkomendasikan |
+| Komponen | Minimum | Rekomendasi |
 |---|---|---|
-| GPU | NVIDIA dengan VRAM 24GB | NVIDIA L40S 48GB |
-| CUDA | 12.1+ | 12.2+ |
+| GPU | NVIDIA VRAM 24GB | NVIDIA L40S 48GB |
 | RAM | 32 GB | 64 GB |
-| Disk | 100 GB SSD (model + data + image storage) | 500 GB NVMe |
-| OS | Ubuntu 22.04 LTS / Debian 12 | Ubuntu 22.04 LTS |
-| Docker | Docker Engine 24.0+ | Docker Engine 26.0+ |
-| Docker Compose | v2.20+ | v2.27+ |
-| NVIDIA Container Toolkit | latest | latest |
-| Python | 3.11 (untuk persiapan model lokal) | 3.11 |
+| Disk | 100 GB SSD | 500 GB NVMe |
+| OS | Ubuntu 22.04 LTS | Ubuntu 22.04 LTS |
+| Docker | 24.0+ | 26.0+ |
+| Python | 3.11 | 3.11 |
 
-### 1. Persiapan Server
+### Step 1 — Install Docker + NVIDIA Container Toolkit
 
-#### 1.1 Install Docker & NVIDIA Container Toolkit
+> **Skip step ini jika server sudah punya Docker + NVIDIA toolkit** (cek dengan: `docker run --rm --gpus all nvidia/cuda:12.2.0-base-ubuntu22.04 nvidia-smi` — jika berhasil menampilkan GPU info, langsung ke Step 2).
 
 ```bash
-# Docker Engine
+# Docker
 curl -fsSL https://get.docker.com | sudo sh
-sudo usermod -aG docker $USER
-newgrp docker
+sudo usermod -aG docker $USER && newgrp docker
 
-# NVIDIA Container Toolkit (wajib untuk GPU dalam container)
+# NVIDIA Container Toolkit
 distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
 curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
 curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
-    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-    sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-
+  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
 sudo apt update && sudo apt install -y nvidia-container-toolkit
 sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
 
-# Verifikasi GPU dapat diakses dari container
+# Verifikasi GPU dari container
 docker run --rm --gpus all nvidia/cuda:12.2.0-base-ubuntu22.04 nvidia-smi
 ```
 
-#### 1.2 Clone Repository
+### Step 2 — Clone & Siapkan Model + Data
 
 ```bash
 git clone https://github.com/Ikrar06/rag-prototype
 cd rag-prototype
-```
 
-### 2. Persiapan Model & Data
-
-Model dan data perlu disiapkan **sebelum** container backend di-build, karena akan di-mount sebagai volume read-only.
-
-#### 2.1 Install Python Dependencies (Lokal)
-
-```bash
+# Python venv untuk persiapan model lokal
 python3.11 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-```
 
-#### 2.2 Download Model
-
-```bash
+# Download intent classifier (~500MB) + reranker (~2.3GB)
 python scripts/download_models.py
 ```
 
-Output: `models/intent_classifier/` (~500MB) + `models/bge-reranker-v2-m3/` (~2.3GB).
-
-> **Catatan:** Model **LLM** (Qwen3-VL-8B) dan **Embedding** (Qwen3-Embedding-0.6B) tidak perlu didownload manual — di-load otomatis oleh vLLM dan TEI saat startup dari HuggingFace cache di volume `hf_cache`.
-
-#### 2.3 Generate Narasi & Index Data
+**Siapkan data JSON UNHAS** sebelum generate narasi:
 
 ```bash
-# 1. Pastikan file JSON ada di data/json/
-ls data/json/   # fakultas.json, prodi.json, mahasiswa.json, dst.
+# Taruh file JSON dari API UNHAS di data/json/
+ls data/json/
+# Harus ada: fakultas.json, prodi.json, mahasiswa.json, jadwal.json,
+#            mata-kuliah.json, jenjang.json, kurikulum.json, prasyarat.json,
+#            rps.json, kelas.json, fasilitas.json, pmb.json, pengumuman.json
 
-# 2. Generate narasi teks
+# Generate narasi teks (output ke data/narratives/)
 python scripts/preprocess-template.py
-
-# 3. Hasilnya di data/narratives/<endpoint>/*.txt
 ```
 
-Indexing ke Qdrant dilakukan **setelah** Qdrant container jalan (step 5).
+> File JSON didapat dari API UNHAS atau tim akademik. Jika belum tersedia, minimal `fakultas.json` dan `prodi.json` untuk smoke test.
 
-### 3. Konfigurasi Environment
+### Step 3 — Konfigurasi `.env`
 
 ```bash
 cp .env.poc .env
-nano .env   # atau editor favorit
+nano .env
 ```
 
-#### 3.1 Variable Wajib Diganti (CHANGE_ME)
+Wajib ganti:
 
-| Variable | Wajib | Keterangan |
-|---|---|---|
-| `JWT_SECRET` | ✅ | String random ≥ 32 byte. Generate: `python -c "import secrets; print(secrets.token_hex(32))"` |
-| `POSTGRES_PASSWORD` | ✅ | Password PostgreSQL container |
-| `DATABASE_URL` | ✅ | Ganti `CHANGE_ME` di string dengan password yang sama di atas |
-| `MINIO_USER` | ✅ | Username admin MinIO |
-| `MINIO_PASSWORD` | ✅ | Password admin MinIO (min 8 karakter) |
-| `MINIO_ACCESS_KEY` | ✅ | Access key untuk API MinIO (bisa sama dengan `MINIO_USER`) |
-| `MINIO_SECRET_KEY` | ✅ | Secret key untuk API MinIO (bisa sama dengan `MINIO_PASSWORD`) |
-| `ALLOWED_ORIGINS` | ✅ | Domain frontend production, dipisah koma |
-| `UNHAS_API_BASE_URL` | ❌ | Base URL API UNHAS — kosongkan jika belum tersedia |
+| Variable | Cara isi |
+|---|---|
+| `JWT_SECRET` | `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `POSTGRES_PASSWORD` | password random (≥ 16 karakter) |
+| `DATABASE_URL` | ganti `CHANGE_ME` dengan password di atas |
+| `MINIO_USER` | username admin MinIO |
+| `MINIO_PASSWORD` | password admin MinIO (≥ 8 karakter) |
+| `MINIO_ACCESS_KEY` | bisa sama dengan `MINIO_USER` |
+| `MINIO_SECRET_KEY` | bisa sama dengan `MINIO_PASSWORD` |
+| `GRAFANA_PASSWORD` | password admin Grafana |
+| `ALLOWED_ORIGINS` | domain frontend production, dipisah koma |
+| `HF_TOKEN` | (opsional) HuggingFace token, lihat Step 4 |
+| `UNHAS_API_BASE_URL` | (opsional) kosongkan jika belum ada |
 
-#### 3.2 Perbedaan Env POC vs Dev
+### Step 4 — HF_TOKEN (jika butuh model gated)
 
-| Variable | Dev | POC |
-|---|---|---|
-| `LLM_PROVIDER` | `ollama` | `vllm` |
-| `LLM_MODEL` | `qwen2.5:7b` | `Qwen/Qwen3-VL-8B-Instruct` |
-| `LLM_BASE_URL` | `http://localhost:11434` | `http://vllm:8001` |
-| `LLM_SUPPORTS_VISION` | `false` | `true` |
-| `LLM_MAX_TOKENS` | `1024` | `2048` |
-| `EMBED_PROVIDER` | `huggingface` (in-process) | `tei` (service terpisah) |
-| `EMBED_BASE_URL` | — | `http://tei-embed:8002` |
-| `RERANKER_PROVIDER` | `sentence_transformers` | `tei` |
-| `RERANKER_BASE_URL` | — | `http://tei-rerank:8003` |
-| `MODERATION_BACKEND` | `passthrough` | `ollama` (Llama Guard 3 via instance Ollama terpisah) |
-| `MODERATION_BASE_URL` | — | `http://ollama:11434` (terpisah dari `LLM_BASE_URL`) |
-| `QDRANT_URL` | `http://localhost:6333` | `http://qdrant:6333` |
-| `REDIS_URL` | `redis://localhost:6379/0` | `redis://redis:6379/0` |
-| `DATABASE_URL` | `postgresql://...@localhost:5432/...` | `postgresql+asyncpg://...@postgres:5432/...` |
-| `RATE_LIMIT_TEXT_PER_MINUTE` | `20` | `8` |
-| `RATE_LIMIT_VISION_PER_MINUTE` | — | `2` |
-| `LOG_LEVEL` | `DEBUG` | `INFO` |
-| `INTENT_MODEL_PATH` | `models/intent_classifier` | `/app/models/intent_classifier` |
-| `STORAGE_BACKEND` | — | `minio` |
-
-### 4. Uncomment & Konfigurasi Service GPU
-
-Edit `docker-compose.poc.yml`, uncomment dan sesuaikan blok berikut:
-
-#### 4.1 vLLM (LLM Server)
-
-```yaml
-vllm:
-  image: vllm/vllm-openai:latest
-  command: >
-    --model Qwen/Qwen3-VL-8B-Instruct
-    --port 8001
-    --max-model-len 8192
-    --gpu-memory-utilization 0.92
-    --max-num-seqs 64
-    --limit-mm-per-prompt image=2
-    --enable-prefix-caching
-    --served-model-name qwen3-vl-8b
-  volumes:
-    - hf_cache:/root/.cache/huggingface
-  restart: unless-stopped
-  deploy:
-    resources:
-      reservations:
-        devices:
-          - driver: nvidia
-            count: 1
-            capabilities: [gpu]
-```
-
-Parameter penting:
-
-| Flag | Fungsi | Rekomendasi |
-|---|---|---|
-| `--gpu-memory-utilization` | % VRAM untuk model | `0.92` untuk L40S 48GB; turunkan ke `0.85` jika OOM |
-| `--max-model-len` | Max context length token | `8192` (cukup untuk RAG + history) |
-| `--max-num-seqs` | Max concurrent requests | `64` untuk 50–100 user, `128` untuk lebih |
-| `--limit-mm-per-prompt image=2` | Max gambar per request | `2` (sesuai konfigurasi backend) |
-| `--enable-prefix-caching` | Cache prefix prompt | Wajib aktif (hemat VRAM + latency) |
-
-#### 4.2 TEI — Text Embeddings Inference
-
-```yaml
-tei-embed:
-  image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
-  command: --model-id Qwen/Qwen3-Embedding-0.6B --port 8002
-  ports:
-    - "8002"
-  restart: unless-stopped
-
-tei-rerank:
-  image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
-  command: --model-id BAAI/bge-reranker-v2-m3 --port 8003
-  ports:
-    - "8003"
-  restart: unless-stopped
-```
-
-> **GPU vs CPU:** Ganti `cpu-latest` ke `cuda12.2-latest` untuk akselerasi GPU. Embedding/reranker cukup ringan untuk CPU jika user < 100 concurrent.
-
-#### 4.3 Ollama untuk Moderasi (Llama Guard 3)
-
-```yaml
-ollama:
-  image: ollama/ollama:latest
-  volumes:
-    - ollama_data:/root/.ollama
-  restart: unless-stopped
-  deploy:
-    resources:
-      reservations:
-        devices:
-          - driver: nvidia
-            count: 1
-            capabilities: [gpu]
-```
-
-Setelah container jalan, pull model Llama Guard:
-```bash
-docker compose -f docker-compose.poc.yml exec ollama ollama pull llama-guard3:1b
-```
-
-#### 4.4 Monitoring (Opsional)
-
-```yaml
-prometheus:
-  image: prom/prometheus:latest
-  volumes:
-    - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-    - prometheus_data:/prometheus
-  restart: unless-stopped
-
-grafana:
-  image: grafana/grafana:latest
-  environment:
-    GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
-  volumes:
-    - grafana_data:/var/lib/grafana
-  ports:
-    - "3000:3000"
-  restart: unless-stopped
-```
-
-Aktifkan volume di bagian bawah file:
-```yaml
-volumes:
-  pg_data:
-  redis_data:
-  qdrant_data:
-  minio_data:
-  hf_cache:           # uncomment
-  ollama_data:        # uncomment
-  prometheus_data:    # uncomment jika monitoring aktif
-  grafana_data:       # uncomment jika monitoring aktif
-```
-
-Buat `monitoring/prometheus.yml`:
-```yaml
-global:
-  scrape_interval: 15s
-scrape_configs:
-  - job_name: 'backend'
-    static_configs:
-      - targets: ['backend:8000']
-    metrics_path: /metrics
-```
-
-### 5. Build & Jalankan Services
+Qwen3-VL-8B-Instruct dan Qwen3-Embedding-0.6B saat ini **public** — tidak butuh token. Tapi jika nanti pakai model gated (mis. Llama 3, Gemma):
 
 ```bash
-# Build image backend (sekitar 5-10 menit, tergantung jaringan)
+# 1. Buat token di https://huggingface.co/settings/tokens (scope: read)
+# 2. Accept license model di halaman HuggingFace
+# 3. Set di .env
+HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxx
+```
+
+vLLM dan TEI otomatis pakai `HF_TOKEN` dari environment.
+
+### Step 5 — Build & Start Services
+
+```bash
+# Build image backend (sekali saja, ~5-10 menit)
 docker compose -f docker-compose.poc.yml build backend
 
-# Jalankan semua service
+# Start semua service
 docker compose -f docker-compose.poc.yml up -d
 
 # Cek status
 docker compose -f docker-compose.poc.yml ps
 ```
 
-Output yang diharapkan: semua service `running` atau `healthy`.
+**Saat pertama kali jalan:**
+- **vLLM** download `Qwen/Qwen3-VL-8B-Instruct` dari HuggingFace (~16 GB) → 10–30 menit
+- **TEI** download `Qwen3-Embedding-0.6B` (~600 MB) dan `bge-reranker-v2-m3` (~2.3 GB)
+- **Ollama** masih kosong, perlu pull model di step 6
+- **Backend** akan start lebih dulu lalu retry health check sampai dependency ready (grace 60 detik, retry 3×). Wajar jika `docker compose ps` menunjukkan backend `unhealthy` di menit-menit awal — biarkan saja sampai vLLM selesai load.
 
-Ikuti log backend saat startup pertama:
+Pantau progress download:
 ```bash
-docker compose -f docker-compose.poc.yml logs -f backend
+docker compose -f docker-compose.poc.yml logs -f vllm
 ```
 
-> **Catatan vLLM:** Saat pertama kali jalan, vLLM akan download model dari HuggingFace (~16GB). Tunggu sampai log menunjukkan `Uvicorn running on http://0.0.0.0:8001`. Untuk model gated (perlu HF token), tambahkan environment variable di service vLLM:
-> ```yaml
-> environment:
->   HF_TOKEN: ${HF_TOKEN}
-> ```
+Tunggu sampai log vLLM muncul: `Uvicorn running on http://0.0.0.0:8001`.
 
-### 6. Setup Post-Deploy
+### Step 6 — Pull Model Llama Guard 3 (untuk Moderation)
 
-#### 6.1 Buat Bucket MinIO
+Setelah Ollama container jalan, pull model `llama-guard3:1b`:
 
 ```bash
-# Akses console MinIO via browser: http://server-ip:9001
-# Login dengan MINIO_USER / MINIO_PASSWORD
-# Buat bucket dengan nama sesuai MINIO_BUCKET (default: ragchat-images)
-
-# Atau via CLI:
-docker compose -f docker-compose.poc.yml exec minio \
-  mc alias set local http://localhost:9000 $MINIO_USER $MINIO_PASSWORD
-
-docker compose -f docker-compose.poc.yml exec minio \
-  mc mb local/ragchat-images
+docker compose -f docker-compose.poc.yml exec ollama ollama pull llama-guard3:1b
 ```
 
-#### 6.2 Index Data ke Qdrant
+Output yang diharapkan:
+```
+pulling manifest
+pulling 8c3c8f4... 100% ▕████████████████▏ 1.6 GB
+verifying sha256 digest
+writing manifest
+success
+```
+
+Verifikasi:
+```bash
+docker compose -f docker-compose.poc.yml exec ollama ollama list
+# Harus muncul: llama-guard3:1b
+```
+
+### Step 7 — Buat Bucket MinIO
+
+> **Untuk apa MinIO?** Menyimpan gambar yang di-upload user untuk fitur **vision RAG** (Qwen3-VL multimodal). Use case: user upload foto KRS/KTM/kartu ujian/formulir → backend simpan ke MinIO → URL gambar dikirim ke vLLM untuk dianalisis. Kalau pakai S3-compatible API jadi mudah migrate ke S3/GCS saat production.
+>
+> Skip step ini jika `LLM_SUPPORTS_VISION=false` di `.env` (text-only mode).
+
+Pakai env var dari host (perlu `-e` flag agar diteruskan ke container):
 
 ```bash
-# Index narasi yang sudah di-generate di step 2.3
+# Load .env ke shell agar variabel tersedia
+set -a && source .env && set +a
+
+# Setup MinIO client di dalam container
+docker compose -f docker-compose.poc.yml exec -e MINIO_USER -e MINIO_PASSWORD minio \
+  mc alias set local http://localhost:9000 "$MINIO_USER" "$MINIO_PASSWORD"
+
+# Buat bucket
+docker compose -f docker-compose.poc.yml exec minio mc mb local/ragchat-images
+```
+
+Atau via console UI: buka `http://<server-ip>:9001` → login pakai `MINIO_USER`/`MINIO_PASSWORD` → **Create Bucket** → nama `ragchat-images`.
+
+### Step 8 — Index Data ke Qdrant
+
+```bash
 docker compose -f docker-compose.poc.yml exec backend \
   python backend/services/index_narratives.py --force
 ```
 
-#### 6.3 Seed User Awal (Opsional)
-
-User otomatis di-seed dari `data/users.json` saat backend startup. Untuk seed manual:
-```bash
-docker compose -f docker-compose.poc.yml exec backend \
-  python -c "from backend.services.auth import seed_users_from_json; seed_users_from_json()"
+Output:
+```
+Indexing fakultas... 5 narrative chunks
+Indexing prodi... 11 narrative chunks
+...
+Total: ~150 chunks indexed to Qdrant collection 'unhas_docs'
 ```
 
-### 7. Verifikasi Deployment
-
-#### 7.1 Health Check
+### Step 9 — Verifikasi
 
 ```bash
+# Health check semua service
 curl http://localhost:8000/api/health
 ```
 
@@ -834,30 +703,25 @@ Response yang diharapkan:
 }
 ```
 
-`"status": "degraded"` berarti ada service yang belum terhubung — cek `docker compose logs <service_name>`.
-
-#### 7.2 Test Query
-
 ```bash
+# Test query end-to-end
 curl -X POST http://localhost:8000/api/query \
   -H "Content-Type: application/json" \
-  -d '{
-    "question": "apa syarat cuti akademik?",
-    "history": [],
-    "role": "public"
-  }'
+  -d '{"question":"apa syarat cuti akademik?","history":[],"role":"public"}'
 ```
 
-#### 7.3 Swagger UI
+Buka di browser (ganti `<server-ip>` dengan IP/hostname server, atau `localhost` jika akses dari mesin yang sama):
+- **Chat UI**: `http://<server-ip>:8000`
+- **Swagger**: `http://<server-ip>:8000/docs`
+- **MinIO Console**: `http://<server-ip>:9001` (login: `MINIO_USER` / `MINIO_PASSWORD`)
+- **Grafana**: `http://<server-ip>:3000` (login: `admin` / `GRAFANA_PASSWORD`)
 
-Buka di browser: `http://server-ip:8000/docs`
+### Step 10 — Reverse Proxy + HTTPS (Wajib untuk Public Access)
 
-### 8. Reverse Proxy + HTTPS (Production)
+Backend port 8000 **jangan diekspos langsung** ke internet. Pakai nginx:
 
-Untuk production, **JANGAN** expose port 8000 langsung. Pakai reverse proxy dengan HTTPS:
-
-Contoh konfigurasi **nginx**:
 ```nginx
+# /etc/nginx/sites-available/ragchat
 server {
     listen 443 ssl http2;
     server_name chatbot.unhas.ac.id;
@@ -873,7 +737,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # SSE streaming
+        # WAJIB untuk SSE streaming
         proxy_buffering off;
         proxy_cache off;
         proxy_read_timeout 180s;
@@ -881,80 +745,69 @@ server {
 }
 ```
 
-### 9. Maintenance & Operations
-
-#### 9.1 Update Image
-
 ```bash
-# Pull image latest
-docker compose -f docker-compose.poc.yml pull
+# Aktifkan + reload nginx
+sudo ln -s /etc/nginx/sites-available/ragchat /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
 
-# Rebuild backend (jika ada perubahan kode)
-docker compose -f docker-compose.poc.yml build backend
-
-# Restart dengan image baru
-docker compose -f docker-compose.poc.yml up -d
+# Generate cert Let's Encrypt
+sudo certbot --nginx -d chatbot.unhas.ac.id
 ```
 
-#### 9.2 Backup Data
+### Maintenance
 
 ```bash
-# Backup volume PostgreSQL
+# Update kode + rebuild
+git pull
+docker compose -f docker-compose.poc.yml build backend
+docker compose -f docker-compose.poc.yml up -d
+
+# Backup PostgreSQL
 docker compose -f docker-compose.poc.yml exec postgres \
   pg_dump -U ragchat ragchat > backup_$(date +%Y%m%d).sql
 
-# Backup volume Qdrant
+# Backup Qdrant volume
 docker run --rm -v rag-prototype_qdrant_data:/data -v $(pwd):/backup \
   alpine tar czf /backup/qdrant_$(date +%Y%m%d).tar.gz /data
-```
 
-#### 9.3 Scale Backend
-
-```bash
-# Scale ke 2 replica (butuh load balancer di depan)
+# Scale backend (butuh load balancer di depan)
 docker compose -f docker-compose.poc.yml up -d --scale backend=2
-```
 
-#### 9.4 View Logs
-
-```bash
-# Backend log saja
-docker compose -f docker-compose.poc.yml logs -f backend
-
-# Semua service, last 100 baris
-docker compose -f docker-compose.poc.yml logs --tail=100
-
-# Filter log dengan request_id tertentu
+# View log filter request_id
 docker compose -f docker-compose.poc.yml logs backend | grep "request_id=a3f9b1c2"
 ```
 
-### 10. Troubleshooting
+### Troubleshooting
 
 | Masalah | Penyebab | Solusi |
 |---|---|---|
-| `vllm` OOM saat startup | VRAM tidak cukup | Turunkan `--gpu-memory-utilization` ke 0.85 atau `--max-model-len` ke 4096 |
-| `backend` tidak connect ke `vllm` | Service belum ready | Tambah `depends_on: vllm: condition: service_healthy` |
-| Health check `intent_model: false` | Model belum di-mount | Pastikan `./models` di host sudah ada, restart backend |
-| `MinIO` bucket not found | Bucket belum dibuat | Jalankan step 6.1 |
-| Query selalu `out_of_scope` | Intent model salah load | Cek log: `intent_classifier_loaded path=...` |
-| Streaming response stuck | nginx buffering aktif | Tambah `proxy_buffering off;` di nginx config |
-| `degraded` di health check | Ada service `false` | Cek `docker compose logs <service>` untuk yang false |
+| `vllm` OOM saat startup | VRAM tidak cukup | Edit `--gpu-memory-utilization 0.85` → `0.75` di compose |
+| vLLM stuck "Downloading..." berjam-jam | Network lambat / firewall HF | Set `HF_HUB_ENABLE_HF_TRANSFER=1` (sudah default) |
+| `ollama list` kosong | Lupa pull model | Jalankan Step 6 |
+| `MODERATION_BACKEND=ollama` tapi tidak block | Llama Guard belum di-pull | Step 6 |
+| Health check `intent_model: false` | Volume `./models` belum di-mount | Step 2 (download model) lalu restart backend |
+| MinIO bucket not found error | Bucket belum dibuat | Step 7 |
+| Query selalu `out_of_scope` | Intent model salah load | Cek log: `docker compose logs backend \| grep intent_classifier` |
+| Streaming response stuck | nginx buffering aktif | Pastikan `proxy_buffering off;` di config |
+| `degraded` di health check | Ada service `false` | `docker compose ps` lalu `docker compose logs <service>` |
+| `connection refused` ke vLLM | vLLM masih loading model | Tunggu sampai log: `Uvicorn running on http://0.0.0.0:8001` |
 
-### 11. Production Checklist
+### Production Checklist
 
 Sebelum go-live, pastikan:
 
-- [ ] Semua `CHANGE_ME` di `.env` sudah diganti dengan nilai random
+- [ ] Semua `CHANGE_ME` di `.env` sudah diganti
 - [ ] `JWT_SECRET` minimal 32 byte hex
-- [ ] HTTPS aktif di reverse proxy (Let's Encrypt atau cert lain)
-- [ ] `ALLOWED_ORIGINS` sudah dibatasi ke domain production
-- [ ] Firewall: hanya port 443 (HTTPS) yang terbuka publik
+- [ ] HTTPS aktif (Let's Encrypt atau cert lain)
+- [ ] `ALLOWED_ORIGINS` dibatasi ke domain production
+- [ ] Firewall: hanya port 443 terbuka publik (port 9001, 3000 untuk akses internal saja)
 - [ ] Backup otomatis PostgreSQL + Qdrant terjadwal (cron)
-- [ ] Log rotation aktif (`logrotate` atau setara)
-- [ ] Monitoring (Prometheus + Grafana) aktif dengan alert
-- [ ] Rate limit production-grade di `.env` (default `8/min` text, `2/min` vision)
-- [ ] Test query end-to-end dengan beberapa role (`public`, `mahasiswa`, `admin`)
-- [ ] Verifikasi MinIO bucket policy (private read, presigned URL untuk download)
+- [ ] Log rotation aktif (`logrotate`)
+- [ ] Grafana dashboard sudah di-import untuk monitoring backend
+- [ ] Rate limit production-grade (default `8/min` text, `2/min` vision)
+- [ ] Test query end-to-end dengan 3 role: `public`, `mahasiswa`, `admin`
+- [ ] Llama Guard 3 sudah di-pull (`ollama list`)
+- [ ] Health check return `healthy`, bukan `degraded`
 
 ---
 
