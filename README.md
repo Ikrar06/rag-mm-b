@@ -574,8 +574,8 @@ Wajib ganti:
 | Variable | Cara isi |
 |---|---|
 | `JWT_SECRET` | `python -c "import secrets; print(secrets.token_hex(32))"` |
-| `POSTGRES_PASSWORD` | password random (≥ 16 karakter) |
-| `DATABASE_URL` | ganti `CHANGE_ME` dengan password di atas |
+| `POSTGRES_PASSWORD` | password random (≥ 16 karakter) untuk PostgreSQL container |
+| `DATABASE_URL` | ganti `CHANGE_ME` dengan nilai `POSTGRES_PASSWORD` yang sama (harus identik agar backend bisa connect ke PostgreSQL) |
 | `MINIO_USER` | username admin MinIO |
 | `MINIO_PASSWORD` | password admin MinIO (≥ 8 karakter) |
 | `MINIO_ACCESS_KEY` | bisa sama dengan `MINIO_USER` |
@@ -584,6 +584,11 @@ Wajib ganti:
 | `ALLOWED_ORIGINS` | domain frontend production, dipisah koma |
 | `HF_TOKEN` | (opsional) HuggingFace token, lihat Step 4 |
 | `UNHAS_API_BASE_URL` | (opsional) kosongkan jika belum ada |
+
+**Contoh konkret:** kalau `POSTGRES_PASSWORD=Rahasia123Banget`, maka:
+```
+DATABASE_URL=postgresql://ragchat:Rahasia123Banget@postgres:5432/ragchat
+```
 
 ### Step 4 — HF_TOKEN (jika butuh model gated)
 
