@@ -16,14 +16,18 @@ _PATTERNS = [
     # Tech stack internal
     (r'\b(qdrant|fastapi|ollama|vllm|llama[\s_]?index|langchain|redis|uvicorn|sqlalchemy)\b',
      "[internal system]", "tech_stack"),
-    # Format NIM mahasiswa (huruf kapital + 2 digit + huruf + 6-7 digit)
-    (r'\b[A-Z]\d{2}[A-Z]\d{6,7}\b', "[NIM]", "nim_pattern"),
     # JWT token
     (r'eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}', "[TOKEN]", "jwt_token"),
     # URL internal
     (r'https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)[^\s]*',
      "[internal URL]", "internal_url"),
 ]
+
+# CATATAN: NIM TIDAK di-redact karena bukan info rahasia.
+# - NIM mahasiswa = info publik (terpampang di KTM, daftar peserta kelas, dll)
+# - User boleh legit tanya "berapa NIM Maria Siregar?" -> intent get_info_public
+# - Yang sensitif sebenarnya: IPK, KHS, KRS, status UKT personal -> handled by intent classifier (L3)
+#   dengan classify ke get_info_private, lalu L4 yang gate aksesnya by JWT role.
 
 # Frasa internal yang kadang bocor dari context/prompt — hapus seluruh kalimat yang menyebutkannya
 # Pattern dirancang untuk dua kasus:
