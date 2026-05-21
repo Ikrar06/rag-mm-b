@@ -67,6 +67,18 @@ _HARMFUL_KEYWORDS = [
     "forget instruction", "new instruction", "jangan ikuti",
 ]
 
+# Pertanyaan tentang identitas/teknologi bot — pre-route ke chitchat
+# supaya tidak masuk ke RAG yang bisa bocor nama model/vendor.
+# Pattern: combination of (subject "anda/kamu") + (identity keyword).
+_IDENTITY_KEYWORDS = [
+    "gpt", "qwen", "claude", "gemini", "llama", "mistral", "grok", "kimi",
+    "deepseek", "alibaba", "openai", "anthropic", "meta", "google", "ernie",
+    "model ai", "model bahasa", "ai apa", "llm apa", "teknologi apa",
+    "versi berapa", "model apa", "powered by", "dibuat oleh", "dilatih oleh",
+    "siapa pembuat", "siapa kamu", "siapa anda", "kamu siapa", "anda siapa",
+    "kamu robot", "kamu bot", "kamu manusia", "kamu chatbot",
+]
+
 _RAG_KEYWORDS = {
     "ukt", "krs", "khs", "ipk", "ips", "sks", "kkn",
     "cuti", "prosedur", "syarat", "biaya", "beasiswa",
@@ -113,6 +125,16 @@ def _normalize(text: str) -> str:
 def _is_harmful(question: str) -> bool:
     q = _normalize(question)
     return any(kw in q for kw in _HARMFUL_KEYWORDS)
+
+
+def _is_identity_question(question: str) -> bool:
+    """Cek apakah user nanya identitas/teknologi bot.
+
+    Pre-route force ke chitchat supaya tidak masuk RAG (yang bisa bocor
+    nama model/vendor walau output filter sudah redact ke placeholder).
+    """
+    q = _normalize(question)
+    return any(kw in q for kw in _IDENTITY_KEYWORDS)
 
 
 def _needs_rag_for_vision_query(question: str) -> bool:
@@ -615,6 +637,14 @@ def query(
         )
 
     # ── 3. Layer 3 — Intent classification (IndoBERT) ─────────────────────────
+    # Pre-route: pertanyaan identity → force ke chitchat (bypass classifier
+    # yang kadang salah classify pertanyaan model identity)
+    if _is_identity_question(question):
+        logger.info(f"L3_identity_override → chitchat question={question[:60]!r}")
+        answer = _chitchat_response(question, history)
+        return _make_result(answer, mode="chitchat",
+                            intent="chitchat", intent_conf=1.0)
+
     intent_result = classify_intent(question)
     intent = intent_result["intent"]
     logger.info(f"L3_intent={intent} conf={intent_result['confidence']:.3f}")
@@ -811,6 +841,14 @@ def query_stream(
         return
 
     # ── 3. Layer 3 — Intent classification (IndoBERT) ─────────────────────────
+    # Pre-route: pertanyaan identity → force ke chitchat
+    if _is_identity_question(question):
+        logger.info(f"L3_identity_override → chitchat question={question[:60]!r}")
+        answer = _chitchat_response(question, history)
+        yield from _fake_stream(answer, _make_meta(answer, "chitchat",
+                                                    intent="chitchat", intent_conf=1.0))
+        return
+
     intent_result = classify_intent(question)
     intent = intent_result["intent"]
     _intent = intent

@@ -10,11 +10,14 @@ import logging
 logger = logging.getLogger(__name__)
 
 _PATTERNS = [
-    # Nama model/vendor AI
-    (r'\b(claude|gpt-?4?o?|gemini|llama|qwen|mistral|indobert|anthropic|openai)\b',
+    # Nama model AI
+    (r'\b(claude|gpt-?[1-9]?o?|gemini|llama|qwen|mistral|indobert|grok|kimi|deepseek|ernie|palm|bert)\b',
      "[AI system]", "ai_name"),
+    # Nama vendor / company AI (parent perusahaan)
+    (r'\b(anthropic|openai|alibaba\s*cloud|alibaba|meta\s*ai|meta|google\s*deepmind|deepmind|microsoft|xai|moonshot|mistral\s*ai|baidu|huggingface|hugging\s*face)\b',
+     "[AI vendor]", "ai_vendor"),
     # Tech stack internal
-    (r'\b(qdrant|fastapi|ollama|vllm|llama[\s_]?index|langchain|redis|uvicorn|sqlalchemy)\b',
+    (r'\b(qdrant|fastapi|ollama|vllm|llama[\s_]?index|langchain|redis|uvicorn|sqlalchemy|pytorch|tensorflow|transformers)\b',
      "[internal system]", "tech_stack"),
     # JWT token
     (r'eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}', "[TOKEN]", "jwt_token"),
