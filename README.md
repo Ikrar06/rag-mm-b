@@ -805,12 +805,27 @@ EMBED_BATCH_SIZE=32          # GPU handle batch besar
 EMBED_TIMEOUT=120            # GPU cepat, timeout kecil cukup
 ```
 
+**TEI tag berdasarkan GPU compute capability** (default `89-latest` untuk L40S/RTX 4090):
+
+| GPU | Compute Capability | TEI Tag |
+|---|---|---|
+| NVIDIA T4 | 7.5 (Turing) | `turing-latest` |
+| A100, A30 | 8.0 (Ampere) | `latest` |
+| RTX 3090, A10 | 8.6 (Ampere) | `86-latest` |
+| **L40S, L40, RTX 4090** | **8.9 (Ada Lovelace)** | **`89-latest`** ← default |
+| H100 | 9.0 (Hopper) | `hopper-latest` |
+
+Cek compute capability GPU:
+```bash
+nvidia-smi --query-gpu=name,compute_cap --format=csv
+```
+
 **Kalau VRAM ketat** (vLLM butuh full allocation atau GPU < 32 GB), fallback ke TEI CPU:
 
 ```yaml
 # docker-compose.poc.yml — edit tei-embed dan tei-rerank
 tei-embed:
-  image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest   # was cuda12.2-latest
+  image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest   # was 89-latest
   command: --model-id Qwen/Qwen3-Embedding-0.6B --port 8002
   environment:
     HF_TOKEN: ${HF_TOKEN:-}

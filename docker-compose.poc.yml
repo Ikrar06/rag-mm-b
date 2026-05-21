@@ -86,7 +86,7 @@ services:
   # tapi siap-siap indexing jadi 10-50x lebih lambat.
 
   tei-embed:
-    image: ghcr.io/huggingface/text-embeddings-inference:cuda12.2-latest
+    image: ghcr.io/huggingface/text-embeddings-inference:89-latest
     command: --model-id Qwen/Qwen3-Embedding-0.6B --port 8002
     environment:
       HF_TOKEN: ${HF_TOKEN:-}
@@ -102,7 +102,7 @@ services:
               capabilities: [gpu]
 
   tei-rerank:
-    image: ghcr.io/huggingface/text-embeddings-inference:cuda12.2-latest
+    image: ghcr.io/huggingface/text-embeddings-inference:89-latest
     command: --model-id BAAI/bge-reranker-v2-m3 --port 8003
     environment:
       HF_TOKEN: ${HF_TOKEN:-}
