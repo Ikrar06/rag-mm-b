@@ -181,6 +181,7 @@ INTENT_CONFIDENCE_THRESHOLD = float(os.getenv("INTENT_CONFIDENCE_THRESHOLD", "0.
 MODERATION_BACKEND = os.getenv("MODERATION_BACKEND", "passthrough")
 MODERATION_MODEL = os.getenv("MODERATION_MODEL", "llama-guard3:1b")
 MODERATION_BASE_URL = os.getenv("MODERATION_BASE_URL", LLM_BASE_URL)
+MODERATION_TIMEOUT = int(os.getenv("MODERATION_TIMEOUT", "20"))
 
 # =============================================================================
 # Rate Limiting

@@ -12,7 +12,12 @@ from enum import Enum
 
 import httpx
 
-from backend.config import MODERATION_BASE_URL, MODERATION_BACKEND, MODERATION_MODEL
+from backend.config import (
+    MODERATION_BASE_URL,
+    MODERATION_BACKEND,
+    MODERATION_MODEL,
+    MODERATION_TIMEOUT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +65,7 @@ def _check_ollama(text: str) -> tuple[bool, str]:
         resp = httpx.post(
             f"{MODERATION_BASE_URL}/api/generate",
             json={"model": MODERATION_MODEL, "prompt": prompt, "stream": False},
-            timeout=8.0,
+            timeout=float(MODERATION_TIMEOUT),
         )
         resp.raise_for_status()
         output = resp.json()["response"].strip().lower()
