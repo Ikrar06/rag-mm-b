@@ -434,14 +434,20 @@ python -c "from huggingface_hub import snapshot_download; snapshot_download('Qwe
 > python scripts/download_models.py
 > ```
 
-### 6. Index Data dari JSON API UNHAS
+### 6. Index Data ke Qdrant
+
+Dua sumber data masuk ke **collection Qdrant yang sama** (`unhas_docs`). Bisa di-index berurutan atau independen. Pastikan Qdrant container sudah jalan dulu (Step 3).
+
+#### 6a. Index Narrative dari JSON API UNHAS
 
 ```powershell
 # 1. Taruh file JSON di data/json/
-# 2. Generate narasi teks
+ls data/json/   # fakultas.json, prodi.json, mahasiswa.json, dst.
+
+# 2. Generate narasi teks (output ke data/narratives/)
 python scripts/preprocess-template.py
 
-# 3. Index ke Qdrant
+# 3. Index narratives ke Qdrant
 python backend/services/index_narratives.py
 
 # Force re-index (jika ada perubahan narasi):
@@ -453,7 +459,33 @@ python backend/services/index_narratives.py --force --endpoint fakultas,prodi
 
 > **Endpoint JSON yang didukung:** `fakultas`, `prodi`, `jenjang`, `kurikulum`, `mata-kuliah`, `prasyarat`, `rps`, `kelas`, `jadwal`, `fasilitas`, `pmb`, `pengumuman`, `mahasiswa`
 
-> **Index dari PDF** (opsional, untuk SOP/peraturan): panggil `POST /api/index` setelah server jalan.
+#### 6b. Index Dokumen PDF Resmi
+
+```powershell
+# 1. Taruh file PDF di data/pdfs/
+ls data/pdfs/   # SOP_*.pdf, Pedoman_*.pdf, dll.
+
+# 2. Index PDF ke Qdrant (incremental — skip file dengan hash sama)
+python scripts/index_documents.py
+
+# Force full re-index (hapus semua chunks PDF lama):
+python scripts/index_documents.py --force
+
+# Custom directory:
+python scripts/index_documents.py /path/to/pdfs --force
+```
+
+> **Note:** Indexing PDF di dev pakai strategy `fast` (lihat `PDF_EXTRACTION_STRATEGY` di `.env`). Gambar tidak akan dideskripsikan karena `LLM_SUPPORTS_VISION=false` — itu wajar. Untuk image description aktif, lihat Setup POC. Detail lengkap: section [PDF Indexing (Production-Grade)](#pdf-indexing-production-grade).
+
+#### Verifikasi Indexing
+
+```powershell
+# Cek total chunks di Qdrant
+curl http://localhost:6333/collections/unhas_docs
+
+# Atau via API backend (perlu server jalan dulu)
+curl http://localhost:8000/api/health
+```
 
 ### 7. Jalankan Server
 
@@ -563,6 +595,17 @@ python scripts/preprocess-template.py
 ```
 
 > File JSON didapat dari API UNHAS atau tim akademik. Jika belum tersedia, minimal `fakultas.json` dan `prodi.json` untuk smoke test.
+
+**Siapkan dokumen PDF resmi:**
+
+```bash
+# Taruh PDF resmi UNHAS di data/pdfs/
+ls data/pdfs/
+# Contoh: SOP_Cuti_Akademik.pdf, Pedoman_Penulisan_Skripsi.pdf,
+#         Rubrik_Penilaian.pdf, UKT_2025.pdf, dll.
+```
+
+> PDF akan di-index di Step 8. Folder `data/pdfs/` ke-mount sebagai volume read-only ke container backend. Indexing PDF di POC akan otomatis pakai Qwen3-VL untuk deskripsi gambar (lihat Step 8).
 
 ### Step 3 — Konfigurasi `.env`
 
@@ -678,7 +721,12 @@ Atau via console UI: buka `http://<server-ip>:9001` → login pakai `MINIO_USER`
 
 ### Step 8 — Index Data ke Qdrant
 
+Dua sumber data masuk ke **collection `unhas_docs` yang sama**. Index berurutan:
+
+**8a. Index Narrative dari JSON API UNHAS**
+
 ```bash
+# Pastikan narasi sudah ter-generate di Step 2 (data/narratives/*.txt)
 docker compose -f docker-compose.poc.yml exec backend \
   python backend/services/index_narratives.py --force
 ```
@@ -689,6 +737,32 @@ Indexing fakultas... 5 narrative chunks
 Indexing prodi... 11 narrative chunks
 ...
 Total: ~150 chunks indexed to Qdrant collection 'unhas_docs'
+```
+
+**8b. Index Dokumen PDF Resmi**
+
+```bash
+# Pastikan PDF sudah ada di data/pdfs/ (sudah di-mount sebagai volume read-only)
+docker compose -f docker-compose.poc.yml exec backend \
+  python scripts/index_documents.py
+```
+
+Output:
+```
+pdf_processing total=28 new=28 changed=0
+pdf_extract file=SOP_Cuti.pdf strategy=auto hash=ff1e880c
+pdf_chunked file=SOP_Cuti.pdf chunks=7
+...
+embedding_start total_chunks=619
+indexing_complete documents_indexed=619
+```
+
+> **Catatan POC:** Karena `LLM_SUPPORTS_VISION=true` dan vLLM sudah jalan, indexing PDF akan **otomatis panggil Qwen3-VL** untuk deskripsi gambar informative. Ini bisa makan waktu 30-90 menit untuk first-time full index (28 PDF). Re-indexing incremental cuma ~1-5 menit. Detail: section [PDF Indexing (Production-Grade)](#pdf-indexing-production-grade).
+
+**Cek total chunks:**
+```bash
+curl http://localhost:6333/collections/unhas_docs
+# expect: points_count ≈ 700-800 (narrative + PDF chunks)
 ```
 
 ### Step 9 — Verifikasi
