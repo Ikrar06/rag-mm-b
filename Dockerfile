@@ -25,6 +25,7 @@ COPY backend/ ./backend/
 COPY frontend/ ./frontend/
 COPY scripts/ ./scripts/
 COPY data/ ./data/
+COPY users.json ./users.json
 
 RUN mkdir -p /app/models /app/logs
 

@@ -720,6 +720,32 @@ docker compose -f docker-compose.poc.yml exec minio mc mb local/ragchat-images
 
 Atau via console UI: buka `http://<server-ip>:9001` → login pakai `MINIO_USER`/`MINIO_PASSWORD` → **Create Bucket** → nama `ragchat-images`.
 
+### Step 7.5 — Seed User Demo
+
+User demo akan otomatis ke-seed dari `users.json` saat backend startup. Verifikasi:
+
+```bash
+docker compose -f docker-compose.poc.yml exec postgres \
+  psql -U ragchat -d ragchat -c "SELECT username, role FROM users;"
+```
+
+Kalau kosong (0 rows), trigger seed manual:
+
+```bash
+docker compose -f docker-compose.poc.yml exec backend \
+  python -c "from backend.services.auth import seed_users_from_json; seed_users_from_json()"
+```
+
+**User demo default** (bisa diedit di `users.json` sebelum build):
+
+| Username | Password | Role |
+|---|---|---|
+| `mahasiswa1` | `demo123` | mahasiswa |
+| `staf1` | `staf456` | staf_akademik |
+| `calon1` | `calon789` | calon_mahasiswa |
+
+> Untuk production, **JANGAN** pakai password ini. Buat user via script terpisah atau integrasi SSO UNHAS. Password di-hash dengan bcrypt sebelum disimpan ke `users.password_hash`.
+
 ### Step 8 — Index Data ke Qdrant
 
 Dua sumber data masuk ke **collection `unhas_docs` yang sama**. Index berurutan:
