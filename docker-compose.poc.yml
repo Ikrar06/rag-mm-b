@@ -62,10 +62,10 @@ services:
       --gpu-memory-utilization 0.85
       --max-num-seqs 64
       --enable-prefix-caching
-      --served-model-name qwen3-vl-8b
-    # NOTE: --limit-mm-per-prompt image=2 dihapus karena syntax flag-nya berbeda
-    # antar versi vLLM dan bisa cause parsing error. Backend sudah enforce
-    # MAX_IMAGES_PER_MESSAGE=2 di Python level (config.py).
+    # NOTE: --served-model-name dihapus supaya vLLM pakai full HF path
+    # (Qwen/Qwen3-VL-8B-Instruct) sebagai model ID — match dengan LLM_MODEL di .env.
+    # --limit-mm-per-prompt image=2 dihapus karena syntax beda antar versi vLLM.
+    # Backend enforce MAX_IMAGES_PER_MESSAGE=2 di Python level (config.py).
     environment:
       HF_TOKEN: ${HF_TOKEN:-}
       HF_HUB_ENABLE_HF_TRANSFER: "1"
