@@ -20,6 +20,7 @@ from backend.config import (
     EMBED_BASE_URL,
     EMBED_DEVICE,
     EMBED_BATCH_SIZE,
+    EMBED_TIMEOUT,
     RERANKER_PROVIDER,
     RERANKER_MODEL,
     RERANKER_BASE_URL,
@@ -310,8 +311,9 @@ def _configure_settings():
             model_name=EMBED_MODEL,
             base_url=EMBED_BASE_URL,
             embed_batch_size=EMBED_BATCH_SIZE,
+            timeout=float(EMBED_TIMEOUT),
         )
-        logger.info(f"embed_provider=tei base_url={EMBED_BASE_URL}")
+        logger.info(f"embed_provider=tei base_url={EMBED_BASE_URL} batch={EMBED_BATCH_SIZE} timeout={EMBED_TIMEOUT}s")
     else:
         # Dev: in-process via HuggingFace (CUDA atau CPU sesuai EMBED_DEVICE)
         Settings.embed_model = HuggingFaceEmbedding(

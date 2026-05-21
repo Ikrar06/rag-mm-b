@@ -41,7 +41,8 @@ EMBED_PROVIDER: Literal["huggingface", "tei"] = os.getenv("EMBED_PROVIDER", "hug
 EMBED_MODEL = os.getenv("EMBED_MODEL", "Qwen/Qwen3-Embedding-0.6B")
 EMBED_BASE_URL = os.getenv("EMBED_BASE_URL", "")   # hanya dipakai kalau EMBED_PROVIDER=tei
 EMBED_DEVICE = os.getenv("EMBED_DEVICE", "cuda")
-EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "32"))
+EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "8"))   # kecil untuk TEI CPU, naikin kalau pakai GPU
+EMBED_TIMEOUT = int(os.getenv("EMBED_TIMEOUT", "600"))   # detik, untuk TEI HTTP call (CPU mode butuh besar)
 EMBED_DIMENSION = 1024
 
 # Backward-compat aliases
