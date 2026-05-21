@@ -44,7 +44,9 @@ from qdrant_client.models import (
 from config import (
     QDRANT_URL,
     QDRANT_COLLECTION_NAME,
+    EMBED_PROVIDER,
     EMBED_MODEL,
+    EMBED_BASE_URL,
     EMBED_DEVICE,
     EMBED_BATCH_SIZE,
     EMBED_DIMENSION,
@@ -149,12 +151,24 @@ def delete_endpoint_chunks(endpoint: str) -> None:
 # ─────────────────────────────────────────────────────────────────
 
 def _configure_embed():
-    Settings.embed_model = HuggingFaceEmbedding(
-        model_name=EMBED_MODEL,
-        device=EMBED_DEVICE,
-        trust_remote_code=True,
-        embed_batch_size=EMBED_BATCH_SIZE,
-    )
+    if EMBED_PROVIDER == "tei":
+        # POC: panggil TEI embedding service via HTTP (container ga butuh GPU)
+        from llama_index.embeddings.text_embeddings_inference import TextEmbeddingsInference
+        Settings.embed_model = TextEmbeddingsInference(
+            model_name=EMBED_MODEL,
+            base_url=EMBED_BASE_URL,
+            embed_batch_size=EMBED_BATCH_SIZE,
+        )
+        logger.info(f"embed_provider=tei base_url={EMBED_BASE_URL}")
+    else:
+        # Dev: in-process via HuggingFace (CUDA atau CPU sesuai EMBED_DEVICE)
+        Settings.embed_model = HuggingFaceEmbedding(
+            model_name=EMBED_MODEL,
+            device=EMBED_DEVICE,
+            trust_remote_code=True,
+            embed_batch_size=EMBED_BATCH_SIZE,
+        )
+        logger.info(f"embed_provider=huggingface device={EMBED_DEVICE}")
     # LLM tidak dipakai saat indexing — matikan agar tidak load model
     Settings.llm = None
 
