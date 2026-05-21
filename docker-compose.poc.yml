@@ -80,25 +80,42 @@ services:
               count: 1
               capabilities: [gpu]
 
-  # ── Embedding & Reranker (CPU, hemat VRAM) ─────────────────────────────
+  # ── Embedding & Reranker (GPU — production-grade) ──────────────────────
+  # VRAM ~1.5 GB (embed) + ~2.3 GB (rerank) = ~4 GB total.
+  # Kalau VRAM ketat, ganti image ke `cpu-latest` dan hapus blok `deploy:` —
+  # tapi siap-siap indexing jadi 10-50x lebih lambat.
 
   tei-embed:
-    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    image: ghcr.io/huggingface/text-embeddings-inference:cuda12.2-latest
     command: --model-id Qwen/Qwen3-Embedding-0.6B --port 8002
     environment:
       HF_TOKEN: ${HF_TOKEN:-}
     volumes:
       - hf_cache:/data
     restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   tei-rerank:
-    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    image: ghcr.io/huggingface/text-embeddings-inference:cuda12.2-latest
     command: --model-id BAAI/bge-reranker-v2-m3 --port 8003
     environment:
       HF_TOKEN: ${HF_TOKEN:-}
     volumes:
       - hf_cache:/data
     restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   # ── Moderation (Llama Guard 3 via Ollama, instance terpisah dari LLM) ──
 

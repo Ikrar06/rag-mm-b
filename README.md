@@ -792,48 +792,53 @@ curl http://localhost:6333/collections/unhas_docs
 # expect: points_count ≈ 700-800 (narrative + PDF chunks)
 ```
 
-#### Tuning TEI untuk Indexing Besar
+#### Tuning TEI — Default GPU, Fallback CPU
 
-Default `.env.poc` setting konservatif (CPU mode):
+Default `docker-compose.poc.yml` pakai **TEI GPU** (`cuda12.2-latest` image) untuk production-grade performance:
+- Indexing ~4400 chunks: **2-5 menit** (vs 30-60 menit CPU)
+- Query runtime latency: **20-50ms per call** (vs 100-500ms CPU)
+- VRAM cost: ~1.5 GB (embed) + ~2.3 GB (rerank) = ~4 GB total
+
+Default `.env.poc`:
 ```bash
-EMBED_BATCH_SIZE=8           # batch kecil supaya single batch ga timeout
-EMBED_TIMEOUT=600            # 10 menit per batch — safety margin besar
+EMBED_BATCH_SIZE=32          # GPU handle batch besar
+EMBED_TIMEOUT=120            # GPU cepat, timeout kecil cukup
 ```
 
-Estimasi waktu indexing ~4400 chunks dengan TEI CPU: **30-60 menit**.
-
-**Kalau punya budget VRAM** (cek `nvidia-smi`, harus ada free ≥ 5 GB setelah vLLM jalan), bisa migrate TEI ke GPU untuk 10-50× speedup:
+**Kalau VRAM ketat** (vLLM butuh full allocation atau GPU < 32 GB), fallback ke TEI CPU:
 
 ```yaml
 # docker-compose.poc.yml — edit tei-embed dan tei-rerank
 tei-embed:
-  image: ghcr.io/huggingface/text-embeddings-inference:cuda12.2-latest   # was cpu-latest
+  image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest   # was cuda12.2-latest
   command: --model-id Qwen/Qwen3-Embedding-0.6B --port 8002
   environment:
     HF_TOKEN: ${HF_TOKEN:-}
-  deploy:                       # tambah blok ini
-    resources:
-      reservations:
-        devices:
-          - driver: nvidia
-            count: 1
-            capabilities: [gpu]
+  volumes:
+    - hf_cache:/data
+  restart: unless-stopped
+  # HAPUS blok `deploy:` saat pakai CPU image
 ```
 
-Setelah pakai GPU, naikin `EMBED_BATCH_SIZE` di `.env`:
+Lalu turunkan batch + naikkan timeout di `.env`:
 ```bash
-EMBED_BATCH_SIZE=32          # GPU bisa handle batch besar
-EMBED_TIMEOUT=120            # GPU cepat, timeout kecil cukup
+EMBED_BATCH_SIZE=8           # batch kecil supaya single batch ga timeout
+EMBED_TIMEOUT=600            # 10 menit per batch — safety margin
 ```
 
-Restart `tei-embed` (dan `tei-rerank` kalau ikut migrate):
+Restart:
 ```bash
 docker compose -f docker-compose.poc.yml up -d --force-recreate tei-embed tei-rerank
+docker compose -f docker-compose.poc.yml restart backend
 ```
 
-Indexing ~4400 chunks dengan TEI GPU: **2-5 menit**.
+**Cek VRAM available** sebelum migrate:
+```bash
+nvidia-smi
+# Pastikan free ≥ 5 GB setelah vLLM + Ollama jalan
+```
 
-**Catatan:** Kalau VRAM ketat dan vLLM butuh full alocation, kurangi `--gpu-memory-utilization` di vLLM command dari 0.85 → 0.75 supaya free ~4-5 GB untuk TEI GPU.
+Kalau vLLM butuh full VRAM, kurangi `--gpu-memory-utilization` di vLLM command dari `0.85` → `0.75` supaya free ~4-5 GB untuk TEI GPU.
 
 ### Step 9 — Verifikasi
 
