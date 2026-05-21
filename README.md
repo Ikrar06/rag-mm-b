@@ -22,11 +22,12 @@ Tim 3 (Evaluasi) ─────────────────────
 9. [Sumber Data RAG](#sumber-data-rag)
 10. [Data Pipeline: JSON → Narasi → Qdrant](#data-pipeline-json--narasi--qdrant)
 11. [PDF Indexing (Production-Grade)](#pdf-indexing-production-grade)
-12. [API Reference](#api-reference)
-13. [Environment Variables](#environment-variables)
-14. [Untuk Tim 1 (BE + FE)](#untuk-tim-1-be--fe)
-15. [Untuk Tim 3 (Evaluasi)](#untuk-tim-3-evaluasi)
-16. [Progress](#progress)
+12. [Retrieval Strategy (Production-Grade)](#retrieval-strategy-production-grade)
+13. [API Reference](#api-reference)
+14. [Environment Variables](#environment-variables)
+15. [Untuk Tim 1 (BE + FE)](#untuk-tim-1-be--fe)
+16. [Untuk Tim 3 (Evaluasi)](#untuk-tim-3-evaluasi)
+17. [Progress](#progress)
 
 ---
 
@@ -1101,6 +1102,102 @@ Sistem reranker BGE otomatis mempertimbangkan konteks teks, tapi untuk advanced 
 
 ---
 
+## Retrieval Strategy (Production-Grade)
+
+### Masalah yang Diselesaikan
+
+PDF panjang (mis. `DRAFT PANDUAN KKN.pdf` = 100 chunks, `Rubrik 2024.pdf` = 118 chunks) sering memuat satu jawaban yang **tersebar di beberapa chunk berturutan**. Top-K retrieval naif bisa cuma ambil 1-2 chunk awal, info penting di chunk berikutnya hilang.
+
+### Solusi: Multi-Stage Retrieval dengan Neighbor Expansion
+
+```
+User Query
+    ↓
+[Step 1] Vector Search di Qdrant
+    → Ambil top-K chunks paling relevan (SIMILARITY_TOP_K=12)
+    ↓
+[Step 2] Neighbor Expansion
+    → Untuk setiap chunk hasil retrieval:
+      Fetch chunks tetangga (chunk_index ± NEIGHBOR_EXPANSION_RADIUS)
+      yang berada di file_name + section yang sama
+    → Dedup by (file_name, chunk_index)
+    → Cap total di MAX_EXPANDED_CHUNKS=30 supaya tidak overflow LLM context
+    ↓
+[Step 3] Cross-Encoder Reranking
+    → BGE-Reranker-v2-M3 re-score semua kandidat (retrieved + neighbors)
+    → Ambil top RERANKER_TOP_N=6 chunks dengan relevansi tertinggi
+    ↓
+[Step 4] Generation
+    → LLM generate jawaban dari top-N chunks + history + prompt template
+```
+
+### Konfigurasi via .env
+
+```bash
+# Step 1 — Initial vector search
+SIMILARITY_TOP_K=12              # Berapa chunks ambil dari Qdrant (lebih banyak = recall tinggi)
+SCORE_THRESHOLD=0.3              # Minimum top score; di bawah ini → mode "rag_low_relevance"
+
+# Step 2 — Neighbor expansion
+NEIGHBOR_EXPANSION_ENABLED=true  # set false untuk disable expansion
+NEIGHBOR_EXPANSION_RADIUS=2      # ±2 chunks per retrieved → max 5 chunks per section
+MAX_EXPANDED_CHUNKS=30           # Cap total kandidat sebelum reranking
+
+# Step 3 — Reranking
+RERANKER_TOP_N=6                 # Berapa chunks dikirim ke LLM sebagai context
+
+# Indexing-side
+CHUNK_SIZE=512                   # Ukuran chunk saat indexing
+CHUNK_OVERLAP=128                # Overlap antar chunk → kurangi info loss di boundary
+```
+
+### Kenapa Strategi Ini Bekerja
+
+| Aspek | Implementasi | Manfaat |
+|---|---|---|
+| **Recall vs Precision** | TOP_K=12 → reranker pilih 6 | Cast wide net, lalu filter ketat |
+| **Konteks utuh** | Neighbor expansion via metadata `section` + `chunk_index` | Jawaban yang span multi-chunk tetap utuh |
+| **Tidak overflow LLM** | `MAX_EXPANDED_CHUNKS=30` cap kandidat | Reranker handle final selection |
+| **Boundary loss** | `CHUNK_OVERLAP=128` (sebelumnya 50) | Info di boundary tidak hilang |
+| **Cross-encoder rerank** | BGE-Reranker-v2-M3 (state-of-the-art untuk Bahasa Indonesia) | Re-score akurat berdasarkan query-chunk pair |
+
+### Contoh Kerja
+
+User tanya: "Apa syarat pendaftaran KKN?"
+
+1. **Vector search** → match 12 chunks, ada 3 chunks dari `DRAFT PANDUAN KKN.pdf` di section "Pendaftaran" (chunks #15, #18, #20)
+
+2. **Neighbor expansion** → fetch chunks tetangga di section sama:
+   - Dari #15 → fetch #13, #14, #16, #17
+   - Dari #18 → fetch #16, #17, #19, #20 (#16, #17 sudah ada, skip)
+   - Dari #20 → fetch #18, #19, #21, #22 (#18, #19, #21 sudah ada)
+   - Total expanded: 12 (original) + ~8 unique neighbors = ~20 kandidat
+
+3. **Rerank** → BGE re-score 20 kandidat → ambil 6 paling relevan untuk query "syarat pendaftaran KKN"
+
+4. **Generation** → LLM dapat 6 chunks **berurutan** dari section "Pendaftaran", jawaban lengkap dan tidak terpotong.
+
+### Tuning untuk Use Case Spesifik
+
+| Skenario | Setting Rekomendasi |
+|---|---|
+| Banyak PDF panjang dengan info procedural berurutan | `NEIGHBOR_EXPANSION_RADIUS=3`, `MAX_EXPANDED_CHUNKS=40` |
+| Mostly fact lookup (definisi, daftar nominal) | `NEIGHBOR_EXPANSION_RADIUS=1`, `RERANKER_TOP_N=4` (precision tinggi) |
+| Latency-sensitive (chatbot real-time) | `NEIGHBOR_EXPANSION_ENABLED=false`, `SIMILARITY_TOP_K=8` |
+| Konteks luas (research, analisis) | `RERANKER_TOP_N=8`, `MAX_EXPANDED_CHUNKS=50` |
+
+### Performance Impact
+
+| Tahap | Latency Tambahan | Resource |
+|---|---|---|
+| Neighbor expansion (Qdrant scroll) | ~50-200ms per query | I/O Qdrant |
+| Reranker dengan 30 kandidat (vs 8) | ~200-500ms | GPU/CPU |
+| **Total overhead** | **~300-700ms per query** | — |
+
+Trade-off: latency naik sedikit, **kualitas jawaban naik drastis** untuk PDF panjang.
+
+---
+
 ## API Reference
 
 Semua endpoint tersedia di `http://localhost:8000/docs` (Swagger UI).
@@ -1314,6 +1411,7 @@ def evaluate_query(question: str, expected_answer: str = None):
 
 - [x] RAG pipeline (retrieval + rerank + generation)
 - [x] PDF indexing production-grade (layout-aware, table→markdown, image→vision description, content hash incremental)
+- [x] Retrieval production-grade (multi-stage: vector search → neighbor expansion → BGE rerank)
 - [x] JSON narrative pipeline (preprocess-template + index_narratives)
 - [x] Multi-turn conversation dengan history
 - [x] Streaming response (SSE)

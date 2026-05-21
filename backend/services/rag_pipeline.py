@@ -1,5 +1,6 @@
 """RAG pipeline service — retrieval, rerank, generation dengan history + RBAC + cache."""
 
+import json
 import logging
 import random
 import re
@@ -25,6 +26,9 @@ from backend.config import (
     SIMILARITY_TOP_K,
     SCORE_THRESHOLD,
     HISTORY_TURNS,
+    NEIGHBOR_EXPANSION_ENABLED,
+    NEIGHBOR_EXPANSION_RADIUS,
+    MAX_EXPANDED_CHUNKS,
 )
 from backend.services.llm_factory import get_llm
 from backend.prompts.templates import (
@@ -337,8 +341,118 @@ def _get_reranker():
     return _reranker
 
 
+def _expand_with_neighbors(nodes: list) -> list:
+    """Production-grade: fetch chunks tetangga (di file+section yang sama) untuk setiap
+    node yang ter-retrieve, supaya konteks panjang tidak terpotong.
+
+    Strategy:
+    1. Untuk setiap retrieved node, identifikasi (file_name, section, chunk_index).
+    2. Fetch chunks dengan file_name & section sama, dalam range chunk_index ± RADIUS.
+    3. Dedup berdasarkan (file_name, chunk_index).
+    4. Cap total expanded chunks di MAX_EXPANDED_CHUNKS supaya tidak overflow LLM context.
+
+    Score neighbor di-set 0.0 — reranker akan re-score semua di tahap berikutnya.
+    """
+    if not NEIGHBOR_EXPANSION_ENABLED or not nodes:
+        return nodes
+
+    from qdrant_client.models import Filter, FieldCondition, MatchValue, Range
+
+    # Mapping seen chunks supaya tidak duplicate fetch
+    seen: set[tuple[str, int]] = set()
+    for n in nodes:
+        fname = n.metadata.get("file_name")
+        cidx = n.metadata.get("chunk_index")
+        if fname and cidx is not None:
+            seen.add((fname, int(cidx)))
+
+    client = get_qdrant_client()
+    expanded_nodes = list(nodes)  # start dengan retrieved nodes
+
+    for node in nodes:
+        if len(expanded_nodes) >= MAX_EXPANDED_CHUNKS:
+            break
+
+        fname = node.metadata.get("file_name")
+        section = node.metadata.get("section")
+        cidx = node.metadata.get("chunk_index")
+        if not fname or cidx is None:
+            continue
+
+        cidx = int(cidx)
+        range_min = max(0, cidx - NEIGHBOR_EXPANSION_RADIUS)
+        range_max = cidx + NEIGHBOR_EXPANSION_RADIUS
+
+        # Build Qdrant filter: same file + same section (kalau ada) + chunk_index dalam range
+        conditions = [
+            FieldCondition(key="file_name", match=MatchValue(value=fname)),
+            FieldCondition(key="chunk_index", range=Range(gte=range_min, lte=range_max)),
+        ]
+        if section:
+            conditions.append(FieldCondition(key="section", match=MatchValue(value=section)))
+
+        try:
+            results, _ = client.scroll(
+                collection_name=QDRANT_COLLECTION_NAME,
+                scroll_filter=Filter(must=conditions),
+                limit=NEIGHBOR_EXPANSION_RADIUS * 2 + 1,
+                with_payload=True,
+                with_vectors=False,
+            )
+        except Exception as e:
+            logger.warning(f"neighbor_expansion_error file={fname} error={e}")
+            continue
+
+        for point in results:
+            payload = point.payload or {}
+            n_cidx = payload.get("chunk_index")
+            if n_cidx is None:
+                continue
+            key = (fname, int(n_cidx))
+            if key in seen:
+                continue
+            seen.add(key)
+
+            # Extract text dari payload. LlamaIndex Qdrant kadang simpan
+            # text di field "text" langsung, kadang di "_node_content" sebagai JSON string.
+            text = payload.get("text") or ""
+            if not text:
+                node_content = payload.get("_node_content")
+                if isinstance(node_content, str):
+                    try:
+                        text = json.loads(node_content).get("text", "")
+                    except (json.JSONDecodeError, AttributeError):
+                        text = ""
+                elif isinstance(node_content, dict):
+                    text = node_content.get("text", "")
+            if not text:
+                continue
+
+            # Bangun NodeWithScore manual dari payload
+            from llama_index.core.schema import TextNode, NodeWithScore as NWS
+            new_node = TextNode(text=text, metadata=payload)
+            expanded_nodes.append(NWS(node=new_node, score=0.0))
+
+            if len(expanded_nodes) >= MAX_EXPANDED_CHUNKS:
+                break
+
+    if len(expanded_nodes) > len(nodes):
+        logger.info(
+            f"neighbor_expansion retrieved={len(nodes)} expanded={len(expanded_nodes)} "
+            f"radius={NEIGHBOR_EXPANSION_RADIUS}"
+        )
+
+    return expanded_nodes
+
+
 def _retrieve_and_rerank(question: str, role: str = "public") -> tuple[list, float]:
-    """Retrieve from Qdrant + rerank. Return (reranked_nodes, top_score).
+    """Retrieve from Qdrant + neighbor expansion + rerank. Return (reranked_nodes, top_score).
+
+    Pipeline:
+    1. Vector search → top SIMILARITY_TOP_K chunks
+    2. Neighbor expansion → tambah chunks tetangga per retrieved (radius NEIGHBOR_EXPANSION_RADIUS)
+    3. Reranker → re-score semua kandidat, ambil top RERANKER_TOP_N
+    4. Source labeling → tambah label nama file untuk konteks LLM
 
     RBAC: saat dokumen sudah punya metadata 'access_level', tambah filter di sini.
     Untuk sekarang: semua dokumen dianggap 'public' — RBAC framework siap tapi belum aktif.
@@ -358,9 +472,13 @@ def _retrieve_and_rerank(question: str, role: str = "public") -> tuple[list, flo
     if not nodes:
         return [], 0.0
 
+    # Step 2: neighbor expansion untuk handle PDF panjang (konteks utuh)
+    expanded_nodes = _expand_with_neighbors(nodes)
+
+    # Step 3: reranker re-score semua kandidat (retrieved + neighbors)
     reranker = _get_reranker()
     labeler = SourceLabelPostprocessor()
-    reranked = reranker.postprocess_nodes(nodes, query_bundle=QueryBundle(question))
+    reranked = reranker.postprocess_nodes(expanded_nodes, query_bundle=QueryBundle(question))
     reranked = labeler.postprocess_nodes(reranked)
 
     top_score = float(max((n.score for n in reranked if n.score is not None), default=0.0))

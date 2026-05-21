@@ -54,7 +54,7 @@ EMBED_MODEL_NAME = EMBED_MODEL
 RERANKER_PROVIDER: Literal["sentence_transformers", "tei"] = os.getenv("RERANKER_PROVIDER", "sentence_transformers")
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", os.path.join(_PROJECT_ROOT, "models", "bge-reranker-v2-m3"))
 RERANKER_BASE_URL = os.getenv("RERANKER_BASE_URL", "")   # hanya dipakai kalau RERANKER_PROVIDER=tei
-RERANKER_TOP_N = int(os.getenv("RERANKER_TOP_N", "4"))
+RERANKER_TOP_N = int(os.getenv("RERANKER_TOP_N", "6"))
 RERANKER_USE_FP16 = True
 
 # Backward-compat alias
@@ -79,8 +79,8 @@ OCR_USE_GPU = True
 # Chunking
 # =============================================================================
 
-CHUNK_SIZE = 512
-CHUNK_OVERLAP = 50
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "512"))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "128"))
 
 # =============================================================================
 # PDF Processing (production-grade indexing)
@@ -106,8 +106,15 @@ PDF_TABLE_MAX_CHARS = int(os.getenv("PDF_TABLE_MAX_CHARS", "2000"))      # keep 
 # RAG Pipeline
 # =============================================================================
 
-SIMILARITY_TOP_K = int(os.getenv("SIMILARITY_TOP_K", "8"))
+SIMILARITY_TOP_K = int(os.getenv("SIMILARITY_TOP_K", "12"))
 SCORE_THRESHOLD = float(os.getenv("SCORE_THRESHOLD", "0.3"))
+
+# Neighbor expansion — production-grade strategy untuk PDF panjang.
+# Setelah retrieval top-K, fetch chunks tetangganya (di file & section yang sama)
+# supaya konteks panjang tidak terpotong. Reranker akan re-rank gabungan.
+NEIGHBOR_EXPANSION_ENABLED = os.getenv("NEIGHBOR_EXPANSION_ENABLED", "true").lower() == "true"
+NEIGHBOR_EXPANSION_RADIUS = int(os.getenv("NEIGHBOR_EXPANSION_RADIUS", "2"))
+MAX_EXPANDED_CHUNKS = int(os.getenv("MAX_EXPANDED_CHUNKS", "30"))
 
 # =============================================================================
 # Conversation history (multi-turn)

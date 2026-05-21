@@ -25,10 +25,28 @@ _PATTERNS = [
      "[internal URL]", "internal_url"),
 ]
 
+# Prefix label dari prompt template yang kadang bocor ke jawaban (LLM mimic format)
+_LEAKED_PREFIXES = [
+    r'^\s*(?:jawaban|jawab|format|panduan format|format jawaban)\s*[:：]\s*',
+    r'^\s*\d+[-–]?\d*\s*kalimat\s*[:：]\s*',
+    r'^\s*(?:paragraf biasa|bullet|nomor|tanpa bullet)\s*[:：]\s*',
+]
+
+
+def _strip_leaked_prefix(text: str, session_id: str = "") -> str:
+    """Hapus prefix label format yang bocor dari prompt instruction."""
+    cleaned = text
+    for pattern in _LEAKED_PREFIXES:
+        new = re.sub(pattern, "", cleaned, count=1, flags=re.IGNORECASE)
+        if new != cleaned:
+            logger.warning(f"output_filter_stripped_prefix session={session_id}")
+            cleaned = new
+    return cleaned
+
 
 def filter_output(text: str, session_id: str = "") -> str:
     """Scan dan redact informasi sensitif dari response LLM."""
-    filtered = text
+    filtered = _strip_leaked_prefix(text, session_id)
     for pattern, replacement, label in _PATTERNS:
         before = filtered
         filtered = re.sub(pattern, replacement, filtered, flags=re.IGNORECASE)
