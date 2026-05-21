@@ -15,10 +15,14 @@ from llama_index.vector_stores.qdrant import QdrantVectorStore
 
 from backend.config import (
     LLM_MODEL,
+    EMBED_PROVIDER,
     EMBED_MODEL,
+    EMBED_BASE_URL,
     EMBED_DEVICE,
     EMBED_BATCH_SIZE,
+    RERANKER_PROVIDER,
     RERANKER_MODEL,
+    RERANKER_BASE_URL,
     RERANKER_TOP_N,
     QDRANT_COLLECTION_NAME,
     CHUNK_SIZE,
@@ -299,12 +303,24 @@ def _condense_question(history: list[dict], question: str) -> tuple[str, bool]:
 # ─── Pipeline setup ──────────────────────────────────────────────────────────
 
 def _configure_settings():
-    Settings.embed_model = HuggingFaceEmbedding(
-        model_name=EMBED_MODEL,
-        device=EMBED_DEVICE,
-        trust_remote_code=True,
-        embed_batch_size=EMBED_BATCH_SIZE,
-    )
+    if EMBED_PROVIDER == "tei":
+        # POC: panggil TEI service via HTTP (model di-host di container terpisah)
+        from llama_index.embeddings.text_embeddings_inference import TextEmbeddingsInference
+        Settings.embed_model = TextEmbeddingsInference(
+            model_name=EMBED_MODEL,
+            base_url=EMBED_BASE_URL,
+            embed_batch_size=EMBED_BATCH_SIZE,
+        )
+        logger.info(f"embed_provider=tei base_url={EMBED_BASE_URL}")
+    else:
+        # Dev: in-process via HuggingFace (CUDA atau CPU sesuai EMBED_DEVICE)
+        Settings.embed_model = HuggingFaceEmbedding(
+            model_name=EMBED_MODEL,
+            device=EMBED_DEVICE,
+            trust_remote_code=True,
+            embed_batch_size=EMBED_BATCH_SIZE,
+        )
+        logger.info(f"embed_provider=huggingface device={EMBED_DEVICE}")
     Settings.llm = get_llm()
     Settings.chunk_size = CHUNK_SIZE
     Settings.chunk_overlap = CHUNK_OVERLAP
@@ -329,15 +345,68 @@ def _get_retriever():
     return _retriever
 
 
+class _TEIRerankPostprocessor(BaseNodePostprocessor):
+    """Custom reranker postprocessor yang panggil TEI /rerank endpoint via HTTP."""
+
+    base_url: str
+    top_n: int
+    timeout: float = 30.0
+
+    def _postprocess_nodes(
+        self, nodes: List[NodeWithScore], query_bundle: Optional[QueryBundle] = None
+    ) -> List[NodeWithScore]:
+        if not nodes or query_bundle is None:
+            return nodes
+
+        import httpx
+        try:
+            resp = httpx.post(
+                f"{self.base_url.rstrip('/')}/rerank",
+                json={
+                    "query": query_bundle.query_str,
+                    "texts": [n.node.get_content() for n in nodes],
+                    "raw_scores": False,
+                    "return_text": False,
+                },
+                timeout=self.timeout,
+            )
+            resp.raise_for_status()
+            results = resp.json()
+        except Exception as e:
+            logger.error(f"tei_rerank_error error={e} — falling back to original order")
+            return nodes[: self.top_n]
+
+        # TEI returns [{"index": i, "score": s}, ...] sudah sorted desc by score
+        reranked = []
+        for r in results[: self.top_n]:
+            idx = r.get("index")
+            if idx is None or idx >= len(nodes):
+                continue
+            node = nodes[idx]
+            node.score = float(r.get("score", 0.0))
+            reranked.append(node)
+        return reranked
+
+
 def _get_reranker():
     global _reranker
     if _reranker is not None:
         return _reranker
-    _reranker = SentenceTransformerRerank(
-        model=RERANKER_MODEL,
-        top_n=RERANKER_TOP_N,
-        keep_retrieval_score=False,
-    )
+    if RERANKER_PROVIDER == "tei":
+        # POC: panggil TEI rerank service via HTTP
+        _reranker = _TEIRerankPostprocessor(
+            base_url=RERANKER_BASE_URL,
+            top_n=RERANKER_TOP_N,
+        )
+        logger.info(f"reranker_provider=tei base_url={RERANKER_BASE_URL}")
+    else:
+        # Dev: in-process via sentence-transformers
+        _reranker = SentenceTransformerRerank(
+            model=RERANKER_MODEL,
+            top_n=RERANKER_TOP_N,
+            keep_retrieval_score=False,
+        )
+        logger.info(f"reranker_provider=sentence_transformers model={RERANKER_MODEL}")
     return _reranker
 
 
