@@ -25,6 +25,15 @@ _PATTERNS = [
      "[internal URL]", "internal_url"),
 ]
 
+# Frasa internal yang kadang bocor dari context/prompt — hapus seluruh kalimat yang menyebutkannya
+_LEAKED_INTERNAL_REFS = [
+    r'Informasi ini[^.]*?bagian\s*"?INFORMASI RESMI UNHAS"?[^.]*?\.',
+    r'(?:Berdasarkan|Menurut)\s+(?:bagian\s+)?"?INFORMASI RESMI UNHAS"?[^.]*?\.',
+    r'(?:di|pada)\s+(?:bagian\s+)?"?INFORMASI RESMI UNHAS"?[^.]*?\.',
+    r'(?:Informasi ini|Data ini|Sumber ini)\s+(?:dapat|bisa)\s+Anda\s+peroleh\s+dari[^.]*?\.',
+    r'(?:ringkasan|data)\s+(?:yang\s+)?(?:disediakan|tersedia)\s+(?:dalam|di)\s+(?:bagian\s+)?[^.]*?\.',
+]
+
 # Prefix label dari prompt template yang kadang bocor ke jawaban (LLM mimic format)
 _LEAKED_PREFIXES = [
     r'^\s*(?:jawaban|jawab|format|panduan format|format jawaban)\s*[:：]\s*',
@@ -44,9 +53,24 @@ def _strip_leaked_prefix(text: str, session_id: str = "") -> str:
     return cleaned
 
 
+def _strip_internal_refs(text: str, session_id: str = "") -> str:
+    """Hapus kalimat yang menyebut sumber internal (mis. 'INFORMASI RESMI UNHAS')."""
+    cleaned = text
+    for pattern in _LEAKED_INTERNAL_REFS:
+        new = re.sub(pattern, "", cleaned, flags=re.IGNORECASE | re.DOTALL)
+        if new != cleaned:
+            logger.warning(f"output_filter_stripped_internal_ref session={session_id}")
+            cleaned = new
+    # Cleanup extra whitespace setelah penghapusan
+    cleaned = re.sub(r'\s+\n', '\n', cleaned)
+    cleaned = re.sub(r'\n\s*\n+', '\n\n', cleaned)
+    return cleaned.strip()
+
+
 def filter_output(text: str, session_id: str = "") -> str:
     """Scan dan redact informasi sensitif dari response LLM."""
     filtered = _strip_leaked_prefix(text, session_id)
+    filtered = _strip_internal_refs(filtered, session_id)
     for pattern, replacement, label in _PATTERNS:
         before = filtered
         filtered = re.sub(pattern, replacement, filtered, flags=re.IGNORECASE)
