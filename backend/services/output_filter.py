@@ -88,5 +88,17 @@ def filter_output(text: str, session_id: str = "") -> str:
 
 
 def filter_token(delta: str) -> str:
-    """Filter single token delta — dipakai saat streaming real-time."""
-    return filter_output(delta)
+    """Filter single token delta — dipakai saat streaming real-time.
+
+    Penting: JANGAN .strip() token karena vLLM kirim token dengan leading
+    space (' Studi', ' Teknik') yang penting untuk display streaming.
+    Cuma redact pattern sensitif (model name, NIM, JWT, URL), TANPA
+    trim whitespace yang dilakukan filter_output().
+    """
+    filtered = delta
+    for pattern, replacement, label in _PATTERNS:
+        before = filtered
+        filtered = re.sub(pattern, replacement, filtered, flags=re.IGNORECASE)
+        if filtered != before:
+            logger.warning(f"output_filter_redacted_token pattern={label}")
+    return filtered
