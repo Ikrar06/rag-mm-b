@@ -26,12 +26,20 @@ _PATTERNS = [
 ]
 
 # Frasa internal yang kadang bocor dari context/prompt — hapus seluruh kalimat yang menyebutkannya
+# Pattern dirancang untuk dua kasus:
+# 1. Kalimat lengkap dengan period di akhir — strip seluruh kalimat
+# 2. Kalimat trailing tanpa period (LLM stuck mid-sentence) — strip dari frasa sampai akhir teks
 _LEAKED_INTERNAL_REFS = [
-    r'Informasi ini[^.]*?bagian\s*"?INFORMASI RESMI UNHAS"?[^.]*?\.',
-    r'(?:Berdasarkan|Menurut)\s+(?:bagian\s+)?"?INFORMASI RESMI UNHAS"?[^.]*?\.',
-    r'(?:di|pada)\s+(?:bagian\s+)?"?INFORMASI RESMI UNHAS"?[^.]*?\.',
-    r'(?:Informasi ini|Data ini|Sumber ini)\s+(?:dapat|bisa)\s+Anda\s+peroleh\s+dari[^.]*?\.',
-    r'(?:ringkasan|data)\s+(?:yang\s+)?(?:disediakan|tersedia)\s+(?:dalam|di)\s+(?:bagian\s+)?[^.]*?\.',
+    # Kalimat lengkap yang menyebut INFORMASI RESMI UNHAS
+    r'[A-Z][^.!?]*?(?:INFORMASI\s+RESMI\s+UNHAS)[^.!?]*?[.!?]',
+    # Trailing justifikasi sumber yang mulai dengan "Informasi ini..." (dengan/tanpa period)
+    r'\s*Informasi\s+ini\s+(?:didasarkan|berasal|diambil|diperoleh|bersumber)[^.!?]*[.!?]?\s*$',
+    # Trailing justifikasi sumber yang mulai dengan "Data ini..."
+    r'\s*Data\s+ini\s+(?:didasarkan|berasal|diambil|diperoleh|bersumber)[^.!?]*[.!?]?\s*$',
+    # Trailing "Menurut dokumen/data/ringkasan..."
+    r'\s*Menurut\s+(?:dokumen|data|ringkasan|sumber|informasi)\b[^.!?]*[.!?]?\s*$',
+    # Trailing "Berdasarkan dokumen/data/ringkasan..."
+    r'\s*Berdasarkan\s+(?:dokumen|data|ringkasan|sumber|informasi|catatan)\b[^.!?]*[.!?]?\s*$',
 ]
 
 # Prefix label dari prompt template yang kadang bocor ke jawaban (LLM mimic format)
