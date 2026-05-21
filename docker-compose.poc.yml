@@ -1,5 +1,3 @@
-version: "3.8"
-
 # POC environment — server GPU (rekomendasi L40S 48GB atau setara)
 # Jalankan dengan: docker compose -f docker-compose.poc.yml up -d
 #

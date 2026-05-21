@@ -47,6 +47,9 @@ slowapi>=0.1.9
 # Structured logging
 structlog>=24.1.0
 
+# Prometheus metrics (expose /metrics endpoint untuk monitoring)
+prometheus-fastapi-instrumentator>=7.0.0
+
 # HTTP client (moderation + private API)
 httpx>=0.27.0
 

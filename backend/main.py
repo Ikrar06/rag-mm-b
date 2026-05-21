@@ -31,6 +31,14 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="RAG Chatbot UNHAS", version="2.0.0")
 
+# ── Prometheus metrics — expose /metrics untuk scraping ───────────────────────
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+    logger.info("prometheus_metrics_enabled endpoint=/metrics")
+except ImportError:
+    logger.info("prometheus_instrumentator_not_installed — /metrics endpoint disabled")
+
 # ── Rate limiting ──────────────────────────────────────────────────────────────
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
