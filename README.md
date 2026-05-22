@@ -518,11 +518,12 @@ Semua service di `docker-compose.poc.yml` sudah aktif (tidak ada yang di-comment
 │                     Docker Network: ragchat                     │
 │                                                                 │
 │   [Backend :8000] ──────────┬─────────────────────────────────  │
+│   (GPU — PaddleOCR)         │                                   │
 │         │                   │                                   │
 │         ├──▶ [vLLM :8001]              (GPU — Qwen3-VL-8B)      │
 │         ├──▶ [Ollama :11434]           (GPU — Llama Guard 3 1B) │
-│         ├──▶ [TEI Embed :8002]         (CPU — Embedding)        │
-│         ├──▶ [TEI Rerank :8003]        (CPU — Reranker)         │
+│         ├──▶ [TEI Embed :8002]         (GPU — Embedding)        │
+│         ├──▶ [TEI Rerank :8003]        (GPU — Reranker)         │
 │         ├──▶ [Qdrant :6333]            (Vector DB)              │
 │         ├──▶ [PostgreSQL :5432]        (Session DB)             │
 │         ├──▶ [Redis Stack :6379]       (Semantic cache)         │
@@ -543,6 +544,25 @@ Semua service di `docker-compose.poc.yml` sudah aktif (tidak ada yang di-comment
 | OS | Ubuntu 22.04 LTS | Ubuntu 22.04 LTS |
 | Docker | 24.0+ | 26.0+ |
 | Python | 3.11 | 3.11 |
+| NVIDIA Driver | ≥ 545.x (CUDA 12.4 runtime compat) | ≥ 590.x |
+
+### VRAM Budget (L40S 48GB)
+
+Semua service GPU dalam **1 GPU yang sama**, di-share via NVIDIA Container Toolkit. Allocation by design:
+
+| Service | VRAM | Tipe alloc |
+|---|---|---|
+| vLLM (Qwen3-VL-8B, `--gpu-memory-utilization 0.80`) | ~38 GB | Statis (reserve di startup) |
+| TEI Embed (Qwen3-Embedding-0.6B) | ~1.5 GB | Statis |
+| TEI Rerank (bge-reranker-v2-m3) | ~2.3 GB | Statis |
+| Ollama (Llama Guard 3 1B, 4-bit) | ~1.5 GB | Statis |
+| **Backend (PaddleOCR)** | **~1-2 GB** | **On-demand (saat indexing/OCR)** |
+| **Total** | **~44.5 GB** | Free margin: **~3-4 GB** |
+
+**Catatan tuning:**
+- vLLM dulu pakai `--gpu-memory-utilization 0.85` (~40.8 GB). **Diturunkan ke 0.80** supaya PaddleOCR di backend punya margin yang aman.
+- Kalau vLLM butuh throughput lebih tinggi (max-num-seqs > 64 atau prompt panjang > 8192), naikkan lagi `--gpu-memory-utilization` dan **matikan PaddleOCR GPU** (`OCR_USE_GPU=false`). Trade-off: indexing PDF scanned jadi 5-15× lebih lambat tapi memungkinkan vLLM concurrent lebih tinggi.
+- PaddleOCR alokasi 1-2 GB peak hanya saat ada page yang butuh OCR (PDF scanned). Untuk PDF digital (text-based), VRAM tidak ke-touch.
 
 ### Step 1 — Install Docker + NVIDIA Container Toolkit
 
@@ -599,14 +619,36 @@ python scripts/preprocess-template.py
 
 **Siapkan dokumen PDF resmi:**
 
+PDF resmi UNHAS biasanya didistribusikan sebagai **zip archive** (mis. dari Drive, repo internal). Pakai `scripts/fetch_pdfs.py` untuk extract otomatis ke `data/pdfs/`:
+
 ```bash
-# Taruh PDF resmi UNHAS di data/pdfs/
-ls data/pdfs/
-# Contoh: SOP_Cuti_Akademik.pdf, Pedoman_Penulisan_Skripsi.pdf,
-#         Rubrik_Penilaian.pdf, UKT_2025.pdf, dll.
+# Opsi A — extract dari folder lokal yang berisi .zip
+python scripts/fetch_pdfs.py --source /path/to/folder/with/zips
+
+# Opsi B — clone GitHub repo (private/public) lalu extract semua .zip di dalamnya
+python scripts/fetch_pdfs.py --source https://github.com/org/pdf-data-repo
+
+# Dry run dulu kalau ragu (lihat apa yang akan di-extract tanpa eksekusi)
+python scripts/fetch_pdfs.py --source /path/to/zips --dry-run
+
+# Force overwrite kalau PDF sudah ada dan ingin replace
+python scripts/fetch_pdfs.py --source /path/to/zips --force
 ```
 
-> PDF akan di-index di Step 8. Folder `data/pdfs/` ke-mount sebagai volume read-only ke container backend. Indexing PDF di POC akan otomatis pakai Qwen3-VL untuk deskripsi gambar (lihat Step 8).
+Script ini:
+- Scan rekursif semua `.zip` di source
+- Extract **hanya file `.pdf`** (buang struktur folder dalam zip)
+- Skip PDF yang sudah ada di `data/pdfs/` kecuali `--force`
+- Atomic write (extract ke `.tmp` lalu rename, supaya tidak ada file parsial)
+
+Verifikasi hasil:
+```bash
+ls data/pdfs/
+# Contoh: 1.-SOP_Cuti_Akademik.pdf, 2.-Pedoman_Penulisan_Skripsi.pdf,
+#         3.-UKT-TAHUN-2025.pdf, ... (200+ file)
+```
+
+> PDF akan di-index di Step 8. Folder `data/pdfs/` ke-mount sebagai volume read-only ke container backend (`./data/pdfs:/app/data/pdfs:ro` di `docker-compose.poc.yml`). Indexing PDF di POC akan otomatis pakai Qwen3-VL untuk deskripsi gambar (lihat Step 8).
 
 ### Step 3 — Konfigurasi `.env`
 
@@ -768,28 +810,63 @@ Total: ~150 chunks indexed to Qdrant collection 'unhas_docs'
 
 **8b. Index Dokumen PDF Resmi**
 
+**Verifikasi dulu** PDF sudah ke-mount ke container backend (host `data/pdfs/` → container `/app/data/pdfs/`):
+
 ```bash
-# Pastikan PDF sudah ada di data/pdfs/ (sudah di-mount sebagai volume read-only)
+docker compose -f docker-compose.poc.yml exec backend ls /app/data/pdfs | head
+# Harus muncul daftar PDF. Kalau "No such file or directory", mount belum aktif —
+# cek docker-compose.poc.yml service backend → volumes harus include:
+#   - ./data/pdfs:/app/data/pdfs:ro
+# Lalu: docker compose -f docker-compose.poc.yml up -d --force-recreate backend
+```
+
+Jalankan indexing:
+
+```bash
 docker compose -f docker-compose.poc.yml exec backend \
   python scripts/index_documents.py
 ```
 
-Output:
+Output progres yang diharapkan (per-PDF):
 ```
-pdf_processing total=28 new=28 changed=0
-pdf_extract file=SOP_Cuti.pdf strategy=auto hash=ff1e880c
-pdf_chunked file=SOP_Cuti.pdf chunks=7
+Loading embedding model...
+embed_provider=tei base_url=http://tei-embed:8002
+pdf_processing total=214 new=214 changed=0
+pdf_extract file=3.-UKT-TAHUN-2025.pdf strategy=hi_res hash=ff1e880c
+Reading PDF for file: /app/data/pdfs/3.-UKT-TAHUN-2025.pdf ...
+Loading the Table agent ...                           ← table-transformer download (~115 MB, sekali)
+Downloading yolox_l0.05.onnx ...                      ← layout model (~217 MB, sekali)
+Table model successfully loaded to cpu
+pdf_chunked file=3.-UKT-TAHUN-2025.pdf chunks=7
 ...
-embedding_start total_chunks=619
-indexing_complete documents_indexed=619
+embedding_start total_chunks=4400
+indexing_complete documents_indexed=4400
 ```
 
-> **Catatan POC:** Karena `LLM_SUPPORTS_VISION=true` dan vLLM sudah jalan, indexing PDF akan **otomatis panggil Qwen3-VL** untuk deskripsi gambar informative. Ini bisa makan waktu 30-90 menit untuk first-time full index (28 PDF). Re-indexing incremental cuma ~1-5 menit. Detail: section [PDF Indexing (Production-Grade)](#pdf-indexing-production-grade).
+**First-run akan download model layout sekali (~330 MB total):** `yolox_l0.05.onnx` (layout detection) + `table-transformer-structure-recognition` (table parsing) + `en_core_web_sm` (spaCy). Cached di volume `hf_cache` — re-run tidak download ulang.
+
+> **Catatan POC:** Karena `LLM_SUPPORTS_VISION=true` dan vLLM sudah jalan, indexing PDF akan **otomatis panggil Qwen3-VL** untuk deskripsi gambar informative — terlihat di log sebagai `HTTP Request: POST http://vllm:8001/v1/chat/completions` setelah tahap extract per PDF. Image deskoratif (logo, sampul) atau "TIDAK JELAS" di-skip otomatis. Detail flow: section [PDF Indexing (Production-Grade)](#pdf-indexing-production-grade).
+
+> **Estimasi durasi (214 PDF, L40S 48GB):** first-time full index ~30-90 menit tergantung dominasi tabel/gambar per PDF. Re-indexing incremental cuma ~1-5 menit (lewat hash check).
 
 **Cek total chunks:**
 ```bash
 curl http://localhost:6333/collections/unhas_docs
-# expect: points_count ≈ 700-800 (narrative + PDF chunks)
+# expect: points_count ≈ 4000-5000 (narrative + PDF chunks)
+```
+
+**Aman di-Ctrl+C kapan saja.** Indexing per-PDF bersifat atomic — chunk hanya commit ke Qdrant setelah satu PDF selesai diproses full. PDF yang sudah masuk Qdrant di-skip otomatis saat re-run via SHA256 content hash. Cukup jalankan command yang sama lagi.
+
+**Reset & re-index dari nol** (kalau ubah `CHUNK_SIZE` / `PDF_EXTRACT_STRATEGY` / `EMBED_MODEL`):
+```bash
+# Opsi 1 — pakai flag --force (delete collection + re-index)
+docker compose -f docker-compose.poc.yml exec backend \
+  python scripts/index_documents.py --force
+
+# Opsi 2 — manual delete via Qdrant API lalu re-run
+curl -X DELETE http://localhost:6333/collections/unhas_docs
+docker compose -f docker-compose.poc.yml exec backend \
+  python scripts/index_documents.py
 ```
 
 #### Tuning TEI — Default GPU, Fallback CPU
@@ -927,12 +1004,59 @@ sudo certbot --nginx -d chatbot.unhas.ac.id
 
 ### Maintenance
 
-```bash
-# Update kode + rebuild
-git pull
-docker compose -f docker-compose.poc.yml build backend
-docker compose -f docker-compose.poc.yml up -d
+#### Safe Git Pull (saat ada modifikasi lokal VM)
 
+**Penting** — di VM POC, file seperti `docker-compose.poc.yml` (port mapping, GPU device IDs) atau `.env` sering di-modify lokal oleh operator/senior. **Jangan** langsung `git pull` — bisa overwrite atau conflict.
+
+Procedure aman:
+
+```bash
+# 1. Cek dulu file apa saja yang berubah di lokal vs repo
+git status
+
+# 2. Cek file apa saja yang akan masuk dari remote
+git fetch origin main
+git log HEAD..origin/main --oneline      # commit baru yang akan di-pull
+git diff HEAD..origin/main --stat        # file mana saja yang berubah di remote
+
+# 3. Cross-reference: kalau remote mengubah file yang sama dengan local modif → conflict
+#    Lihat overlap dengan: git diff HEAD..origin/main --name-only | xargs -I{} sh -c 'git status --porcelain {} 2>/dev/null'
+
+# 4. Strategi A — kalau tidak ada overlap (safe path):
+git pull origin main
+
+# 5. Strategi B — kalau ADA overlap (mis. compose berubah di remote DAN dimodif lokal):
+#    Stash dulu lokal modif → pull → manual merge
+git stash push -m "vm-local-$(date +%Y%m%d)" -- docker-compose.poc.yml .env
+git pull origin main
+git stash pop                            # akan merge; resolve conflict marker manual
+# atau lihat isi stash dulu:
+git stash show -p stash@{0}
+
+# 6. Strategi C — paranoid: backup file kritis manual
+cp docker-compose.poc.yml docker-compose.poc.yml.vm-backup
+cp .env .env.vm-backup
+git pull origin main
+diff docker-compose.poc.yml.vm-backup docker-compose.poc.yml   # lihat perubahan
+# kalau perlu, restore manual: cp docker-compose.poc.yml.vm-backup docker-compose.poc.yml
+```
+
+#### Setelah Pull — Rebuild & Restart
+
+```bash
+# Kalau Dockerfile / requirements.txt berubah, perlu rebuild backend (lama, 10-15 min karena CUDA base)
+docker compose -f docker-compose.poc.yml build backend
+
+# Force recreate hanya service yang berubah
+docker compose -f docker-compose.poc.yml up -d --force-recreate backend
+
+# Cek log startup
+docker compose -f docker-compose.poc.yml logs -f backend
+```
+
+#### Backup & Operations
+
+```bash
 # Backup PostgreSQL
 docker compose -f docker-compose.poc.yml exec postgres \
   pg_dump -U ragchat ragchat > backup_$(date +%Y%m%d).sql
@@ -963,6 +1087,12 @@ docker compose -f docker-compose.poc.yml logs backend | grep "request_id=a3f9b1c
 | Streaming response stuck | nginx buffering aktif | Pastikan `proxy_buffering off;` di config |
 | `degraded` di health check | Ada service `false` | `docker compose ps` lalu `docker compose logs <service>` |
 | `connection refused` ke vLLM | vLLM masih loading model | Tunggu sampai log: `Uvicorn running on http://0.0.0.0:8001` |
+| Indexing PDF: `FileNotFoundError: '/app/data/pdfs'` | Volume `./data/pdfs:/app/data/pdfs:ro` belum di-mount ke backend | Edit `docker-compose.poc.yml` (cek Step 8b verifikasi), lalu `docker compose ... up -d --force-recreate backend` |
+| Indexing PDF: Qwen3-VL `/v1/chat/completions` timeout | vLLM masih sibuk load model atau request queue penuh | Tunggu vLLM idle, atau set `LLM_SUPPORTS_VISION=false` sementara untuk skip image description |
+| PaddleOCR `Switching to CPU instead` walaupun pakai POC compose | Backend container belum ada `deploy.resources.reservations.devices` | Pastikan `docker-compose.poc.yml` service backend punya blok devices nvidia (lihat VRAM Budget section). Rebuild + `--force-recreate backend` |
+| PaddleOCR error `ConvertPirAttribute2RuntimeAttribute not support` | Bug PaddlePaddle PIR + oneDNN saat CPU mode | Pakai GPU mode (default POC). Kalau terpaksa CPU, set env `FLAGS_use_mkldnn=0` di service backend |
+| Backend OOM saat OCR + vLLM concurrent | VRAM tidak cukup | Turunkan vLLM `--gpu-memory-utilization` (0.80 → 0.75), atau set `OCR_USE_GPU=false` di `.env` |
+| `paddlepaddle-gpu` install gagal di Dockerfile | Network / channel Paddle tidak reachable | Cek koneksi ke `paddlepaddle.org.cn`. Kalau diblok, install dari PyPI mirror: `pip install paddlepaddle-gpu==3.0.0 --index-url https://pypi.tuna.tsinghua.edu.cn/simple` |
 
 ### Production Checklist
 
