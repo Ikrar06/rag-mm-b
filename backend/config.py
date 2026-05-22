@@ -74,7 +74,8 @@ QDRANT_COLLECTION_NAME = QDRANT_COLLECTION  # backward-compat
 # =============================================================================
 
 OCR_LANG = "id"
-OCR_USE_GPU = True
+# True kalau container backend punya akses GPU (POC L40S). False untuk dev RTX 3060 (CPU fallback).
+OCR_USE_GPU = os.getenv("OCR_USE_GPU", "true").lower() == "true"
 
 # =============================================================================
 # Chunking

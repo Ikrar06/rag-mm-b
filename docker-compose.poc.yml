@@ -59,7 +59,7 @@ services:
       --model Qwen/Qwen3-VL-8B-Instruct
       --port 8001
       --max-model-len 8192
-      --gpu-memory-utilization 0.85
+      --gpu-memory-utilization 0.80
       --max-num-seqs 64
       --enable-prefix-caching
     # NOTE: --served-model-name dihapus supaya vLLM pakai full HF path
@@ -160,6 +160,7 @@ services:
       - ./models:/app/models:ro
       - ./data/narratives:/app/data/narratives:ro
       - ./data/json:/app/data/json:ro
+      - ./data/pdfs:/app/data/pdfs:ro
     ports:
       - "8000:8000"
     restart: unless-stopped
@@ -171,6 +172,12 @@ services:
       start_period: 60s
     deploy:
       replicas: 1
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   # ── Monitoring Stack ───────────────────────────────────────────────────
 
