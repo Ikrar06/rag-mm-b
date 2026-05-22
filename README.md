@@ -407,6 +407,8 @@ Service yang jalan:
 - PostgreSQL: localhost:5432
 - Redis: localhost:6379
 
+Untuk QA/evaluasi, jalankan QA sheet sync via service `qa-sheet-sync` di compose dev. Cara setup dan command ada di [automation_qa/README.md](automation_qa/README.md).
+
 ### 4. Install & Setup Ollama
 
 ```powershell
@@ -703,6 +705,8 @@ docker compose -f docker-compose.poc.yml up -d
 # Cek status
 docker compose -f docker-compose.poc.yml ps
 ```
+
+Untuk QA/evaluasi, `qa-sheet-sync` sudah ikut jalan saat `docker compose -f docker-compose.poc.yml up -d`. Detail setup dan log ada di [automation_qa/README.md](automation_qa/README.md).
 
 **Saat pertama kali jalan:**
 - **vLLM** download `Qwen/Qwen3-VL-8B-Instruct` dari HuggingFace (~16 GB) → 10–30 menit

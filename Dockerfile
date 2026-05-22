@@ -48,6 +48,7 @@ RUN python3 -m pip install \
 RUN python3 -m pip install -r requirements.txt
 
 COPY backend/ ./backend/
+COPY automation_qa/ ./automation_qa/
 COPY frontend/ ./frontend/
 COPY scripts/ ./scripts/
 COPY data/ ./data/
