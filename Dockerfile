@@ -2,7 +2,7 @@
 # Backward-compatible: CUDA 12.4 runtime < CUDA 13.2 max driver.
 # Ubuntu 24.04 hadir dengan Python 3.12.x final (bukan RC seperti Ubuntu 22.04).
 # cu124 wheel tersedia untuk torch 2.5.x dan paddlepaddle-gpu 3.0.x.
-FROM nvidia/cuda:12.4.1-cudnn9-runtime-ubuntu24.04
+FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
