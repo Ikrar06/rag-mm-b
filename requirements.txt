@@ -14,7 +14,7 @@
 # llama-index-embeddings-huggingface 0.4.2 tidak pernah ada di PyPI
 # (loncat dari 0.4.0 ke 0.5.0), pin ke 0.6.1 yang verified latest.
 # -----------------------------------------------------------------------------
-llama-index-core==0.12.45
+llama-index-core==0.14.13
 llama-index-vector-stores-qdrant==0.10.1
 llama-index-embeddings-huggingface==0.6.1
 llama-index-embeddings-text-embeddings-inference==0.4.0
