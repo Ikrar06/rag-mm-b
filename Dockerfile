@@ -29,20 +29,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Pakai "python3 -m pip" agar tidak conflict dengan debian-managed pip binary.
-# PaddlePaddle 3.0.0 cu124 — wheel resmi CUDA 12.4, kompatibel dengan runtime 12.6.
-# Referensi: https://www.paddlepaddle.org.cn/packages/stable/cu124/
+# PaddlePaddle 3.3.0 cu126 — index cu126 sesuai runtime 12.6.3.
+# cu124 tidak punya cp312 wheel, cu126 punya.
+# Referensi: https://www.paddlepaddle.org.cn/packages/stable/cu126/
 RUN python3 -m pip install paddlepaddle-gpu==3.3.0 \
         -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
 
 COPY requirements.txt .
 
-# Torch cu124 wheel di-install sebelum requirements.txt agar sentence-transformers
-# dan FlagEmbedding tidak narik CPU wheel dari PyPI.
+# Torch cu126 wheel — sesuaikan dengan CUDA runtime 12.6.3.
+# cu124 wheel tetap kompatibel dengan cu126 runtime (backward compat dalam 12.x family),
+# tapi cu126 lebih bersih dan tersedia untuk torch 2.7.x.
 RUN python3 -m pip install \
-    torch==2.5.1+cu124 \
-    torchvision==0.20.1+cu124 \
-    --extra-index-url https://download.pytorch.org/whl/cu124
+    torch==2.7.0+cu126 \
+    torchvision==0.22.0+cu126 \
+    --extra-index-url https://download.pytorch.org/whl/cu126
 
 RUN python3 -m pip install -r requirements.txt
 

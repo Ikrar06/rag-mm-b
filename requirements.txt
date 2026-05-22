@@ -1,39 +1,42 @@
 # =============================================================================
 # RAG Prototype — pinned requirements (May 2026)
-# Python 3.12.x | CUDA 12.4.1 | Driver 595.x
+# Python 3.12.x | CUDA 12.6.3 | Driver 595.x
 #
-# torch & torchvision di-install SEBELUM file ini via Dockerfile
-# agar tidak tertimpa CPU wheel dari PyPI.
-# GPU wheel: torch==2.5.1+cu124, torchvision==0.20.1+cu124
+# torch & torchvision di-install SEBELUM file ini via Dockerfile:
+#   torch==2.7.0+cu126, torchvision==0.22.0+cu126
+# paddlepaddle-gpu di-install SEBELUM file ini via Dockerfile:
+#   paddlepaddle-gpu==3.3.0 cu126
 # =============================================================================
 
 # -----------------------------------------------------------------------------
 # Core Framework — LlamaIndex
+# Versi aktual per Mei 2026 dari PyPI.
+# llama-index-embeddings-huggingface 0.4.2 tidak pernah ada di PyPI
+# (loncat dari 0.4.0 ke 0.5.0), pin ke 0.6.1 yang verified latest.
 # -----------------------------------------------------------------------------
-llama-index-core==0.12.5
-llama-index-vector-stores-qdrant==0.4.3
-llama-index-embeddings-huggingface==0.4.2
-llama-index-embeddings-text-embeddings-inference==0.3.1
-llama-index-llms-ollama==0.4.3
+llama-index-core==0.12.45
+llama-index-vector-stores-qdrant==0.10.1
+llama-index-embeddings-huggingface==0.6.1
+llama-index-embeddings-text-embeddings-inference==0.4.0
+llama-index-llms-ollama==0.10.1
 llama-index-llms-openai-like==0.3.1
 llama-index-postprocessor-flag-embedding-reranker==0.3.1
-llama-index-readers-file==0.4.3
+llama-index-readers-file==0.6.0
 
 # -----------------------------------------------------------------------------
 # Embedding & Reranker
-# torch sudah di-install via Dockerfile (cu124 wheel), tidak perlu di sini.
+# torch sudah di-install via Dockerfile (cu126 wheel).
 # -----------------------------------------------------------------------------
 sentence-transformers==3.3.1
 FlagEmbedding==1.3.3
 
 # transformers: pin ke 4.47.x — JANGAN naik ke 5.x.
-# transformers 5.x butuh torch._dynamo (sonicmoe.py) yang crash di Python <3.11.0-final.
-# 4.47.x sudah cukup untuk semua kebutuhan embedding + intent classifier.
+# transformers 5.x menarik torch._dynamo (sonicmoe.py) yang tidak stabil.
 transformers==4.47.1
 tokenizers==0.21.0
 huggingface-hub==0.27.1
 
-# numpy 1.26.x — numpy 2.x masih ada breaking change dengan PaddlePaddle & beberapa lib OCR.
+# numpy 1.26.x — numpy 2.x masih breaking change dengan PaddlePaddle & PaddleOCR.
 numpy==1.26.4
 
 # -----------------------------------------------------------------------------
@@ -55,8 +58,8 @@ openai==1.59.3
 
 # -----------------------------------------------------------------------------
 # OCR & PDF
-# paddlepaddle-gpu di-install via Dockerfile (cu124 wheel).
-# paddleocr: update ke versi terbaru yang support paddle 3.3.x
+# paddlepaddle-gpu di-install via Dockerfile (cu126 wheel).
+# paddleocr 2.10.0 support paddle 3.3.x.
 # -----------------------------------------------------------------------------
 paddleocr==2.10.0
 pymupdf==1.24.14
