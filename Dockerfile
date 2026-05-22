@@ -37,7 +37,7 @@ WORKDIR /app
 # Combo paddlepaddle-gpu 2.6.2 + paddleocr 2.9.x = stable. Paddle 3.0.x belum punya
 # wheel cu120 (cuma cu118 dan cu126), jadi pin ke 2.6.2.
 RUN pip install --upgrade pip && \
-    pip install paddlepaddle-gpu==2.6.2 \
+    pip install paddlepaddle-gpu==2.6.2.post120 \
         -i https://www.paddlepaddle.org.cn/packages/stable/cu120/
 
 COPY requirements.txt .
