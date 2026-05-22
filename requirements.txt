@@ -1,68 +1,108 @@
-# Core Framework
-llama-index>=0.12.0
-llama-index-vector-stores-qdrant>=0.4.0
-llama-index-embeddings-huggingface>=0.4.0
-llama-index-embeddings-text-embeddings-inference>=0.3.0
-llama-index-llms-ollama>=0.4.0
-llama-index-llms-openai-like>=0.3.0
-llama-index-postprocessor-flag-embedding-reranker>=0.3.0
-llama-index-readers-file>=0.4.0
+# =============================================================================
+# RAG Prototype — pinned requirements (May 2026)
+# Python 3.12.x | CUDA 12.4.1 | Driver 595.x
+#
+# torch & torchvision di-install SEBELUM file ini via Dockerfile
+# agar tidak tertimpa CPU wheel dari PyPI.
+# GPU wheel: torch==2.5.1+cu124, torchvision==0.20.1+cu124
+# =============================================================================
 
+# -----------------------------------------------------------------------------
+# Core Framework — LlamaIndex
+# -----------------------------------------------------------------------------
+llama-index-core==0.12.5
+llama-index-vector-stores-qdrant==0.4.3
+llama-index-embeddings-huggingface==0.4.2
+llama-index-embeddings-text-embeddings-inference==0.3.1
+llama-index-llms-ollama==0.4.3
+llama-index-llms-openai-like==0.3.1
+llama-index-postprocessor-flag-embedding-reranker==0.3.1
+llama-index-readers-file==0.4.3
+
+# -----------------------------------------------------------------------------
 # Embedding & Reranker
-sentence-transformers>=3.3.0
-FlagEmbedding>=1.3.0
-torch>=2.1.0
+# torch sudah di-install via Dockerfile (cu124 wheel), tidak perlu di sini.
+# -----------------------------------------------------------------------------
+sentence-transformers==3.3.1
+FlagEmbedding==1.3.3
 
+# transformers: pin ke 4.47.x — JANGAN naik ke 5.x.
+# transformers 5.x butuh torch._dynamo (sonicmoe.py) yang crash di Python <3.11.0-final.
+# 4.47.x sudah cukup untuk semua kebutuhan embedding + intent classifier.
+transformers==4.47.1
+tokenizers==0.21.0
+huggingface-hub==0.27.1
+
+# numpy 1.26.x — numpy 2.x masih ada breaking change dengan PaddlePaddle & beberapa lib OCR.
+numpy==1.26.4
+
+# -----------------------------------------------------------------------------
 # Vector Database
-qdrant-client>=1.12.0
+# -----------------------------------------------------------------------------
+qdrant-client==1.12.1
 
+# -----------------------------------------------------------------------------
 # Backend
-fastapi>=0.115.0
-uvicorn>=0.32.0
-python-multipart>=0.0.12
+# -----------------------------------------------------------------------------
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
 
+# -----------------------------------------------------------------------------
 # LLM Client
-openai>=1.55.0
+# -----------------------------------------------------------------------------
+openai==1.59.3
 
-# Preprocessing / OCR
-# NOTE: paddlepaddle-gpu di-install dari Paddle CUDA-12 index (lihat Dockerfile).
-# Untuk dev tanpa GPU (RTX 3060 dengan CPU fallback): pip install paddlepaddle (CPU wheel).
-# paddleocr versi pin penting — versi terlalu baru kena bug PIR + oneDNN di CPU.
-paddleocr>=2.9.0,<3.1.0
-pymupdf>=1.24.0
+# -----------------------------------------------------------------------------
+# OCR & PDF
+# paddlepaddle-gpu di-install via Dockerfile (cu124 wheel).
+# paddleocr: pin ke <3.1.0 — versi lebih baru kena bug PIR + oneDNN di beberapa setup.
+# -----------------------------------------------------------------------------
+paddleocr==2.9.1
+pymupdf==1.24.14
+pdf2image==1.17.0
 
+# -----------------------------------------------------------------------------
 # Document Parsing & Chunking
-unstructured[pdf]>=0.16.0
-pdfplumber>=0.11.0
-markdownify>=0.13.0
-pillow>=10.0.0
+# -----------------------------------------------------------------------------
+unstructured[pdf]==0.16.11
+pdfplumber==0.11.4
+markdownify==0.13.1
+pillow==11.0.0
 
+# -----------------------------------------------------------------------------
 # Auth
-python-jose[cryptography]>=3.3.0
-bcrypt>=4.0.0
+# -----------------------------------------------------------------------------
+python-jose[cryptography]==3.3.0
+bcrypt==4.2.1
+passlib[bcrypt]==1.7.4
 
-# Intent classifier
-transformers>=4.40.0
-
+# -----------------------------------------------------------------------------
 # Rate limiting
-slowapi>=0.1.9
+# -----------------------------------------------------------------------------
+slowapi==0.1.9
 
-# Structured logging
-structlog>=24.1.0
+# -----------------------------------------------------------------------------
+# Logging & Monitoring
+# -----------------------------------------------------------------------------
+structlog==24.4.0
+prometheus-fastapi-instrumentator==7.0.0
 
-# Prometheus metrics (expose /metrics endpoint untuk monitoring)
-prometheus-fastapi-instrumentator>=7.0.0
+# -----------------------------------------------------------------------------
+# HTTP Client
+# -----------------------------------------------------------------------------
+httpx==0.28.1
 
-# HTTP client (moderation + private API)
-httpx>=0.27.0
+# -----------------------------------------------------------------------------
+# Database & Cache
+# -----------------------------------------------------------------------------
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+redis==5.2.1
 
-# Database (PostgreSQL)
-sqlalchemy>=2.0.0
-psycopg2-binary>=2.9.0
-
-# Cache & session (Redis)
-redis>=5.0.0
-
+# -----------------------------------------------------------------------------
 # Utilities
-python-dotenv>=1.0.0
-pydantic>=2.10.0
+# -----------------------------------------------------------------------------
+python-dotenv==1.0.1
+pydantic==2.10.4
+pydantic-settings==2.7.0

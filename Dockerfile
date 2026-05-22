@@ -1,8 +1,8 @@
-# Base image: CUDA 12.0 + cuDNN 8 untuk paddlepaddle-gpu cu120 channel.
-# L40S driver 595.x (CUDA 13.2) backward-compatible dengan CUDA 12.0 runtime.
-# Combo CUDA 12.0.1 + paddle 2.6.2 cu120 = paling stabil & terverifikasi untuk PaddleOCR 2.9.x.
-# Kalau butuh CUDA versi lain, periksa tag tersedia di https://hub.docker.com/r/nvidia/cuda/tags
-FROM nvidia/cuda:12.0.1-cudnn8-runtime-ubuntu22.04
+# Base image: CUDA 12.4.1 + cuDNN 9 — stabil untuk L40S driver 595.x (CUDA 13.2).
+# Backward-compatible: CUDA 12.4 runtime < CUDA 13.2 max driver.
+# Ubuntu 24.04 hadir dengan Python 3.12.x final (bukan RC seperti Ubuntu 22.04).
+# cu124 wheel tersedia untuk torch 2.5.x dan paddlepaddle-gpu 3.0.x.
+FROM nvidia/cuda:12.4.1-cudnn9-runtime-ubuntu24.04
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -12,11 +12,11 @@ ENV PYTHONUNBUFFERED=1 \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
 
-# Python 3.11 + system libs untuk OCR/PDF + cleanup.
+# Ubuntu 24.04 default = Python 3.12.x final — tidak perlu PPA atau symlink manual.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.11 \
-    python3.11-venv \
-    python3.11-dev \
+    python3 \
+    python3-venv \
+    python3-dev \
     python3-pip \
     build-essential \
     zlib1g-dev \
@@ -27,20 +27,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     curl \
     ca-certificates \
-    && ln -sf /usr/bin/python3.11 /usr/bin/python \
-    && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install paddlepaddle-gpu dari Paddle cu120 channel.
-# Combo paddlepaddle-gpu 2.6.2 + paddleocr 2.9.x = stable. Paddle 3.0.x belum punya
-# wheel cu120 (cuma cu118 dan cu126), jadi pin ke 2.6.2.
+# PaddlePaddle 3.0.0 cu124 — versi pertama di branch 3.x yang punya wheel resmi CUDA 12.4.
+# Referensi: https://www.paddlepaddle.org.cn/packages/stable/cu124/
 RUN pip install --upgrade pip && \
-    pip install paddlepaddle-gpu==2.6.2.post120 \
-        -i https://www.paddlepaddle.org.cn/packages/stable/cu120/
+    pip install paddlepaddle-gpu==3.0.0 \
+        -i https://www.paddlepaddle.org.cn/packages/stable/cu124/
 
 COPY requirements.txt .
+
+# Torch cu124 wheel harus di-install sebelum requirements.txt karena
+# beberapa package (sentence-transformers, FlagEmbedding) akan narik torch
+# dari PyPI (CPU wheel) jika torch belum ada di environment.
+RUN pip install \
+    torch==2.5.1+cu124 \
+    torchvision==0.20.1+cu124 \
+    --extra-index-url https://download.pytorch.org/whl/cu124
+
 RUN pip install -r requirements.txt
 
 COPY backend/ ./backend/
