@@ -1,18 +1,15 @@
-# Base image: CUDA 12.4.1 + cuDNN 9 — stabil untuk L40S driver 595.x (CUDA 13.2).
-# Backward-compatible: CUDA 12.4 runtime < CUDA 13.2 max driver.
-# Ubuntu 24.04 hadir dengan Python 3.12.x final (bukan RC seperti Ubuntu 22.04).
-# cu124 wheel tersedia untuk torch 2.5.x dan paddlepaddle-gpu 3.0.x.
 FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    # Fix PEP 668 — izinkan pip install system-wide di dalam container
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
     DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8
 
-# Ubuntu 24.04 default = Python 3.12.x final — tidak perlu PPA atau symlink manual.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-venv \
@@ -32,17 +29,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# PaddlePaddle 3.0.0 cu124 — versi pertama di branch 3.x yang punya wheel resmi CUDA 12.4.
-# Referensi: https://www.paddlepaddle.org.cn/packages/stable/cu124/
 RUN pip install --upgrade pip && \
     pip install paddlepaddle-gpu==3.0.0 \
         -i https://www.paddlepaddle.org.cn/packages/stable/cu124/
 
 COPY requirements.txt .
 
-# Torch cu124 wheel harus di-install sebelum requirements.txt karena
-# beberapa package (sentence-transformers, FlagEmbedding) akan narik torch
-# dari PyPI (CPU wheel) jika torch belum ada di environment.
 RUN pip install \
     torch==2.5.1+cu124 \
     torchvision==0.20.1+cu124 \
