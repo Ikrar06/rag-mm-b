@@ -25,8 +25,10 @@ python-multipart>=0.0.12
 openai>=1.55.0
 
 # Preprocessing / OCR
-paddlepaddle>=2.6.0
-paddleocr>=2.9.0
+# NOTE: paddlepaddle-gpu di-install dari Paddle CUDA-12 index (lihat Dockerfile).
+# Untuk dev tanpa GPU (RTX 3060 dengan CPU fallback): pip install paddlepaddle (CPU wheel).
+# paddleocr versi pin penting — versi terlalu baru kena bug PIR + oneDNN di CPU.
+paddleocr>=2.9.0,<3.1.0
 pymupdf>=1.24.0
 
 # Document Parsing & Chunking
