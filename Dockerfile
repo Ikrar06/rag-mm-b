@@ -32,8 +32,8 @@ WORKDIR /app
 # Pakai "python3 -m pip" agar tidak conflict dengan debian-managed pip binary.
 # PaddlePaddle 3.0.0 cu124 — wheel resmi CUDA 12.4, kompatibel dengan runtime 12.6.
 # Referensi: https://www.paddlepaddle.org.cn/packages/stable/cu124/
-RUN python3 -m pip install paddlepaddle-gpu==3.0.0 \
-        -i https://www.paddlepaddle.org.cn/packages/stable/cu124/
+RUN python3 -m pip install paddlepaddle-gpu==3.3.0 \
+        -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
 
 COPY requirements.txt .
 

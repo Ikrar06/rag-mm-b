@@ -56,9 +56,9 @@ openai==1.59.3
 # -----------------------------------------------------------------------------
 # OCR & PDF
 # paddlepaddle-gpu di-install via Dockerfile (cu124 wheel).
-# paddleocr: pin ke <3.1.0 — versi lebih baru kena bug PIR + oneDNN di beberapa setup.
+# paddleocr: update ke versi terbaru yang support paddle 3.3.x
 # -----------------------------------------------------------------------------
-paddleocr==2.9.1
+paddleocr==2.10.0
 pymupdf==1.24.14
 pdf2image==1.17.0
 
