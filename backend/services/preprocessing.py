@@ -42,11 +42,48 @@ def _get_ocr_engine():
     if _ocr_engine is None:
         from paddleocr import PaddleOCR
         logger.info("ocr_engine_init lang=%s gpu=%s", OCR_LANG, OCR_USE_GPU)
+        # PaddleOCR 3.x: use_angle_cls → use_textline_orientation (renamed).
+        # device terima 'gpu', 'cpu', atau 'gpu:0' untuk pilih device spesifik.
         _ocr_engine = PaddleOCR(
-            use_angle_cls=True, lang=OCR_LANG,
+            use_textline_orientation=True,
+            lang=OCR_LANG,
             device="gpu" if OCR_USE_GPU else "cpu",
         )
     return _ocr_engine
+
+
+def _extract_texts_from_ocr_result(result) -> list[str]:
+    """Robust text extractor untuk PaddleOCR 3.x predict() result.
+
+    result = list[OCRResult]. Setiap OCRResult adalah dict-like dengan key 'rec_texts'.
+    Fallback ke .json property kalau dict-access tidak tersedia (defensif untuk
+    perubahan minor antar versi 3.x).
+    """
+    texts: list[str] = []
+    for ocr_res in result:
+        rec_texts: list[str] = []
+
+        # Path 1: dict-like access (paddleocr 3.0.x canonical)
+        try:
+            rec_texts = list(ocr_res["rec_texts"])
+        except (KeyError, TypeError, AttributeError):
+            pass
+
+        # Path 2: .json property (fallback)
+        if not rec_texts:
+            try:
+                data = getattr(ocr_res, "json", None)
+                if isinstance(data, dict):
+                    rec_texts = list(
+                        data.get("rec_texts")
+                        or data.get("res", {}).get("rec_texts", [])
+                    )
+            except Exception:
+                pass
+
+        texts.extend(t for t in rec_texts if t)
+
+    return texts
 
 
 # ─── File hashing untuk incremental indexing ──────────────────────────────────
@@ -106,10 +143,12 @@ def _extract_text_from_page_fast(page: fitz.Page) -> str:
 
     try:
         ocr = _get_ocr_engine()
-        result = ocr.ocr(tmp_path)
-        if not result or not result[0]:
+        # PaddleOCR 3.x: .predict() ganti .ocr(). Return list[OCRResult].
+        result = ocr.predict(tmp_path)
+        if not result:
             return text
-        return "\n".join(line[1][0] for line in result[0])
+        texts = _extract_texts_from_ocr_result(result)
+        return "\n".join(texts) if texts else text
     finally:
         os.unlink(tmp_path)
 
