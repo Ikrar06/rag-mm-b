@@ -11,6 +11,7 @@ from googleapiclient.discovery import build
 
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+APPEND_CHUNK_SIZE = 500
 
 
 @dataclass(frozen=True)
@@ -56,26 +57,34 @@ class GoogleSheetsClient:
         worksheet_name: str,
         source_message_id_column: str,
     ) -> SheetState:
-        # Baca A:D sekali saja: kolom A untuk nomor, kolom D untuk dedup source_message_id.
-        range_name = f"{_quote_sheet_name(worksheet_name)}!A2:{source_message_id_column}"
+        # Baca hanya kolom yang diperlukan agar pertanyaan/jawaban panjang tidak ikut terbawa.
+        sheet_name = _quote_sheet_name(worksheet_name)
+        number_range = f"{sheet_name}!A2:A"
+        source_id_range = f"{sheet_name}!{source_message_id_column}2:{source_message_id_column}"
         response = (
             self._service.spreadsheets()
             .values()
-            .get(spreadsheetId=spreadsheet_id, range=range_name)
+            .batchGet(
+                spreadsheetId=spreadsheet_id,
+                ranges=[number_range, source_id_range],
+            )
             .execute()
         )
-        values = response.get("values", [])
-        source_index = ord(source_message_id_column.upper()) - ord("A")
+        value_ranges = response.get("valueRanges", [])
+        number_values = value_ranges[0].get("values", []) if len(value_ranges) > 0 else []
+        source_id_values = value_ranges[1].get("values", []) if len(value_ranges) > 1 else []
 
         numbers: set[int] = set()
-        source_ids: set[str] = set()
-        for row in values:
+        for row in number_values:
             if row:
                 number = _parse_int(row[0])
                 if number is not None:
                     numbers.add(number)
-            if len(row) > source_index:
-                source_id = str(row[source_index]).strip()
+
+        source_ids: set[str] = set()
+        for row in source_id_values:
+            if row:
+                source_id = str(row[0]).strip()
                 if source_id:
                     source_ids.add(source_id)
 
@@ -90,21 +99,27 @@ class GoogleSheetsClient:
         if not rows:
             return 0
 
-        # Append dilakukan batch supaya hanya perlu satu request Google Sheets API per siklus.
+        # Append dipecah agar payload tetap stabil saat ada backlog besar.
         end_column = chr(ord("A") + len(rows[0]) - 1)
         range_name = f"{_quote_sheet_name(worksheet_name)}!A:{end_column}"
-        body = {"values": [list(row) for row in rows]}
-        response = (
-            self._service.spreadsheets()
-            .values()
-            .append(
-                spreadsheetId=spreadsheet_id,
-                range=range_name,
-                valueInputOption="RAW",
-                insertDataOption="INSERT_ROWS",
-                body=body,
+
+        updated_rows = 0
+        for start in range(0, len(rows), APPEND_CHUNK_SIZE):
+            chunk = rows[start : start + APPEND_CHUNK_SIZE]
+            body = {"values": [list(row) for row in chunk]}
+            response = (
+                self._service.spreadsheets()
+                .values()
+                .append(
+                    spreadsheetId=spreadsheet_id,
+                    range=range_name,
+                    valueInputOption="RAW",
+                    insertDataOption="INSERT_ROWS",
+                    body=body,
+                )
+                .execute()
             )
-            .execute()
-        )
-        updates = response.get("updates", {})
-        return int(updates.get("updatedRows", len(rows)))
+            updates = response.get("updates", {})
+            updated_rows += int(updates.get("updatedRows", len(chunk)))
+
+        return updated_rows

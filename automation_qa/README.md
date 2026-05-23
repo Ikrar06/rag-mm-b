@@ -6,10 +6,10 @@ Script bersifat append-only. Baris lama di Google Sheets tidak diubah, sehingga 
 
 ## Flow Singkat
 
-1. Baca `source_message_id` yang sudah ada di Google Sheets.
+1. Baca nomor dari kolom `A` dan `source_message_id` dari kolom `D` di Google Sheets.
 2. Ambil pasangan pertanyaan user dan jawaban assistant dari tabel `messages`.
 3. Skip data yang sudah pernah tersinkron berdasarkan `source_message_id`.
-4. Append row baru ke Google Sheets.
+4. Append row baru ke Google Sheets, maksimal 500 row per request.
 
 Detail flow ada di [docs/sync-flow.md](docs/sync-flow.md).
 
@@ -98,3 +98,11 @@ Scheduler Docker berjalan dalam mode `--watch`; intervalnya mengikuti `QA_SYNC_I
 - Jika error 403, cek apakah sheet sudah di-share ke email service account.
 - Jika error 404, cek spreadsheet ID dan worksheet/tab name.
 - Jika format `messages.sources` berubah, update formatter di `automation_qa/db.py`.
+
+## Catatan Performa
+
+- State sheet dibaca dengan `values.batchGet` untuk range `A2:A` dan `D2:D` saja, sehingga kolom `pertanyaan` dan `created_at` tidak ikut terbaca.
+- Append dilakukan per chunk 500 row supaya payload Google Sheets API tetap stabil saat ada backlog besar.
+- Batas 500 row dipilih karena row QA bisa berisi teks panjang dan multi-line pada kolom `jawaban` serta `sumber_referensi`; chunk ini menjaga request tidak terlalu besar tetapi tetap hemat jumlah request.
+- Jika row baru kurang dari atau sama dengan 500, sync tetap hanya memakai 1 read request dan 1 write request.
+- Detail quota dan alasan teknis chunking dijelaskan di [docs/sync-flow.md](docs/sync-flow.md).
