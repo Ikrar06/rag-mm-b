@@ -289,15 +289,47 @@ def _trim_history_by_tokens(history: list[dict], max_tokens: int = None) -> list
     return history
 
 
+_PROMPT_LEAK_TOKENS = ("[INST]", "<<SYS>>", "<|", "```", "system:", "assistant:")
+
+
+def _validate_condensed(original: str, condensed: str) -> str:
+    """Validasi output condensation. Fallback ke original kalau:
+    - Empty / terlalu pendek
+    - > 3x panjang original (LLM verbose / hallucinate)
+    - Contains template artifact (prompt leak)
+    """
+    if not condensed or len(condensed.strip()) < 5:
+        logger.info("condense_fallback reason=too_short")
+        return original
+    if len(condensed) > max(len(original) * 3, 200):
+        logger.info("condense_fallback reason=too_long len=%d orig=%d",
+                    len(condensed), len(original))
+        return original
+    lc = condensed.lower()
+    leaked = [t for t in _PROMPT_LEAK_TOKENS if t.lower() in lc]
+    if leaked:
+        logger.warning("condense_fallback reason=prompt_leak tokens=%s", leaked)
+        return original
+    return condensed
+
+
 def _condense_question(history: list[dict], question: str) -> tuple[str, bool]:
-    """Return (condensed_question, is_acknowledgment)."""
+    """Return (condensed_question, is_acknowledgment).
+
+    Output di-validasi via _validate_condensed — kalau LLM bermasalah,
+    fallback ke original question.
+    """
     if not history:
         return question, False
 
     history_str = _format_history(history)
     prompt = CONDENSE_PROMPT.format(chat_history=history_str, question=question)
-    llm = get_llm()
-    text = str(llm.complete(prompt)).strip()
+    try:
+        llm = get_llm()
+        text = str(llm.complete(prompt)).strip()
+    except Exception as e:
+        logger.error("condense_llm_error error=%s", e)
+        return question, False  # fallback ke original, anggap bukan ack
 
     # Strip common verbose prefixes small LLMs echo from the prompt
     for prefix in ["Pertanyaan standalone:", "Standalone question:", "Pertanyaan mandiri:", "Pertanyaan:"]:
@@ -312,12 +344,12 @@ def _condense_question(history: list[dict], question: str) -> tuple[str, bool]:
             text = line
             break
 
-    logger.info(f"Condensed: '{question[:60]}' → '{text[:120]}'")
-
     if text.startswith("<ACK>") or len(text) < 3:
         return question, True
 
-    return text, False
+    validated = _validate_condensed(question, text)
+    logger.info(f"Condensed: '{question[:60]}' → '{validated[:120]}'")
+    return validated, False
 
 
 # ─── Pipeline setup ──────────────────────────────────────────────────────────
