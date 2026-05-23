@@ -127,9 +127,9 @@ def _check_keyword_filter(question: str) -> keyword_filter.KeywordFilterResult:
 
 
 _LOW_CONFIDENCE_DISCLAIMER = (
-    "\n\n*Catatan: Tingkat kecocokan informasi ini tergolong sedang. "
-    "Untuk kepastian, silakan konfirmasi ke Bagian Akademik fakultas Anda "
-    "atau cek neosia.unhas.ac.id.*"
+    "\n\n_Catatan: informasi ini mungkin belum sepenuhnya tepat — "
+    "sebaiknya konfirmasi ke Bagian Akademik fakultas atau "
+    "neosia.unhas.ac.id untuk pastinya._"
 )
 
 
