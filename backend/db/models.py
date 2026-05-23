@@ -58,6 +58,10 @@ class Message(Base):
     debug = Column(JSON, nullable=True)               # debug info dict
     mode = Column(String(30), nullable=True)          # rag|chitchat|blocked|cache_hit|...
     condensed_question = Column(Text, nullable=True)  # hasil query condensation
+    # List of image attachment URLs (presigned MinIO URL untuk POC, /api/files/...
+    # untuk dev). Hanya di-populate untuk role="user" yang kirim attachment.
+    # Format: [{"url": str, "mime_type": str, "size_bytes": int}]
+    images = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), default=_now)
 
     session = relationship("Session", back_populates="messages")

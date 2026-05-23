@@ -19,11 +19,13 @@ def _sync_target(
     target: SheetTarget,
     dry_run: bool,
 ) -> int:
-    # source_message_id ada di kolom D pada format sheet gabungan.
+    # source_message_id pindah dari kolom D ke E setelah penambahan kolom
+    # 'gambar_user' di posisi C. Layout baru:
+    #   A=no, B=pertanyaan, C=gambar_user, D=created_at, E=source_message_id, ...
     sheet_state = client.get_sheet_state(
         spreadsheet_id=target.spreadsheet_id,
         worksheet_name=target.worksheet_name,
-        source_message_id_column="D",
+        source_message_id_column="E",
     )
 
     if target.name != "qa_evaluation":

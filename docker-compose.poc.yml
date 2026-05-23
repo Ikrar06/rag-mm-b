@@ -48,6 +48,8 @@ services:
     volumes:
       - minio_data:/data
     ports:
+      - "9000:9000"   # S3 API — wajib expose supaya presigned URL bisa di-download
+                      # dari browser QA reviewer (di luar docker network)
       - "9001:9001"   # Console UI untuk buat bucket
     restart: unless-stopped
 

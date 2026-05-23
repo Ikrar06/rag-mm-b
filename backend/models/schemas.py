@@ -4,6 +4,29 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
+# ─── Image input ──────────────────────────────────────────────────────────────
+
+class ImageInput(BaseModel):
+    """Image attachment di chat request — base64-encoded.
+
+    mime_type harus salah satu dari ALLOWED_IMAGE_TYPES di config.
+    data adalah base64 string (TANPA prefix "data:image/...;base64,").
+    """
+    mime_type: str = Field(
+        ...,
+        pattern=r"^image/(jpeg|jpg|png|webp)$",
+        description="MIME type gambar. Hanya jpeg/png/webp yang diterima.",
+    )
+    data: str = Field(
+        ...,
+        min_length=20,
+        description=(
+            "Base64-encoded image data tanpa prefix 'data:image/...;base64,'. "
+            "Max size MAX_IMAGE_SIZE_MB MB setelah decode."
+        ),
+    )
+
+
 # ─── Chat ─────────────────────────────────────────────────────────────────────
 
 class ChatRequest(BaseModel):
@@ -12,6 +35,13 @@ class ChatRequest(BaseModel):
         None,
         description="UUID session percakapan. Kosongkan (null) untuk memulai session baru. "
                     "UUID dikembalikan di field session_id pada response.",
+    )
+    images: list[ImageInput] = Field(
+        default_factory=list,
+        description=(
+            "Lampiran gambar (KRS, KTM, formulir, dll). Max MAX_IMAGES_PER_MESSAGE "
+            "gambar per request. Hanya aktif kalau LLM_SUPPORTS_VISION=true."
+        ),
     )
 
 
@@ -28,9 +58,9 @@ class DebugInfo(BaseModel):
     mode: str = Field(
         ...,
         description=(
-            "Mode jawaban: rag | chitchat | out_of_scope | blocked | "
-            "blocked_moderation | clarification_needed | get_info_private | "
-            "cache_hit | rag_low_relevance"
+            "Mode jawaban: rag | vision_rag | vision_error | chitchat | "
+            "out_of_scope | blocked | blocked_moderation | clarification_needed | "
+            "get_info_private | cache_hit | rag_low_relevance"
         ),
     )
     total_time_s: float = Field(..., description="Total waktu proses dalam detik")
@@ -46,6 +76,11 @@ class DebugInfo(BaseModel):
     intent_confidence: Optional[float] = Field(
         None, description="Skor kepercayaan intent classifier (0–1)"
     )
+    confidence_band: Optional[str] = Field(
+        None, description="high | marginal | low (lihat LOW_CONFIDENCE_BUFFER)"
+    )
+    has_images: Optional[bool] = Field(None, description="True kalau request punya image attachment")
+    image_count: Optional[int] = Field(None, description="Jumlah image yang diproses di vision mode")
 
 
 class ChatResponse(BaseModel):
@@ -96,6 +131,13 @@ class QueryRequest(BaseModel):
             "admin: staf akademik."
         ),
     )
+    images: list[ImageInput] = Field(
+        default_factory=list,
+        description=(
+            "Lampiran gambar (KRS, KTM, formulir, dll). Max MAX_IMAGES_PER_MESSAGE "
+            "gambar per request. Hanya aktif kalau LLM_SUPPORTS_VISION=true."
+        ),
+    )
 
 
 class QueryResponse(BaseModel):
@@ -116,6 +158,8 @@ class HealthResponse(BaseModel):
     intent_model: bool = False
     # Circuit breaker state: "closed" (normal), "open" (failing), "half_open" (probing)
     moderation_circuit: str = "closed"
+    # True kalau backend support vision (LLM_SUPPORTS_VISION=true + LLM_PROVIDER=vllm)
+    vision_enabled: bool = False
 
 
 class IndexRequest(BaseModel):

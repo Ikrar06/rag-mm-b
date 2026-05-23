@@ -101,6 +101,29 @@ def _format_intent_prediction(debug: Any) -> str:
     return f"{intent} ({confidence_text})"
 
 
+def _format_image_urls(images: Any) -> str:
+    """Format list image attachment ke string multi-line untuk kolom sheet.
+
+    Setiap baris: nomor + URL. Reviewer click URL → buka di browser.
+    Kalau tidak ada attachment, kembalikan empty string.
+    """
+    if not images or not isinstance(images, list):
+        return ""
+
+    lines: list[str] = []
+    for idx, img in enumerate(images, start=1):
+        if isinstance(img, dict):
+            url = img.get("url") or ""
+        elif isinstance(img, str):
+            url = img
+        else:
+            continue
+        if url:
+            lines.append(f"{idx}. {url}")
+
+    return "\n".join(lines)
+
+
 def _fetch_answered_messages(
     database_url: str,
     existing_source_ids: Iterable[str],
@@ -135,13 +158,14 @@ def _fetch_answered_messages(
         SELECT
             a.id AS assistant_message_id,
             u.content AS pertanyaan,
+            u.images AS user_images,
             a.content AS jawaban,
             a.sources AS sources,
             a.debug AS debug,
             a.created_at AS created_at
         FROM messages a
         JOIN LATERAL (
-            SELECT id, content
+            SELECT id, content, images
             FROM messages
             WHERE session_id = a.session_id
               AND role = 'user'
@@ -175,13 +199,18 @@ def fetch_new_qa_evaluation_rows(
         debug = row.get("debug") or {}
 
         # Urutan kolom harus sama dengan header Google Sheet:
-        # no, pertanyaan, created_at, source_message_id, model, jawaban,
+        # no, pertanyaan, gambar_user, created_at, source_message_id, model, jawaban,
         # sumber_referensi, labeled_by, intent_predicted, labeled_quality,
         # notes_respond, labeled_intent, notes_intent.
+        #
+        # gambar_user: list URL (presigned MinIO atau /api/files/...) multi-line.
+        # Reviewer click URL → buka image di browser. Kosong kalau user tidak
+        # kirim attachment.
         output.append(
             [
                 next_no,
                 _to_sheet_value(row["pertanyaan"]),
+                _format_image_urls(row.get("user_images")),
                 _to_wita_timestamp(row["created_at"]),
                 _to_sheet_value(row["assistant_message_id"]),
                 _to_sheet_value(_get_debug_value(debug, "model")),

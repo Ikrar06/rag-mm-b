@@ -22,6 +22,7 @@ from backend.services.session import (
     get_or_create_session, get_history, save_user_message, save_assistant_message,
     list_sessions,
 )
+from backend.services.vision import validate_and_process, upload_to_storage, VisionError
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -75,6 +76,14 @@ async def chat(request: Request, request_body: ChatRequest, db: DBSession = Depe
     """
     user = _get_current_user(request)
 
+    # Validasi + resize images kalau ada attachment.
+    try:
+        processed_images = validate_and_process(
+            [img.model_dump() for img in request_body.images]
+        )
+    except VisionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     try:
         session = get_or_create_session(
             db,
@@ -84,12 +93,20 @@ async def chat(request: Request, request_body: ChatRequest, db: DBSession = Depe
         )
         session_id_str = str(session.id)
         history = get_history(db, session_id_str)
-        save_user_message(db, session_id_str, request_body.query)
+
+        # Upload images ke storage (MinIO POC / filesystem dev) → URLs untuk persist + QA Sheet
+        stored_images = upload_to_storage(processed_images, session_id_str) if processed_images else []
+        images_meta = [
+            {"url": s.url, "mime_type": s.mime_type, "size_bytes": s.size_bytes}
+            for s in stored_images
+        ]
+        save_user_message(db, session_id_str, request_body.query, images=images_meta or None)
 
         result = query(
             question=request_body.query,
             history=history,
             role=user["role"],
+            images=processed_images or None,
         )
 
         # Layer 6 — output filter (backstop, RAG pipeline sudah filter tapi dobel aman)
@@ -147,6 +164,14 @@ async def chat_stream(request: Request, request_body: ChatRequest):
     """
     user = _get_current_user(request)
 
+    # Validasi + resize images sebelum stream setup — fail fast kalau invalid.
+    try:
+        processed_images = validate_and_process(
+            [img.model_dump() for img in request_body.images]
+        )
+    except VisionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     setup_db = SessionLocal()
     try:
         session = get_or_create_session(
@@ -157,7 +182,13 @@ async def chat_stream(request: Request, request_body: ChatRequest):
         )
         session_id_str = str(session.id)
         history = get_history(setup_db, session_id_str)
-        save_user_message(setup_db, session_id_str, request_body.query)
+
+        stored_images = upload_to_storage(processed_images, session_id_str) if processed_images else []
+        images_meta = [
+            {"url": s.url, "mime_type": s.mime_type, "size_bytes": s.size_bytes}
+            for s in stored_images
+        ]
+        save_user_message(setup_db, session_id_str, request_body.query, images=images_meta or None)
     except Exception as e:
         setup_db.close()
         logger.error(f"stream_setup_error error={e}", exc_info=True)
@@ -172,7 +203,10 @@ async def chat_stream(request: Request, request_body: ChatRequest):
         meta_event: dict = {}
 
         try:
-            for event in query_stream(request_body.query, history, user["role"]):
+            for event in query_stream(
+                request_body.query, history, user["role"],
+                images=processed_images or None,
+            ):
                 if event["type"] == "token":
                     answer_parts.append(event.get("delta", ""))
                 elif event["type"] == "meta":

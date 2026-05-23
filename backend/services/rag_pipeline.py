@@ -43,6 +43,7 @@ from backend.prompts.templates import (
     RAG_USER_PROMPT_WITH_HISTORY,
     CHITCHAT_SYSTEM_PROMPT,
     CONDENSE_PROMPT,
+    VISION_RAG_PROMPT,
 )
 from backend.services.indexing import get_qdrant_client
 from backend.services.cache import cache_get, cache_set
@@ -50,6 +51,8 @@ from backend.services.moderation import check_moderation_v2
 from backend.services.intent_classifier import classify_intent
 from backend.services.output_filter import filter_output, filter_token
 from backend.services import keyword_filter
+from backend.services import vision as vision_service
+from backend.services.vision import VisionError, ProcessedImage
 
 logger = logging.getLogger(__name__)
 
@@ -679,16 +682,142 @@ def _build_sources(nodes: list) -> list[dict]:
     ]
 
 
+# ─── Vision query (image input support) ──────────────────────────────────────
+
+def _vision_query(
+    question: str,
+    history: list[dict],
+    images: list[ProcessedImage],
+    role: str,
+    t_start: float,
+) -> dict:
+    """Handle query yang punya image attachment.
+
+    Pipeline:
+      L1 keyword filter pada question text → block atau lanjut
+      L2 moderation pada question text → block atau lanjut
+        (image content TIDAK dilewatkan ke Llama Guard — text-only model)
+      Skip L3 intent: vision query selalu treat sebagai information-seeking
+      Skip L5b cache: tiap image unik
+      L5c retrieval: berdasarkan question text saja
+      Generate via VISION_RAG_PROMPT + image content ke vLLM
+      L6 output filter
+    """
+    _ = role  # placeholder untuk RBAC future
+
+    def _make(answer: str, mode: str, top_score: float = 0.0,
+              sources: list | None = None, extra_debug: dict | None = None) -> dict:
+        debug = {
+            "mode": mode,
+            "total_time_s": round(time.time() - t_start, 2),
+            "model": LLM_MODEL,
+            "top_score": top_score,
+            "has_images": True,
+            "image_count": len(images),
+        }
+        if extra_debug:
+            debug.update(extra_debug)
+        return {
+            "answer": answer,
+            "sources": sources or [],
+            "condensed_question": None,
+            "debug": debug,
+        }
+
+    # ── L1 keyword filter pada question text ─────────────────────────────────
+    l1 = _check_keyword_filter(question)
+    if l1.is_blocked:
+        return _make(_pick(_HARMFUL_RESPONSES), mode="blocked")
+
+    # ── L2 moderation pada question text ─────────────────────────────────────
+    mod = check_moderation_v2(question)
+    if mod.bypassed:
+        logger.warning("vision_L2_bypassed reason=%s", mod.reason)
+    if not mod.safe:
+        logger.warning("vision_L2_moderation_blocked reason=%s", mod.reason)
+        return _make(
+            "Maaf, saya tidak dapat memproses permintaan tersebut.",
+            mode="blocked_moderation",
+        )
+
+    # ── L5c retrieval (text-only) untuk konteks RAG ──────────────────────────
+    try:
+        _configure_settings()
+        reranked_nodes, top_score = _retrieve_and_rerank(question, role=role)
+        sources = _build_sources(reranked_nodes)
+    except Exception as e:
+        logger.error("vision_retrieval_error error=%s", e, exc_info=True)
+        # Vision query bisa lanjut tanpa RAG context — image masih bisa di-analyze.
+        reranked_nodes = []
+        sources = []
+        top_score = 0.0
+
+    if reranked_nodes:
+        context_str = "\n\n".join(n.text for n in reranked_nodes)
+    else:
+        context_str = "(Tidak ada referensi dokumen UNHAS yang relevan untuk pertanyaan ini.)"
+
+    history_str = _format_history(history[-(HISTORY_TURNS * 2):]) if history else ""
+
+    prompt = VISION_RAG_PROMPT.format(
+        context_str=context_str,
+        chat_history=history_str,
+        query_str=question,
+    )
+
+    # ── Generate via vLLM chat completions multimodal ────────────────────────
+    try:
+        raw_answer = vision_service.generate_with_vision(prompt, images)
+    except VisionError as e:
+        logger.error("vision_generate_failed error=%s", e)
+        return _make(
+            f"Maaf, gagal memproses gambar Anda: {e}",
+            mode="vision_error",
+            sources=sources, top_score=top_score,
+        )
+
+    answer = filter_output(_format_answer(raw_answer))
+    answer, confidence_band = _apply_confidence_disclaimer(answer, top_score)
+
+    logger.info(
+        "vision_RAG done in %.2fs — images=%d top_score=%.4f sources=%d band=%s",
+        time.time() - t_start, len(images), top_score, len(sources), confidence_band,
+    )
+
+    return _make(
+        answer,
+        mode="vision_rag",
+        top_score=top_score,
+        sources=sources,
+        extra_debug={
+            "similarity_top_k": SIMILARITY_TOP_K,
+            "reranker_top_n": RERANKER_TOP_N,
+            "sources_returned": len(sources),
+            "confidence_band": confidence_band,
+        },
+    )
+
+
 # ─── Main entry point ────────────────────────────────────────────────────────
 
 def query(
     question: str,
     history: Optional[list[dict]] = None,
     role: str = "public",
+    images: Optional[list[ProcessedImage]] = None,
 ) -> dict:
-    """Run RAG query. Supports multi-turn (history) + RBAC (role) + cache."""
+    """Run RAG query. Supports multi-turn (history) + RBAC (role) + cache.
+
+    Kalau `images` di-set (non-empty), branch ke _vision_query yang pakai
+    VISION_RAG_PROMPT + multimodal vLLM call. Cache dan L3 intent di-skip
+    untuk vision path.
+    """
     t_start = time.time()
     history = history or []
+
+    if images:
+        return _vision_query(question, history, images, role, t_start)
+
 
     def _make_result(answer: str, mode: str, sources: list = None,
                      top_score: float = 0.0, condensed: str = None,
@@ -887,14 +1016,37 @@ def query_stream(
     question: str,
     history: Optional[list[dict]] = None,
     role: str = "public",
+    images: Optional[list[ProcessedImage]] = None,
 ) -> Generator[dict, None, None]:
     """Streaming RAG query. Yields event dicts:
       {'type': 'token',   'delta': str}
       {'type': 'meta',    'answer': str, 'sources': list, 'debug': dict,
                           'condensed_question': str}
+
+    Kalau `images` di-set, vision path dipakai (non-streaming dari vLLM,
+    di-chunk lokal jadi mirip streaming untuk UI).
     """
     t_start = time.time()
     history = history or []
+
+    if images:
+        # Vision: panggil _vision_query (blocking), lalu emit hasil sebagai
+        # fake stream (chunked by word). Latency overall sama, UI experience
+        # tetap streaming-like.
+        result = _vision_query(question, history, images, role, t_start)
+        answer = result["answer"]
+        for word in answer.split(" "):
+            if word:
+                yield {"type": "token", "delta": word + " "}
+                time.sleep(0.02)
+        yield {
+            "type": "meta",
+            "answer": answer,
+            "sources": result.get("sources", []),
+            "condensed_question": None,
+            "debug": result.get("debug", {}),
+        }
+        return
 
     def _make_meta(answer: str, mode: str, sources: list = None,
                    top_score: float = 0.0, condensed: str = None,

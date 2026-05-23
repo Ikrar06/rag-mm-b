@@ -91,11 +91,20 @@ def get_history(db: DBSession, session_id: str, limit_turns: int = 5) -> list[di
     return [{"role": m.role, "content": m.content} for m in messages]
 
 
-def save_user_message(db: DBSession, session_id: str, content: str) -> Message:
+def save_user_message(
+    db: DBSession,
+    session_id: str,
+    content: str,
+    images: Optional[list[dict]] = None,
+) -> Message:
+    """Simpan user message. `images` adalah list of dict
+    {"url": str, "mime_type": str, "size_bytes": int} dari hasil storage upload.
+    """
     msg = Message(
         session_id=uuid.UUID(session_id),
         role="user",
         content=content,
+        images=_to_json_safe(images) if images else None,
     )
     db.add(msg)
     db.commit()

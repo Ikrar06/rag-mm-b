@@ -3,7 +3,7 @@
 import json
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from backend.limiter import limiter
@@ -11,6 +11,7 @@ from backend.config import RATE_LIMIT_TEXT_PER_MINUTE
 from backend.models.schemas import QueryRequest, QueryResponse, SourceDocument, DebugInfo
 from backend.services.rag_pipeline import query, query_stream
 from backend.services.output_filter import filter_output
+from backend.services.vision import validate_and_process, VisionError
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["query"])
@@ -45,8 +46,16 @@ async def query_endpoint(request: Request, body: QueryRequest):
     - `mahasiswa` — mahasiswa terdaftar, dapat akses `get_info_private`
     - `admin` — staf akademik
 
+    **Field `images`** (opsional):
+    - List of `{"mime_type": "image/jpeg|png|webp", "data": "<base64>"}`
+    - Max 2 gambar per request, max 10 MB per gambar.
+    - Auto-resize ke 1280px supaya hemat token VL.
+    - Hanya aktif kalau backend dikonfigurasi `LLM_SUPPORTS_VISION=true`.
+
     **Field `debug.mode`** menjelaskan jalur jawaban:
     - `rag` — dari dokumen RAG
+    - `vision_rag` — RAG + analisis gambar via Qwen3-VL
+    - `vision_error` — gambar invalid atau LLM vision gagal
     - `chitchat` — sapaan / basa-basi
     - `out_of_scope` — di luar topik akademik UNHAS
     - `get_info_private` — dari API UNHAS (aktif jika `UNHAS_API_BASE_URL` dikonfigurasi)
@@ -56,10 +65,18 @@ async def query_endpoint(request: Request, body: QueryRequest):
     """
     history = [m.model_dump() for m in body.history]
 
+    try:
+        processed_images = validate_and_process(
+            [img.model_dump() for img in body.images]
+        )
+    except VisionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     result = query(
         question=body.question,
         history=history,
         role=body.role,
+        images=processed_images or None,
     )
 
     result["answer"] = filter_output(result["answer"])
@@ -103,12 +120,22 @@ async def query_stream_endpoint(request: Request, body: QueryRequest):
     """
     history = [m.model_dump() for m in body.history]
 
+    try:
+        processed_images = validate_and_process(
+            [img.model_dump() for img in body.images]
+        )
+    except VisionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     def event_generator():
         answer_parts: list[str] = []
         meta_event: dict = {}
 
         try:
-            for event in query_stream(body.question, history, body.role):
+            for event in query_stream(
+                body.question, history, body.role,
+                images=processed_images or None,
+            ):
                 if event["type"] == "token":
                     answer_parts.append(event.get("delta", ""))
                 elif event["type"] == "meta":

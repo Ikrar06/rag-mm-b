@@ -131,3 +131,4 @@ python-dotenv==1.0.1
 pydantic==2.11.7
 pydantic-settings==2.7.0
 PyYAML==6.0.2
+minio==7.2.10

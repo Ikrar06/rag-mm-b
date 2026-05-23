@@ -85,6 +85,34 @@ async def serve_frontend():
     return FileResponse(os.path.join(_frontend_dir, "index.html"))
 
 
+@app.get("/api/files/{key:path}", tags=["infrastructure"], include_in_schema=False)
+async def serve_storage_file(key: str):
+    """Serve image yang di-upload user — hanya untuk STORAGE_BACKEND=filesystem (dev).
+
+    Production (MinIO): user dapat presigned URL langsung ke MinIO, endpoint
+    ini tidak terpakai.
+    """
+    from fastapi import HTTPException
+    from fastapi.responses import Response
+
+    if os.getenv("STORAGE_BACKEND", "filesystem") != "filesystem":
+        raise HTTPException(404, "Endpoint hanya aktif untuk filesystem storage")
+
+    if ".." in key or key.startswith("/"):
+        raise HTTPException(400, "Invalid key")
+
+    from backend.services.storage import get_storage
+    try:
+        data = get_storage().get_sync(key)
+    except FileNotFoundError:
+        raise HTTPException(404, "File tidak ditemukan")
+    except Exception:
+        raise HTTPException(500, "Gagal baca file")
+
+    media = "image/jpeg" if key.endswith((".jpg", ".jpeg")) else "image/png"
+    return Response(content=data, media_type=media)
+
+
 @app.get(
     "/api/health",
     response_model=HealthResponse,
@@ -150,6 +178,13 @@ async def health_check():
     except Exception:
         pass
 
+    vision_ok = False
+    try:
+        from backend.services.vision import vision_supported
+        vision_ok = vision_supported()
+    except Exception:
+        pass
+
     status = "healthy" if (ollama_ok and qdrant_ok and intent_ok) else "degraded"
     return HealthResponse(
         status=status,
@@ -159,6 +194,7 @@ async def health_check():
         redis=redis_ok,
         intent_model=intent_ok,
         moderation_circuit=mod_circuit,
+        vision_enabled=vision_ok,
     )
 
 

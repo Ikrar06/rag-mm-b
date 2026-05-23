@@ -16,11 +16,21 @@ Detail flow ada di [docs/sync-flow.md](docs/sync-flow.md).
 ## Header Sheet
 
 ```text
-no | pertanyaan | created_at | source_message_id | model | jawaban | sumber_referensi | labeled_by | intent_predicted | labeled_quality | notes_respond | labeled_intent | notes_intent
+no | pertanyaan | gambar_user | created_at | source_message_id | model | jawaban | sumber_referensi | labeled_by | intent_predicted | labeled_quality | notes_respond | labeled_intent | notes_intent
 ```
 
 `intent_predicted` ditulis dengan confidence, misalnya `chitchat (0.76)`.
+`gambar_user` berisi URL attachment yang user kirim (presigned MinIO link,
+valid 7 hari). Kosong kalau user tidak kirim gambar — reviewer click URL
+untuk lihat di browser.
+
 Kolom manual QA sengaja dikirim kosong saat append.
+
+**Migration dari header lama (tanpa `gambar_user`):**
+1. Buka sheet QA, klik kanan kolom C → Insert 1 column right (atau before, sesuai posisi).
+2. Set header baru di row 1: `gambar_user` di kolom C.
+3. Backend pickup column shift otomatis di sync berikutnya — `source_message_id`
+   sekarang ada di kolom E (sebelumnya D).
 
 ## Setup Cepat
 
