@@ -37,4 +37,10 @@ Thumbs.db
 
 *.md
 !README.md
+!automation_qa/README.md
+!automation_qa/docs/
+!automation_qa/docs/*.md
 .claude
+
+# QA automation credentials
+automation_qa/secrets/

@@ -38,6 +38,24 @@ services:
       - "6379:6379"
     restart: unless-stopped
 
+  # QA Google Sheets sync untuk test dev.
+  # Ini bukan cron OS; script berjalan dalam mode --watch dan sleep sesuai QA_SYNC_INTERVAL_SECONDS.
+  qa-sheet-sync:
+    build:
+      context: .
+      dockerfile: automation_qa/Dockerfile
+    env_file: .env
+    environment:
+      # Di dalam container, host PostgreSQL adalah nama service Docker, bukan localhost.
+      DATABASE_URL: postgresql://ragchat:dev@postgres:5432/ragchat
+      QA_SYNC_GOOGLE_CREDENTIALS_FILE: /run/secrets/google_service_account.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./automation_qa/secrets/google_service_account.json:/run/secrets/google_service_account.json:ro
+    restart: unless-stopped
+
   # redis-stack (pakai kalau butuh RedisSearch vector index untuk semantic cache Tier 2)
   # Ganti redis di atas dengan ini:
   # redis:

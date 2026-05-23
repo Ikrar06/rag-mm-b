@@ -179,6 +179,22 @@ services:
               count: 1
               capabilities: [gpu]
 
+  # ── QA Evaluation Sync ─────────────────────────────────────────────────
+
+  qa-sheet-sync:
+    build:
+      context: .
+      dockerfile: automation_qa/Dockerfile
+    env_file: .env
+    environment:
+      QA_SYNC_GOOGLE_CREDENTIALS_FILE: /run/secrets/google_service_account.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./automation_qa/secrets/google_service_account.json:/run/secrets/google_service_account.json:ro
+    restart: unless-stopped
+
   # ── Monitoring Stack ───────────────────────────────────────────────────
 
   prometheus:

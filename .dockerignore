@@ -11,6 +11,7 @@ __pycache__/
 .env.*
 !.env.dev
 !.env.poc
+automation_qa/secrets/
 
 # Git
 .git/
