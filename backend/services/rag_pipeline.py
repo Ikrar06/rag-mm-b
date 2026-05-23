@@ -24,6 +24,7 @@ from backend.config import (
     RERANKER_PROVIDER,
     RERANKER_MODEL,
     RERANKER_TIMEOUT,
+    LOW_CONFIDENCE_BUFFER,
     RERANKER_BASE_URL,
     RERANKER_TOP_N,
     QDRANT_COLLECTION_NAME,
@@ -123,6 +124,41 @@ def _check_keyword_filter(question: str) -> keyword_filter.KeywordFilterResult:
     Lihat backend/services/keyword_filter.py.
     """
     return keyword_filter.check(question)
+
+
+_LOW_CONFIDENCE_DISCLAIMER = (
+    "\n\n*Catatan: Tingkat kecocokan informasi ini tergolong sedang. "
+    "Untuk kepastian, silakan konfirmasi ke Bagian Akademik fakultas Anda "
+    "atau cek neosia.unhas.ac.id.*"
+)
+
+
+def _confidence_band(top_score: float) -> str:
+    """Klasifikasi top_score reranker:
+    - "low":      < SCORE_THRESHOLD (sudah ditangani di low_relevance_fallback)
+    - "marginal": [SCORE_THRESHOLD, SCORE_THRESHOLD + buffer)
+    - "high":     >= SCORE_THRESHOLD + buffer
+    """
+    if top_score < SCORE_THRESHOLD:
+        return "low"
+    if top_score < SCORE_THRESHOLD + LOW_CONFIDENCE_BUFFER:
+        return "marginal"
+    return "high"
+
+
+def _apply_confidence_disclaimer(answer: str, top_score: float) -> tuple[str, str]:
+    """Append disclaimer ringan kalau confidence band = marginal.
+
+    Returns (answer_with_optional_disclaimer, confidence_band).
+    """
+    band = _confidence_band(top_score)
+    if band == "marginal":
+        logger.info(
+            "L5e_marginal_confidence top_score=%.4f threshold=%.2f buffer=%.2f → disclaimer appended",
+            top_score, SCORE_THRESHOLD, LOW_CONFIDENCE_BUFFER,
+        )
+        return answer.rstrip() + _LOW_CONFIDENCE_DISCLAIMER, band
+    return answer, band
 
 
 def _is_identity_question(question: str) -> bool:
@@ -817,10 +853,11 @@ def query(
     llm = get_llm()
     raw_answer = str(llm.complete(prompt))
     answer = filter_output(_format_answer(raw_answer))
+    answer, confidence_band = _apply_confidence_disclaimer(answer, top_score)
 
     logger.info(
         f"RAG done in {round(time.time() - t_start, 2)}s "
-        f"— top_score={top_score:.4f}, sources={len(sources)}"
+        f"— top_score={top_score:.4f}, sources={len(sources)}, band={confidence_band}"
     )
 
     result = _make_result(answer, mode="rag",
@@ -830,6 +867,7 @@ def query(
         "similarity_top_k": SIMILARITY_TOP_K,
         "reranker_top_n": RERANKER_TOP_N,
         "sources_returned": len(sources),
+        "confidence_band": confidence_band,
     })
 
     # ── 9. Cache store ────────────────────────────────────────────────────────
@@ -1017,8 +1055,18 @@ def query_stream(
             yield {"type": "token", "delta": filter_token(delta)}
 
     full_answer = filter_output(_format_answer("".join(parts)))
-    logger.info(f"Stream RAG done in {round(time.time() - t_start, 2)}s "
-                f"— top_score={top_score:.4f}, sources={len(sources)}")
+    full_answer, confidence_band = _apply_confidence_disclaimer(full_answer, top_score)
+
+    # Kalau marginal, kirim disclaimer chunk sebagai token tambahan supaya client
+    # yang tidak baca meta tetap melihatnya. _LOW_CONFIDENCE_DISCLAIMER sudah
+    # masuk di full_answer; di sini kirim sebagai delta terakhir agar muncul di UI.
+    if confidence_band == "marginal":
+        yield {"type": "token", "delta": _LOW_CONFIDENCE_DISCLAIMER}
+
+    logger.info(
+        f"Stream RAG done in {round(time.time() - t_start, 2)}s "
+        f"— top_score={top_score:.4f}, sources={len(sources)}, band={confidence_band}"
+    )
 
     # ── 9. Cache store ────────────────────────────────────────────────────────
     debug_dict = {
@@ -1031,6 +1079,7 @@ def query_stream(
         "sources_returned": len(sources),
         "intent": _intent,
         "intent_confidence": _intent_conf,
+        "confidence_band": confidence_band,
     }
     cache_set(condensed, full_answer, sources, role=role, debug=debug_dict)
     if condensed != question:

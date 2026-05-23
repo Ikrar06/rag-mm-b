@@ -58,6 +58,10 @@ RERANKER_BASE_URL = os.getenv("RERANKER_BASE_URL", "")   # hanya dipakai kalau R
 RERANKER_TOP_N = int(os.getenv("RERANKER_TOP_N", "6"))
 # Timeout TEI rerank service. GPU 5s cukup; CPU naikkan ke 30s.
 RERANKER_TIMEOUT = float(os.getenv("RERANKER_TIMEOUT", "5"))
+# Buffer di atas SCORE_THRESHOLD untuk marginal confidence. top_score yang
+# berada di [SCORE_THRESHOLD, SCORE_THRESHOLD + buffer] → tambah disclaimer
+# halus ke akhir jawaban. Default 0.15 → marginal zone score 0.30-0.45.
+LOW_CONFIDENCE_BUFFER = float(os.getenv("LOW_CONFIDENCE_BUFFER", "0.15"))
 RERANKER_USE_FP16 = True
 
 # Backward-compat alias
