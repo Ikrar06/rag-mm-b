@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Iterable
+from uuid import UUID
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -104,8 +105,16 @@ def _fetch_answered_messages(
     database_url: str,
     existing_source_ids: Iterable[str],
 ) -> list[dict[str, Any]]:
-    existing = {str(source_id) for source_id in existing_source_ids if source_id}
-    existing_filter = list(existing) or [""]
+    existing: set[str] = set()
+    for source_id in existing_source_ids:
+        if not source_id:
+            continue
+        try:
+            existing.add(str(UUID(str(source_id).strip())))
+        except ValueError:
+            continue
+
+    existing_filter = list(existing)
 
     # Pairing dilakukan dari setiap jawaban assistant ke user message terakhir
     # dalam session yang sama. ID assistant dipakai sebagai source_message_id
@@ -129,7 +138,7 @@ def _fetch_answered_messages(
             LIMIT 1
         ) u ON TRUE
         WHERE a.role = 'assistant'
-          AND NOT (a.id::text = ANY(%s))
+          AND NOT (a.id = ANY(%s::uuid[]))
         ORDER BY a.created_at ASC, a.id ASC
     """
 
