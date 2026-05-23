@@ -3,20 +3,10 @@ index_narratives.py
 ===================
 Index file narasi .txt (hasil preprocess-template.py) ke Qdrant.
 
-File .txt di-split menjadi chunks jika melebihi batas token embedding model.
-Paragraf pendek digabung (greedy), paragraf panjang di-split per kalimat.
-Default: MAX_CHUNK_TOKENS=400 (aman untuk model 512-token).
-
-Bisa dijalankan bersama indexing.py (PDF) karena keduanya
-store ke collection Qdrant yang sama.
-
 Usage:
-    # Dari root project
-    python backend\services\index_narratives.py
-
-    # Dengan opsi
-    python backend\services\index_narratives.py --input data/narratives --force
-    python backend\services\index_narratives.py --input data/narratives --endpoint fakultas
+    python backend/services/index_narratives.py
+    python backend/services/index_narratives.py --input data/narratives --force
+    python backend/services/index_narratives.py --input data/narratives --endpoint fakultas
 """
 
 import argparse
@@ -31,6 +21,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+# ── Matikan log HTTP yang spam sebelum import apapun ─────────────
+logging.basicConfig(
+    level=logging.WARNING,                      # default WARNING
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
+# Matikan httpx / httpcore (penyebab baris "HTTP Request: PUT ..." yang berulang)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("hpack").setLevel(logging.WARNING)
+# Tetap tampilkan log penting dari app sendiri
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 from llama_index.core import VectorStoreIndex, StorageContext, Document, Settings
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
@@ -53,23 +57,56 @@ from config import (
     EMBED_DIMENSION,
 )
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%H:%M:%S",
-)
-logger = logging.getLogger(__name__)
-
-# Endpoint yang valid (subfolder di data/narratives)
 VALID_ENDPOINTS = [
     "fakultas", "prodi", "jenjang", "kurikulum",
     "mata-kuliah", "prasyarat", "rps", "kelas",
     "jadwal", "fasilitas", "pmb", "pengumuman", "mahasiswa",
 ]
 
+BATCH_SIZE = 2048   # dokumen per batch embed+store
+
 
 # ─────────────────────────────────────────────────────────────────
-# Qdrant helpers (mirip indexing.py agar konsisten)
+# Progress helper
+# ─────────────────────────────────────────────────────────────────
+
+def _fmt_duration(seconds: float) -> str:
+    seconds = int(seconds)
+    h, r = divmod(seconds, 3600)
+    m, s = divmod(r, 60)
+    if h:
+        return f"{h}j {m}m {s}d"
+    if m:
+        return f"{m}m {s}d"
+    return f"{s}d"
+
+
+def _progress_bar(done: int, total: int, width: int = 30) -> str:
+    pct   = done / total if total else 0
+    filled = int(width * pct)
+    bar   = "█" * filled + "░" * (width - filled)
+    return f"[{bar}] {pct*100:5.1f}%"
+
+
+def _print_progress(done: int, total: int, elapsed: float,
+                    batch_num: int, total_batches: int,
+                    docs_per_sec: float):
+    eta = (total - done) / docs_per_sec if docs_per_sec > 0 else 0
+    bar = _progress_bar(done, total)
+    line = (
+        f"\r  {bar}  "
+        f"{done:>7,}/{total:,} dok  │  "
+        f"batch {batch_num}/{total_batches}  │  "
+        f"{docs_per_sec:,.0f} dok/s  │  "
+        f"ETA {_fmt_duration(eta)}  │  "
+        f"elapsed {_fmt_duration(elapsed)}"
+    )
+    # Potong agar tidak wrap di terminal 80-col
+    print(line[:160], end="", flush=True)
+
+
+# ─────────────────────────────────────────────────────────────────
+# Qdrant helpers
 # ─────────────────────────────────────────────────────────────────
 
 def get_qdrant_client() -> QdrantClient:
@@ -80,8 +117,7 @@ def _ensure_collection(client: QdrantClient):
     collections = [c.name for c in client.get_collections().collections]
     if QDRANT_COLLECTION_NAME in collections:
         return
-
-    logger.info(f"Creating collection '{QDRANT_COLLECTION_NAME}' (dim={EMBED_DIMENSION})...")
+    logger.info(f"Membuat collection '{QDRANT_COLLECTION_NAME}' (dim={EMBED_DIMENSION})...")
     max_retries = 5
     for attempt in range(max_retries):
         try:
@@ -89,12 +125,12 @@ def _ensure_collection(client: QdrantClient):
                 collection_name=QDRANT_COLLECTION_NAME,
                 vectors_config=VectorParams(size=EMBED_DIMENSION, distance=Distance.COSINE),
             )
-            logger.info("Collection created.")
+            logger.info("Collection dibuat.")
             return
         except Exception as e:
             if "already exists" in str(e).lower() and attempt < max_retries - 1:
                 wait = 2 * (attempt + 1)
-                logger.warning(f"Orphaned storage, retry in {wait}s...")
+                logger.warning(f"Storage orphaned, retry dalam {wait}s...")
                 try:
                     client.delete_collection(QDRANT_COLLECTION_NAME)
                 except Exception:
@@ -105,7 +141,6 @@ def _ensure_collection(client: QdrantClient):
 
 
 def get_indexed_source_files() -> set[str]:
-    """Ambil set source_file yang sudah di-index (untuk incremental update)."""
     try:
         client = get_qdrant_client()
         indexed = set()
@@ -113,10 +148,8 @@ def get_indexed_source_files() -> set[str]:
         while True:
             results, offset = client.scroll(
                 collection_name=QDRANT_COLLECTION_NAME,
-                limit=500,
-                offset=offset,
-                with_payload=True,
-                with_vectors=False,
+                limit=500, offset=offset,
+                with_payload=True, with_vectors=False,
             )
             for point in results:
                 sf = point.payload.get("source_file")
@@ -130,21 +163,17 @@ def get_indexed_source_files() -> set[str]:
 
 
 def delete_endpoint_chunks(endpoint: str) -> None:
-    """Hapus semua chunks dari endpoint tertentu (untuk re-index sebagian)."""
     try:
         client = get_qdrant_client()
         client.delete(
             collection_name=QDRANT_COLLECTION_NAME,
             points_selector=Filter(
-                must=[FieldCondition(
-                    key="endpoint",
-                    match=MatchValue(value=endpoint),
-                )]
+                must=[FieldCondition(key="endpoint", match=MatchValue(value=endpoint))]
             ),
         )
-        logger.info(f"Deleted all chunks for endpoint='{endpoint}'")
+        logger.info(f"Dihapus semua chunks endpoint='{endpoint}'")
     except Exception as e:
-        logger.warning(f"Could not delete chunks for endpoint='{endpoint}': {e}")
+        logger.warning(f"Gagal hapus chunks endpoint='{endpoint}': {e}")
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -153,7 +182,6 @@ def delete_endpoint_chunks(endpoint: str) -> None:
 
 def _configure_embed():
     if EMBED_PROVIDER == "tei":
-        # POC: panggil TEI embedding service via HTTP (container ga butuh GPU)
         from llama_index.embeddings.text_embeddings_inference import TextEmbeddingsInference
         Settings.embed_model = TextEmbeddingsInference(
             model_name=EMBED_MODEL,
@@ -161,29 +189,23 @@ def _configure_embed():
             embed_batch_size=EMBED_BATCH_SIZE,
             timeout=float(EMBED_TIMEOUT),
         )
-        logger.info(f"embed_provider=tei base_url={EMBED_BASE_URL} batch={EMBED_BATCH_SIZE} timeout={EMBED_TIMEOUT}s")
+        logger.info(f"embed=tei  base_url={EMBED_BASE_URL}  batch={EMBED_BATCH_SIZE}")
     else:
-        # Dev: in-process via HuggingFace (CUDA atau CPU sesuai EMBED_DEVICE)
         Settings.embed_model = HuggingFaceEmbedding(
             model_name=EMBED_MODEL,
             device=EMBED_DEVICE,
             trust_remote_code=True,
             embed_batch_size=EMBED_BATCH_SIZE,
         )
-        logger.info(f"embed_provider=huggingface device={EMBED_DEVICE}")
-    # LLM tidak dipakai saat indexing — matikan agar tidak load model
+        logger.info(f"embed=huggingface  device={EMBED_DEVICE}")
     Settings.llm = None
 
 
-
 # ─────────────────────────────────────────────────────────────────
-# Token-aware chunking
+# Chunking
 # ─────────────────────────────────────────────────────────────────
 
-# Batas token aman — di bawah limit model (512) agar ada ruang untuk
-# special tokens dan overlap.  Ubah sesuai model kamu.
 MAX_CHUNK_TOKENS = 400
-# Estimasi: 1 token ≈ 3.5 karakter untuk teks Bahasa Indonesia
 CHARS_PER_TOKEN  = 3.5
 
 
@@ -192,10 +214,8 @@ def _estimate_tokens(text: str) -> int:
 
 
 def _split_long_paragraph(para: str, max_tokens: int) -> list[str]:
-    """Split 1 paragraf panjang per kalimat jika masih terlalu panjang."""
     if _estimate_tokens(para) <= max_tokens:
         return [para]
-    # Split per kalimat (titik/tanda tanya/seru diikuti spasi atau newline)
     import re
     sentences = re.split(r"(?<=[.!?])\s+", para.strip())
     chunks: list[str] = []
@@ -207,7 +227,6 @@ def _split_long_paragraph(para: str, max_tokens: int) -> list[str]:
         else:
             if current:
                 chunks.append(current)
-            # Kalimat tunggal yang masih terlalu panjang → paksa masuk 1 chunk
             current = sent
     if current:
         chunks.append(current)
@@ -215,66 +234,39 @@ def _split_long_paragraph(para: str, max_tokens: int) -> list[str]:
 
 
 def chunk_narrative(text: str, max_tokens: int = MAX_CHUNK_TOKENS) -> list[str]:
-    """
-    Pecah teks narasi menjadi chunks yang aman untuk embedding.
-
-    Strategi:
-    1. Split teks per paragraf (\n\n sebagai batas alami).
-    2. Gabungkan paragraf-paragraf pendek secara greedy sampai mendekati batas.
-    3. Paragraf yang masih terlalu panjang sendiri → split per kalimat.
-
-    Setiap chunk menyertakan baris pertama file (judul/identitas item)
-    sebagai prefix agar retrieval tetap punya konteks meskipun di-split.
-    """
     if not text.strip():
         return []
-
-    # Jika seluruh teks masih di bawah batas → langsung return 1 chunk
     if _estimate_tokens(text) <= max_tokens:
         return [text]
-
-    # Ambil baris pertama sebagai "header" yang di-repeat di tiap chunk
     header_line = text.split("\n")[0].strip()
-    # Maksimal 120 karakter untuk header agar tidak makan terlalu banyak token
     header = header_line[:120] + ("..." if len(header_line) > 120 else "")
-
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
     chunks: list[str] = []
     current_parts: list[str] = []
     current_tokens = 0
-
     for para in paragraphs:
-        # Pecah dulu kalau paragraf itu sendiri lebih panjang dari batas
         sub_paras = _split_long_paragraph(para, max_tokens - _estimate_tokens(header) - 10)
-
         for sub in sub_paras:
             sub_tokens = _estimate_tokens(sub)
             if current_tokens + sub_tokens > max_tokens and current_parts:
-                # Flush chunk yang ada
                 chunks.append("\n\n".join(current_parts))
                 current_parts = []
                 current_tokens = 0
             current_parts.append(sub)
             current_tokens += sub_tokens
-
     if current_parts:
         chunks.append("\n\n".join(current_parts))
-
-    # Tambahkan header ke chunk ke-2 dst agar tetap ada konteks
     result = []
     for i, chunk in enumerate(chunks):
         if i == 0:
             result.append(chunk)
         else:
-            # Cek apakah header sudah ada di awal chunk
-            if not chunk.startswith(header[:40]):
-                result.append(f"{header}\n\n{chunk}")
-            else:
-                result.append(chunk)
+            result.append(chunk if chunk.startswith(header[:40]) else f"{header}\n\n{chunk}")
     return result
 
+
 # ─────────────────────────────────────────────────────────────────
-# Core indexing
+# Load .txt files → Documents
 # ─────────────────────────────────────────────────────────────────
 
 def _load_txt_files(
@@ -283,82 +275,58 @@ def _load_txt_files(
     force: bool,
     indexed_files: set[str],
 ) -> list[Document]:
-    """
-    Baca semua .txt dari subfolder endpoint, buat Document objects.
-
-    Metadata per Document:
-        source_file  : nama file .txt (untuk incremental check)
-        endpoint     : nama kategori data (fakultas, prodi, dst.)
-        item_id      : nama file tanpa ekstensi (e.g. "0000_FEB")
-        file_name    : sama dengan source_file (kompatibel dengan indexing.py)
-    """
     documents = []
     stats = {}
 
     for endpoint in endpoints:
         ep_dir = narratives_dir / endpoint
         if not ep_dir.exists():
-            logger.warning(f"  [SKIP] Subfolder tidak ditemukan: {ep_dir}")
+            print(f"  [SKIP] subfolder tidak ditemukan: {ep_dir}")
             continue
-
         txt_files = sorted(ep_dir.glob("*.txt"))
         if not txt_files:
-            logger.warning(f"  [SKIP] Tidak ada .txt di {ep_dir}")
+            print(f"  [SKIP] tidak ada .txt di {ep_dir}")
             continue
-
-        new_files = [
-            f for f in txt_files
-            if force or f.name not in indexed_files
-        ]
-        skipped = len(txt_files) - len(new_files)
-
-        stats[endpoint] = {"total": len(txt_files), "new": len(new_files), "skip": skipped}
-        _ep_doc_start = len(documents)  # track chunks added for this endpoint
-
+        new_files = [f for f in txt_files if force or f.name not in indexed_files]
+        stats[endpoint] = {
+            "total": len(txt_files),
+            "new":   len(new_files),
+            "skip":  len(txt_files) - len(new_files),
+        }
         for txt_path in new_files:
             try:
                 text = txt_path.read_text(encoding="utf-8").strip()
                 if not text:
-                    logger.warning(f"    [!] File kosong: {txt_path.name}")
                     continue
-
                 chunks = chunk_narrative(text)
-                n_chunks = len(chunks)
-
                 for chunk_idx, chunk_text in enumerate(chunks):
-                    doc = Document(
+                    documents.append(Document(
                         text=chunk_text,
                         metadata={
                             "source_file":  txt_path.name,
-                            "file_name":    txt_path.name,  # kompatibel dengan indexing.py
+                            "file_name":    txt_path.name,
                             "endpoint":     endpoint,
                             "item_id":      txt_path.stem,
                             "page":         None,
                             "chunk_index":  chunk_idx,
-                            "total_chunks": n_chunks,
+                            "total_chunks": len(chunks),
                             "element_type": "narrative",
                         },
-                    )
-                    documents.append(doc)
-
-                if n_chunks > 1:
-                    logger.debug(f"    split: {txt_path.name} → {n_chunks} chunks")
-
+                    ))
             except Exception as e:
-                logger.error(f"    [!] Gagal baca {txt_path.name}: {e}")
+                print(f"   [!] Gagal baca {txt_path.name}: {e}")
 
-    # Print ringkasan per endpoint
     print()
     for ep, s in stats.items():
-        msg = f"  {ep:<15} {s['total']:>4} file"
-        if s["skip"]:
-            msg += f"  ({s['skip']} sudah di-index, {s['new']} baru)"
-        else:
-            msg += f"  ({s['new']} akan di-index)"
-        print(msg)
+        skip_info = f"  ({s['skip']} skip, {s['new']} baru)" if s["skip"] else f"  ({s['new']} akan di-index)"
+        print(f"  {ep:<15} {s['total']:>6,} file{skip_info}")
 
     return documents
 
+
+# ─────────────────────────────────────────────────────────────────
+# Embed + store — dengan progress bar per batch
+# ─────────────────────────────────────────────────────────────────
 
 def _embed_and_store(documents: list[Document]):
     qdrant_client = get_qdrant_client()
@@ -370,12 +338,34 @@ def _embed_and_store(documents: list[Document]):
     )
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-    logger.info(f"Embedding {len(documents)} documents...")
-    VectorStoreIndex.from_documents(
-        documents,
-        storage_context=storage_context,
-        show_progress=True,
-    )
+    total         = len(documents)
+    total_batches = (total + BATCH_SIZE - 1) // BATCH_SIZE
+    done          = 0
+    t_start       = time.time()
+    t_batch_start = t_start
+
+    print(f"\n  Mulai embedding {total:,} dokumen dalam {total_batches} batch (@{BATCH_SIZE:,}/batch)\n")
+
+    for batch_num in range(1, total_batches + 1):
+        start_idx = (batch_num - 1) * BATCH_SIZE
+        end_idx   = min(batch_num * BATCH_SIZE, total)
+        batch     = documents[start_idx:end_idx]
+
+        # Embed & store batch ini (show_progress=False karena kita buat sendiri)
+        VectorStoreIndex.from_documents(
+            batch,
+            storage_context=storage_context,
+            show_progress=False,
+        )
+
+        done     += len(batch)
+        elapsed   = time.time() - t_start
+        docs_per_sec = done / elapsed if elapsed > 0 else 0
+
+        _print_progress(done, total, elapsed, batch_num, total_batches, docs_per_sec)
+
+    # Newline setelah progress bar selesai
+    print()
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -386,25 +376,11 @@ def main():
     parser = argparse.ArgumentParser(
         description="Index narasi .txt ke Qdrant untuk RAG UNHAS"
     )
-    parser.add_argument(
-        "--input", "-i",
-        default="data/narratives",
-        help="Folder narasi (default: data/narratives)",
-    )
-    parser.add_argument(
-        "--endpoint", "-e",
-        default=None,
-        help=(
-            "Index hanya endpoint tertentu, pisah koma jika lebih dari satu. "
-            f"Pilihan: {', '.join(VALID_ENDPOINTS)}. "
-            "Default: semua endpoint."
-        ),
-    )
-    parser.add_argument(
-        "--force", "-f",
-        action="store_true",
-        help="Hapus dan re-index ulang endpoint yang dipilih (default: incremental).",
-    )
+    parser.add_argument("--input",    "-i", default="data/narratives")
+    parser.add_argument("--endpoint", "-e", default=None,
+        help=f"Endpoint tertentu (pisah koma). Pilihan: {', '.join(VALID_ENDPOINTS)}")
+    parser.add_argument("--force",    "-f", action="store_true",
+        help="Hapus dan re-index ulang endpoint yang dipilih")
     args = parser.parse_args()
 
     narratives_dir = Path(args.input)
@@ -413,44 +389,38 @@ def main():
         print(f"  Jalankan dulu: python scripts/preprocess-template.py")
         sys.exit(1)
 
-    # Tentukan endpoint yang akan di-index
     if args.endpoint:
         requested = [e.strip() for e in args.endpoint.split(",")]
         invalid = [e for e in requested if e not in VALID_ENDPOINTS]
         if invalid:
             print(f"[ERROR] Endpoint tidak valid: {invalid}")
-            print(f"  Pilihan valid: {VALID_ENDPOINTS}")
             sys.exit(1)
         endpoints = requested
     else:
         endpoints = VALID_ENDPOINTS
 
-    print("=" * 60)
+    print("=" * 65)
     print("  RAG Narrative Indexer — UNHAS")
     print(f"  Input     : {narratives_dir.resolve()}")
     print(f"  Endpoints : {', '.join(endpoints)}")
     print(f"  Mode      : {'force (re-index)' if args.force else 'incremental'}")
-    print(f"  Qdrant    : {QDRANT_URL}  →  collection '{QDRANT_COLLECTION_NAME}'")
-    print("=" * 60)
+    print(f"  Qdrant    : {QDRANT_URL}  →  '{QDRANT_COLLECTION_NAME}'")
+    print("=" * 65)
 
-    # ── Hapus chunks lama jika force ──────────────────────────────
     if args.force:
         print("\n  Menghapus chunks lama...")
         for ep in endpoints:
             delete_endpoint_chunks(ep)
 
-    # ── Load embed model ──────────────────────────────────────────
     print("\n  Memuat embedding model...")
     _configure_embed()
 
-    # ── Cek file yang sudah di-index (incremental) ────────────────
     indexed_files: set[str] = set()
     if not args.force:
         print("  Mengecek file yang sudah di-index...")
         indexed_files = get_indexed_source_files()
-        logger.info(f"  {len(indexed_files)} file sudah di-index sebelumnya.")
+        print(f"  → {len(indexed_files):,} file sudah di-index sebelumnya.")
 
-    # ── Load .txt files ───────────────────────────────────────────
     print("\n  Memuat file narasi:")
     documents = _load_txt_files(narratives_dir, endpoints, args.force, indexed_files)
 
@@ -458,17 +428,17 @@ def main():
         print("\n  ✅ Tidak ada file baru untuk di-index.")
         sys.exit(0)
 
-    # ── Embed + store ─────────────────────────────────────────────
-    print(f"\n  Total: {len(documents)} dokumen akan di-embed dan disimpan ke Qdrant.")
+    print(f"\n  Total: {len(documents):,} dokumen siap di-embed.")
+
     t_start = time.time()
     _embed_and_store(documents)
     elapsed = round(time.time() - t_start, 1)
 
-    print("\n" + "=" * 60)
-    print(f"  ✅ Selesai dalam {elapsed}s")
-    print(f"     {len(documents)} dokumen berhasil di-index ke Qdrant")
+    print("\n" + "=" * 65)
+    print(f"  ✅ Selesai dalam {_fmt_duration(elapsed)}")
+    print(f"     {len(documents):,} dokumen berhasil di-index ke Qdrant")
     print(f"     Collection: {QDRANT_COLLECTION_NAME}")
-    print("=" * 60)
+    print("=" * 65)
 
 
 if __name__ == "__main__":
