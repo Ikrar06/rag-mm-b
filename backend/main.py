@@ -198,3 +198,11 @@ async def startup_event():
         seed_users_from_json()
     except Exception as e:
         logger.warning(f"user_seed_skipped reason={e}")
+
+    # Warm up L1 keyword filter — fail fast kalau YAML config rusak.
+    try:
+        from backend.services import keyword_filter
+        keyword_filter.warm_up()
+    except Exception as e:
+        logger.error(f"keyword_filter_warmup_failed error={e}")
+        raise

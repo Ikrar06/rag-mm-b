@@ -1,0 +1,176 @@
+# Keyword filter Layer 1 — RAG Chatbot UNHAS
+#
+# Tiga kategori:
+#   hard_block    → langsung tolak, tidak lanjut ke L2
+#   soft_flag     → flag + lanjut ke L2 (Llama Guard judgment final)
+#   safe_context  → kalau ditemukan bersama soft_flag, downgrade jadi pass
+#
+# Matching: substring case-insensitive, setelah teks dinormalisasi
+# (NFKC unicode, lowercase, strip homoglyph, leet → normal).
+#
+# Update keyword:
+#   1. Edit file ini, naikkan `version`
+#   2. Set `updated_at` ke tanggal hari ini
+#   3. Backend pickup otomatis di next reload cycle (~5 menit) atau restart.
+
+version: 1
+updated_at: 2026-05-23
+
+# Hard-block: niat jahat eksplisit atau prompt injection.
+# Multi-word phrase preferred untuk minimize false positive.
+hard_block:
+  # Senjata & bahan peledak (instruksi pembuatan)
+  - "cara buat bom"
+  - "cara membuat bom"
+  - "cara merakit bom"
+  - "cara merakit senjata"
+  - "cara membuat senjata"
+  - "cara membuat peledak"
+  - "cara membuat bahan peledak"
+  - "sintesis bahan peledak"
+  - "rakit pistol"
+  - "rakit senapan"
+
+  # Bahan kimia berbahaya & racun
+  - "cara membuat racun"
+  - "cara meracuni"
+  - "sintesis sianida"
+  - "buat sarin"
+
+  # Niat membunuh / kekerasan eksplisit
+  - "cara membunuh orang"
+  - "cara membunuh seseorang"
+  - "cara menghabisi"
+
+  # Narkoba: instruksi produksi/sintesis (bukan sekadar tanya)
+  - "cara membuat sabu"
+  - "cara bikin sabu"
+  - "sintesis metamfetamin"
+  - "produksi narkoba"
+  - "cara membuat ekstasi"
+
+  # Hacking aktif / serangan
+  - "cara hack akun"
+  - "cara meretas"
+  - "cara bobol password"
+  - "cara crack password"
+  - "cara serang server"
+  - "cara phising"
+
+  # Prompt injection (English & Indonesian)
+  - "ignore previous instructions"
+  - "ignore all previous instructions"
+  - "forget your instructions"
+  - "forget previous instructions"
+  - "abaikan instruksi sebelumnya"
+  - "abaikan semua instruksi"
+  - "lupakan instruksi"
+  - "abaikan perintah"
+  - "system prompt"
+  - "jailbreak"
+  - "dan mode"
+  - "do anything now"
+
+# Soft-flag: keyword ambigu. Lanjut ke L2 untuk judgment kontekstual.
+# Single word OK karena akan di-cross-check dengan safe_context.
+soft_flag:
+  # Senjata & peledak (sebagai topik, bukan instruksi)
+  - "bom"
+  - "peledak"
+  - "ledak"
+  - "dinamit"
+  - "granat"
+  - "senjata"
+  - "pistol"
+  - "senapan"
+  - "peluru"
+
+  # Narkoba (sebagai topik kebijakan/edukasi/akademik OK)
+  - "narkoba"
+  - "narkotika"
+  - "sabu"
+  - "ekstasi"
+  - "heroin"
+  - "ganja"
+  - "kokain"
+
+  # Kekerasan & racun (akademik/medis/sastra konteks OK)
+  - "racun"
+  - "bunuh"
+  - "membunuh"
+  - "pembunuhan"
+
+  # Cyber (etis hacking, CTF, security course konteks OK)
+  - "hack"
+  - "hacking"
+  - "malware"
+  - "exploit"
+  - "phising"
+  - "ransomware"
+  - "virus komputer"
+
+# Safe-context: kalau soft_flag ketemu ini di query yang sama, downgrade ke pass.
+# Konteks akademik, kebijakan publik, edukasi, sastra, penelitian → legitimate.
+safe_context:
+  # Pertanyaan policy/safety kampus
+  - "bebas dari"
+  - "bebas narkoba"
+  - "kampus bebas"
+  - "kampus bersih"
+  - "anti narkoba"
+  - "pencegahan"
+  - "rehabilitasi"
+  - "korban"
+
+  # Akademik
+  - "tugas"
+  - "makalah"
+  - "skripsi"
+  - "tesis"
+  - "disertasi"
+  - "penelitian"
+  - "riset"
+  - "studi kasus"
+  - "literatur"
+  - "novel"
+  - "sastra"
+  - "cerpen"
+
+  # Kebijakan & hukum
+  - "kebijakan"
+  - "regulasi"
+  - "peraturan"
+  - "undang-undang"
+  - "uu narkotika"
+  - "uu ite"
+  - "perpu"
+  - "hukum"
+  - "pidana"
+  - "perdata"
+  - "konstitusi"
+
+  # Institusi
+  - "bnn"
+  - "polri"
+  - "kpk"
+  - "kemendikbud"
+  - "kementerian"
+  - "lembaga"
+
+  # Profesi medis/legal/forensik (konteks pekerjaan sah)
+  - "dokter"
+  - "farmasi"
+  - "apoteker"
+  - "forensik"
+  - "kriminologi"
+  - "cybersecurity"
+  - "keamanan siber"
+  - "ctf"
+  - "ethical hacking"
+  - "pentest"
+
+  # Sejarah & berita
+  - "sejarah"
+  - "kasus"
+  - "berita"
+  - "kronologi"

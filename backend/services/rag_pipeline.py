@@ -47,6 +47,7 @@ from backend.services.cache import cache_get, cache_set
 from backend.services.moderation import check_moderation
 from backend.services.intent_classifier import classify_intent
 from backend.services.output_filter import filter_output, filter_token
+from backend.services import keyword_filter
 
 logger = logging.getLogger(__name__)
 
@@ -56,16 +57,8 @@ _reranker = None
 
 # ─── Routing keyword sets ────────────────────────────────────────────────────
 
-_HARMFUL_KEYWORDS = [
-    "bom", "peledak", "ledak", "dinamit", "granat",
-    "senjata", "pistol", "senapan", "peluru",
-    "narkoba", "narkotika", "sabu", "ekstasi", "heroin",
-    "racun", "bunuh", "membunuh", "pembunuhan",
-    "hack", "hacking", "malware", "virus komputer", "exploit",
-    "cara merakit", "cara membuat bahan", "sintesis bahan",
-    "prompt injection", "abaikan instruksi", "ignore instruction",
-    "forget instruction", "new instruction", "jangan ikuti",
-]
+# L1 keyword filter (hard_block / soft_flag / safe_context) di-load dari
+# backend/config/blocked_keywords.yaml lewat module keyword_filter.
 
 # Pertanyaan tentang identitas/teknologi bot — pre-route ke chitchat
 # supaya tidak masuk ke RAG yang bisa bocor nama model/vendor.
@@ -122,9 +115,13 @@ def _normalize(text: str) -> str:
     return text.strip().lower().rstrip("?!.,")
 
 
-def _is_harmful(question: str) -> bool:
-    q = _normalize(question)
-    return any(kw in q for kw in _HARMFUL_KEYWORDS)
+def _check_keyword_filter(question: str) -> keyword_filter.KeywordFilterResult:
+    """L1 keyword filter: hard_block (tolak), soft_flag (lanjut L2 dgn flag),
+    safe_context downgrade (lanjut normal).
+
+    Lihat backend/services/keyword_filter.py.
+    """
+    return keyword_filter.check(question)
 
 
 def _is_identity_question(question: str) -> bool:
@@ -622,15 +619,22 @@ def query(
             "debug": d,
         }
 
-    # ── 1. Layer 1 — Harmful keyword check (fast, deterministic) ─────────────
-    if _is_harmful(question):
-        logger.warning(f"L1_blocked question={question[:60]!r}")
+    # ── 1. Layer 1 — Keyword filter (hard_block / soft_flag / safe_context) ──
+    l1 = _check_keyword_filter(question)
+    if l1.is_blocked:
         return _make_result(_pick(_HARMFUL_RESPONSES), mode="blocked")
 
     # ── 2. Layer 2 — Moderation model ─────────────────────────────────────────
+    # Kalau L1 menghasilkan soft-flag (mis. "narkoba" tanpa konteks akademik),
+    # L2 jadi judgment kontekstual. Llama Guard lebih akurat baca konteks daripada
+    # substring matching, dan tetap memberi fail-open via circuit breaker.
     is_safe, mod_reason = check_moderation(question)
     if not is_safe:
-        logger.warning(f"L2_moderation_blocked reason={mod_reason}")
+        logger.warning(
+            "L2_moderation_blocked reason=%s l1_flags=%s",
+            mod_reason,
+            l1.matched_phrases if l1.is_flagged else [],
+        )
         return _make_result(
             "Maaf, saya tidak dapat memproses permintaan tersebut.",
             mode="blocked_moderation",
@@ -699,8 +703,8 @@ def query(
             return _make_result(answer, mode="chitchat", condensed=condensed,
                                 intent=_intent, intent_conf=_intent_conf)
 
-        # Harmful check pada condensed question
-        if _is_harmful(condensed):
+        # Re-check L1 pada condensed (LLM bisa transform query jadi harmful)
+        if _check_keyword_filter(condensed).is_blocked:
             return _make_result(_pick(_HARMFUL_RESPONSES), mode="blocked", condensed=condensed)
 
     # ── 5. Cache check (condensed first, then original as fallback) ──────────
@@ -826,9 +830,8 @@ def query_stream(
                 time.sleep(delay)
         yield meta
 
-    # ── 1. Layer 1 — Harmful keyword check ───────────────────────────────────
-    if _is_harmful(question):
-        logger.warning(f"L1_blocked question={question[:60]!r}")
+    # ── 1. Layer 1 — Keyword filter (hard_block / soft_flag / safe_context) ──
+    if _check_keyword_filter(question).is_blocked:
         yield from _fake_stream(_pick(_HARMFUL_RESPONSES), _make_meta("", "blocked"))
         return
 
@@ -894,7 +897,7 @@ def query_stream(
             yield from _fake_stream(answer, _make_meta(answer, "chitchat", condensed=condensed,
                                                        intent=_intent, intent_conf=_intent_conf))
             return
-        if _is_harmful(condensed):
+        if _check_keyword_filter(condensed).is_blocked:
             yield from _fake_stream(_pick(_HARMFUL_RESPONSES),
                                     _make_meta("", "blocked", condensed=condensed))
             return

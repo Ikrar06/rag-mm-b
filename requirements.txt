@@ -130,3 +130,4 @@ redis==5.2.1
 python-dotenv==1.0.1
 pydantic==2.11.7
 pydantic-settings==2.7.0
+PyYAML==6.0.2
