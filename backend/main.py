@@ -143,6 +143,13 @@ async def health_check():
     except Exception:
         pass
 
+    mod_circuit = "unknown"
+    try:
+        from backend.services.moderation import get_circuit_state
+        mod_circuit = get_circuit_state()["state"]
+    except Exception:
+        pass
+
     status = "healthy" if (ollama_ok and qdrant_ok and intent_ok) else "degraded"
     return HealthResponse(
         status=status,
@@ -151,6 +158,7 @@ async def health_check():
         postgres=postgres_ok,
         redis=redis_ok,
         intent_model=intent_ok,
+        moderation_circuit=mod_circuit,
     )
 
 

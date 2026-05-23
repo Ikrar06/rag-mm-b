@@ -114,6 +114,8 @@ class HealthResponse(BaseModel):
     postgres: bool = False
     redis: bool = False
     intent_model: bool = False
+    # Circuit breaker state: "closed" (normal), "open" (failing), "half_open" (probing)
+    moderation_circuit: str = "closed"
 
 
 class IndexRequest(BaseModel):

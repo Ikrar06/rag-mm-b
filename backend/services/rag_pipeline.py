@@ -44,7 +44,7 @@ from backend.prompts.templates import (
 )
 from backend.services.indexing import get_qdrant_client
 from backend.services.cache import cache_get, cache_set
-from backend.services.moderation import check_moderation
+from backend.services.moderation import check_moderation_v2
 from backend.services.intent_classifier import classify_intent
 from backend.services.output_filter import filter_output, filter_token
 from backend.services import keyword_filter
@@ -624,15 +624,17 @@ def query(
     if l1.is_blocked:
         return _make_result(_pick(_HARMFUL_RESPONSES), mode="blocked")
 
-    # ── 2. Layer 2 — Moderation model ─────────────────────────────────────────
+    # ── 2. Layer 2 — Moderation model (Llama Guard + circuit breaker) ────────
     # Kalau L1 menghasilkan soft-flag (mis. "narkoba" tanpa konteks akademik),
-    # L2 jadi judgment kontekstual. Llama Guard lebih akurat baca konteks daripada
-    # substring matching, dan tetap memberi fail-open via circuit breaker.
-    is_safe, mod_reason = check_moderation(question)
-    if not is_safe:
+    # L2 jadi judgment kontekstual. Circuit breaker fail-open kalau Guard down —
+    # query tetap diproses tapi log mencatat bypassed.
+    mod = check_moderation_v2(question)
+    if mod.bypassed:
+        logger.warning("L2_bypassed reason=%s", mod.reason)
+    if not mod.safe:
         logger.warning(
             "L2_moderation_blocked reason=%s l1_flags=%s",
-            mod_reason,
+            mod.reason,
             l1.matched_phrases if l1.is_flagged else [],
         )
         return _make_result(
@@ -835,10 +837,12 @@ def query_stream(
         yield from _fake_stream(_pick(_HARMFUL_RESPONSES), _make_meta("", "blocked"))
         return
 
-    # ── 2. Layer 2 — Moderation model ─────────────────────────────────────────
-    is_safe, mod_reason = check_moderation(question)
-    if not is_safe:
-        logger.warning(f"L2_moderation_blocked reason={mod_reason}")
+    # ── 2. Layer 2 — Moderation model (Llama Guard + circuit breaker) ────────
+    mod = check_moderation_v2(question)
+    if mod.bypassed:
+        logger.warning("L2_bypassed reason=%s", mod.reason)
+    if not mod.safe:
+        logger.warning("L2_moderation_blocked reason=%s", mod.reason)
         msg = "Maaf, saya tidak dapat memproses permintaan tersebut."
         yield from _fake_stream(msg, _make_meta(msg, "blocked_moderation"))
         return
