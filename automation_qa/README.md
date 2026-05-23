@@ -40,6 +40,12 @@ QA_SYNC_INTERVAL_SECONDS=3600
 
 Panduan setup detail ada di [docs/google-sheets-setup.md](docs/google-sheets-setup.md).
 
+Jika menjalankan sync langsung dari host/local environment, install dependency khusus sync:
+
+```bash
+python -m pip install -r automation_qa/requirements.txt
+```
+
 ## Manual Run
 
 Dry run membaca DB dan Google Sheets, tetapi tidak append:
@@ -55,6 +61,8 @@ python -m automation_qa.sync_to_sheets --once
 ```
 
 ## Scheduler
+
+Service Docker `qa-sheet-sync` memakai image ringan dari `automation_qa/Dockerfile`. Image ini hanya menginstall dependency sync Google Sheets/PostgreSQL, sehingga rebuild service ini tidak ikut menginstall dependency backend/ML seperti CUDA, Paddle, Torch, atau OCR.
 
 Dev:
 
@@ -106,3 +114,13 @@ Scheduler Docker berjalan dalam mode `--watch`; intervalnya mengikuti `QA_SYNC_I
 - Batas 500 row dipilih karena row QA bisa berisi teks panjang dan multi-line pada kolom `jawaban` serta `sumber_referensi`; chunk ini menjaga request tidak terlalu besar tetapi tetap hemat jumlah request.
 - Jika row baru kurang dari atau sama dengan 500, sync tetap hanya memakai 1 read request dan 1 write request.
 - Detail quota dan alasan teknis chunking dijelaskan di [docs/sync-flow.md](docs/sync-flow.md).
+
+## Docker Image
+
+Runtime Docker untuk sync dipisah dari backend utama:
+
+- `Dockerfile` root tetap dipakai backend dan berisi dependency aplikasi utama/ML.
+- `automation_qa/Dockerfile` dipakai `qa-sheet-sync` dan hanya menyalin package `automation_qa`.
+- `automation_qa/requirements.txt` berisi dependency minimal sync: PostgreSQL client, Google Sheets client, Google auth, dan dotenv.
+
+Dengan pemisahan ini, rebuild `qa-sheet-sync` tidak perlu mengunduh package besar seperti `paddlepaddle-gpu` atau `torch`.

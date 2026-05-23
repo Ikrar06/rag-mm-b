@@ -102,7 +102,19 @@ Untuk Docker POC, gunakan path credential dalam container:
 QA_SYNC_GOOGLE_CREDENTIALS_FILE=/run/secrets/google_service_account.json
 ```
 
+Pada `docker-compose.dev.yml` dan `docker-compose.poc.yml`, path ini juga diarahkan ke mount:
+
+```text
+./automation_qa/secrets/google_service_account.json -> /run/secrets/google_service_account.json
+```
+
 ## 8. Test
+
+Jika test dijalankan langsung dari host/local environment, install dependency khusus sync:
+
+```bash
+python -m pip install -r automation_qa/requirements.txt
+```
 
 Dry run (nge-check aja, tanpa perbarui gsheet):
 
@@ -117,6 +129,15 @@ Run append manual:
 ```bash
 python -m automation_qa.sync_to_sheets --once
 ```
+
+Untuk menjalankan scheduler via Docker:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d --build qa-sheet-sync
+docker compose -f docker-compose.dev.yml logs -f qa-sheet-sync
+```
+
+Service `qa-sheet-sync` memakai `automation_qa/Dockerfile`, bukan Dockerfile backend utama, sehingga build-nya tidak menginstall dependency ML seperti Paddle, Torch, atau CUDA.
 
 ## Troubleshooting
 
