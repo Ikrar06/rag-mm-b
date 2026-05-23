@@ -28,7 +28,7 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-_KEYWORDS_PATH = Path(__file__).resolve().parent.parent / "config" / "blocked_keywords.yaml"
+_KEYWORDS_PATH = Path(__file__).resolve().parent / "blocked_keywords.yaml"
 _RELOAD_INTERVAL_SEC = 300  # 5 menit
 
 # Mapping leet → normal. Konservatif: hanya substitusi yang aman antar-konteks

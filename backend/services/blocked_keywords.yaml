@@ -1,4 +1,6 @@
 # Keyword filter Layer 1 — RAG Chatbot UNHAS
+# Lokasi: backend/services/blocked_keywords.yaml
+# Dibaca oleh: backend/services/keyword_filter.py (hot-reload 5 menit)
 #
 # Tiga kategori:
 #   hard_block    → langsung tolak, tidak lanjut ke L2
