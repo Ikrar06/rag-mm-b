@@ -104,6 +104,7 @@ def _format_intent_prediction(debug: Any) -> str:
 def _fetch_answered_messages(
     database_url: str,
     existing_source_ids: Iterable[str],
+    start_from: str | None = None,
 ) -> list[dict[str, Any]]:
     existing: set[str] = set()
     for source_id in existing_source_ids:
@@ -116,10 +117,21 @@ def _fetch_answered_messages(
 
     existing_filter = list(existing)
 
-    # Pairing dilakukan dari setiap jawaban assistant ke user message terakhir
-    # dalam session yang sama. ID assistant dipakai sebagai source_message_id
-    # sekaligus filter dedup.
-    sql = """
+    # Pairing dari setiap jawaban assistant ke user message terakhir dalam session
+    # yang sama. ID assistant dipakai sebagai source_message_id sekaligus filter dedup.
+    # start_from (ISO timestamp) opsional — kalau di-set, skip message lebih lama
+    # dari waktu itu (berguna untuk reset evaluasi tanpa hapus history DB).
+    where_clauses = [
+        "a.role = 'assistant'",
+        "NOT (a.id = ANY(%s::uuid[]))",
+    ]
+    params: list[Any] = [existing_filter]
+
+    if start_from:
+        where_clauses.append("a.created_at >= %s::timestamptz")
+        params.append(start_from)
+
+    sql = f"""
         SELECT
             a.id AS assistant_message_id,
             u.content AS pertanyaan,
@@ -137,14 +149,13 @@ def _fetch_answered_messages(
             ORDER BY created_at DESC
             LIMIT 1
         ) u ON TRUE
-        WHERE a.role = 'assistant'
-          AND NOT (a.id = ANY(%s::uuid[]))
+        WHERE {' AND '.join(where_clauses)}
         ORDER BY a.created_at ASC, a.id ASC
     """
 
     with psycopg2.connect(database_url) as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-            cursor.execute(sql, (existing_filter,))
+            cursor.execute(sql, tuple(params))
             rows = cursor.fetchall()
 
     return [dict(row) for row in rows]
@@ -154,8 +165,9 @@ def fetch_new_qa_evaluation_rows(
     database_url: str,
     existing_source_ids: Iterable[str],
     start_no: int,
+    start_from: str | None = None,
 ) -> list[list[Any]]:
-    rows = _fetch_answered_messages(database_url, existing_source_ids)
+    rows = _fetch_answered_messages(database_url, existing_source_ids, start_from=start_from)
     output: list[list[Any]] = []
     next_no = start_no
 

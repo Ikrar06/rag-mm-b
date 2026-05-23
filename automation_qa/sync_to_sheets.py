@@ -33,6 +33,7 @@ def _sync_target(
         config.database_url,
         sheet_state.existing_source_ids,
         sheet_state.next_no,
+        start_from=config.start_from,
     )
 
     logger.info(
