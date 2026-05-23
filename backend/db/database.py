@@ -38,11 +38,26 @@ def get_db():
 
 
 def init_db():
-    """Buat semua tabel kalau belum ada. Dipanggil saat startup."""
+    """Buat semua tabel kalau belum ada + apply column additions yang idempotent.
+
+    Dipanggil saat startup. Untuk schema change yang lebih kompleks (rename, drop,
+    foreign key), pakai Alembic migration eksplisit.
+    """
     from backend.db.models import User, Session, Message  # noqa: F401 — ensure tables are registered
+    from sqlalchemy import text
     try:
         Base.metadata.create_all(bind=engine)
-        logger.info("Database tables initialized.")
+
+        # Migration ringan: ADD COLUMN IF NOT EXISTS (PostgreSQL 9.6+).
+        # Aman untuk re-run — tidak error kalau column sudah ada.
+        migrations = [
+            "ALTER TABLE messages ADD COLUMN IF NOT EXISTS images JSON",
+        ]
+        with engine.begin() as conn:
+            for ddl in migrations:
+                conn.execute(text(ddl))
+
+        logger.info("Database tables initialized + migrations applied.")
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
         raise

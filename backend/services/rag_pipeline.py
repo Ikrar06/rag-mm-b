@@ -697,13 +697,20 @@ def _vision_query(
       L1 keyword filter pada question text → block atau lanjut
       L2 moderation pada question text → block atau lanjut
         (image content TIDAK dilewatkan ke Llama Guard — text-only model)
-      Skip L3 intent: vision query selalu treat sebagai information-seeking
+      L3 intent classification pada question text:
+        - blocked/out_of_scope → early reject (skip VL, hemat resource)
+        - chitchat/get_info_public → lanjut ke VL
+        - low_confidence + tidak punya kata kunci akademik → kirim ke VL,
+          biar VL prompt yang judge (image bisa override text)
       Skip L5b cache: tiap image unik
       L5c retrieval: berdasarkan question text saja
       Generate via VISION_RAG_PROMPT + image content ke vLLM
       L6 output filter
     """
     _ = role  # placeholder untuk RBAC future
+
+    intent: str | None = None
+    intent_conf: float = 0.0
 
     def _make(answer: str, mode: str, top_score: float = 0.0,
               sources: list | None = None, extra_debug: dict | None = None) -> dict:
@@ -715,6 +722,9 @@ def _vision_query(
             "has_images": True,
             "image_count": len(images),
         }
+        if intent is not None:
+            debug["intent"] = intent
+            debug["intent_confidence"] = intent_conf
         if extra_debug:
             debug.update(extra_debug)
         return {
@@ -739,6 +749,34 @@ def _vision_query(
             "Maaf, saya tidak dapat memproses permintaan tersebut.",
             mode="blocked_moderation",
         )
+
+    # ── L3 intent classification pada question text (untuk visibility + early reject) ──
+    # Catatan: image bisa override text intent (mis. "ini apa?" intent ambigu,
+    # tapi image = KRS → konteks akademik). Jadi early reject HANYA untuk
+    # out_of_scope dengan confidence tinggi.
+    try:
+        intent_result = classify_intent(question)
+        intent = intent_result["intent"]
+        intent_conf = intent_result["confidence"]
+        logger.info(
+            "vision_L3_intent=%s conf=%.3f fallback=%s",
+            intent, intent_conf, intent_result.get("fallback", False),
+        )
+
+        # Early reject hanya kalau confidence tinggi (avoid false positive).
+        # Image-content yang relevan bisa "rescue" query yang text-nya OOS.
+        # Threshold 0.85 lebih ketat dari INTENT_CONFIDENCE_THRESHOLD biasa.
+        if intent == "out_of_scope" and intent_conf >= 0.85:
+            logger.info("vision_early_reject reason=oos_high_confidence")
+            return _make(
+                "Maaf, pertanyaan dan gambar Anda terlihat di luar topik akademik UNHAS. "
+                "Saya hanya bisa bantu informasi seputar prosedur, kebijakan, dan layanan "
+                "akademik. Kalau Anda punya dokumen seperti KRS atau KTM, silakan kirim.",
+                mode="out_of_scope",
+            )
+    except Exception as e:
+        # L3 failure di vision path tidak fatal — lanjut ke VL.
+        logger.warning("vision_L3_skipped error=%s", e)
 
     # ── L5c retrieval (text-only) untuk konteks RAG ──────────────────────────
     try:
