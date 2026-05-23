@@ -9,7 +9,16 @@ const chatContainer = document.getElementById("chatContainer");
 const chatForm = document.getElementById("chatForm");
 const queryInput = document.getElementById("queryInput");
 const sendBtn = document.getElementById("sendBtn");
+const attachBtn = document.getElementById("attachBtn");
+const imageInput = document.getElementById("imageInput");
+const imagePreviewBar = document.getElementById("imagePreviewBar");
 const statusEl = document.getElementById("status");
+
+// Pending image attachments untuk request berikutnya.
+// Format: [{ file: File, dataUrl: string, mime: string, base64: string }]
+let pendingImages = [];
+const MAX_IMAGES = 2;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const loginOverlay = document.getElementById("loginOverlay");
 const loginForm = document.getElementById("loginForm");
 const loginError = document.getElementById("loginError");
@@ -138,6 +147,8 @@ async function checkHealth() {
 const MODE_LABELS = {
     "rag":                  "RAG",
     "rag_low_relevance":    "RAG (low)",
+    "vision_rag":           "Vision RAG",
+    "vision_error":         "Vision Error",
     "cache_hit":            "Cache",
     "chitchat":             "Chitchat",
     "identity":             "Chitchat",
@@ -166,11 +177,21 @@ function safeMd(text) {
     return marked.parse(text.replace(/\n\n(\d{4})\. /g, '\n\n$1\\. '));
 }
 
-function addMessage(content, type, sources = [], debug = null) {
+function addMessage(content, type, sources = [], debug = null, images = []) {
     const msg = document.createElement("div");
     msg.className = `message ${type}-message`;
 
     let html = `<div class="message-content">${safeMd(content)}</div>`;
+
+    if (images && images.length > 0) {
+        html += `<div class="message-images">`;
+        for (const img of images) {
+            // img bisa berupa dataURL (saat user baru kirim) atau URL backend (saat reload history)
+            const src = img.dataUrl || img.url || img;
+            html += `<img src="${escapeHtml(src)}" alt="Lampiran" loading="lazy" />`;
+        }
+        html += `</div>`;
+    }
 
     if (debug) {
         html += `<div class="debug-bar">${formatDebugBar(debug)}</div>`;
@@ -232,9 +253,20 @@ function escapeHtml(text) {
 // ─── Send message (streaming) ─────────────────────────────────────────────────
 
 async function sendMessage(userQuery) {
-    addMessage(userQuery, "user");
+    // Snapshot images sebelum di-clear (supaya user bubble render thumbnail)
+    const attachedImages = [...pendingImages];
+
+    addMessage(
+        userQuery,
+        "user",
+        [],
+        null,
+        attachedImages.map((img) => ({ dataUrl: img.dataUrl }))
+    );
+
     queryInput.value = "";
     sendBtn.disabled = true;
+    attachBtn.disabled = true;
 
     // Create empty bot bubble immediately
     const botMsg = document.createElement("div");
@@ -247,6 +279,15 @@ async function sendMessage(userQuery) {
 
     const body = { query: userQuery };
     if (currentSessionId) body.session_id = currentSessionId;
+    if (attachedImages.length > 0) {
+        body.images = attachedImages.map((img) => ({
+            mime_type: img.mime,
+            data: img.base64,
+        }));
+    }
+
+    // Clear preview segera setelah snapshot — UX feel responsive
+    clearPendingImages();
 
     let rawText = "";
 
@@ -343,6 +384,7 @@ async function sendMessage(userQuery) {
         contentEl.textContent = "Tidak dapat terhubung ke server. Pastikan backend berjalan.";
     } finally {
         sendBtn.disabled = false;
+        attachBtn.disabled = false;
         queryInput.focus();
     }
 }
@@ -352,6 +394,107 @@ chatForm.addEventListener("submit", (e) => {
     const q = queryInput.value.trim();
     if (q) sendMessage(q);
 });
+
+// ─── Image upload (vision) ────────────────────────────────────────────────────
+
+const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp"];
+
+function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            // dataURL format: "data:image/jpeg;base64,..."
+            const result = reader.result;
+            const comma = result.indexOf(",");
+            resolve({
+                dataUrl: result,
+                base64: comma > -1 ? result.slice(comma + 1) : result,
+            });
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+function renderImagePreview() {
+    imagePreviewBar.innerHTML = "";
+    if (pendingImages.length === 0) {
+        imagePreviewBar.hidden = true;
+        attachBtn.classList.remove("has-images");
+        return;
+    }
+    imagePreviewBar.hidden = false;
+    attachBtn.classList.add("has-images");
+
+    pendingImages.forEach((img, idx) => {
+        const item = document.createElement("div");
+        item.className = "image-preview-item";
+
+        const imgEl = document.createElement("img");
+        imgEl.src = img.dataUrl;
+        imgEl.alt = `Lampiran ${idx + 1}`;
+        item.appendChild(imgEl);
+
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "image-preview-remove";
+        removeBtn.textContent = "×";
+        removeBtn.setAttribute("aria-label", "Hapus gambar");
+        removeBtn.onclick = () => {
+            pendingImages.splice(idx, 1);
+            renderImagePreview();
+        };
+        item.appendChild(removeBtn);
+
+        imagePreviewBar.appendChild(item);
+    });
+}
+
+attachBtn.addEventListener("click", () => {
+    if (pendingImages.length >= MAX_IMAGES) {
+        alert(`Maksimum ${MAX_IMAGES} gambar per pesan.`);
+        return;
+    }
+    imageInput.click();
+});
+
+imageInput.addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = ""; // reset supaya bisa pilih file sama lagi
+
+    for (const file of files) {
+        if (pendingImages.length >= MAX_IMAGES) {
+            alert(`Maksimum ${MAX_IMAGES} gambar per pesan. Sebagian diabaikan.`);
+            break;
+        }
+        if (!ALLOWED_MIME.includes(file.type)) {
+            alert(`Format tidak didukung: ${file.name}. Pakai JPEG, PNG, atau WebP.`);
+            continue;
+        }
+        if (file.size > MAX_IMAGE_BYTES) {
+            alert(`Gambar ${file.name} terlalu besar (${Math.round(file.size / 1024 / 1024)} MB). Maksimum 10 MB.`);
+            continue;
+        }
+        try {
+            const { dataUrl, base64 } = await fileToBase64(file);
+            pendingImages.push({
+                file,
+                dataUrl,
+                mime: file.type,
+                base64,
+            });
+        } catch (err) {
+            console.error("File read error:", err);
+            alert(`Gagal baca gambar ${file.name}.`);
+        }
+    }
+    renderImagePreview();
+});
+
+function clearPendingImages() {
+    pendingImages = [];
+    renderImagePreview();
+}
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 checkAuth();
