@@ -74,13 +74,19 @@ class FilesystemStorage(Storage):
 # =============================================================================
 
 class MinIOStorage(Storage):
-    """Upload ke MinIO + return presigned URL.
+    """Upload ke MinIO, return URL backend-proxied (bukan presigned langsung).
 
-    Presigned URL valid 7 hari — cukup untuk window QA evaluation, tidak butuh
-    public-read bucket (lebih aman). Reviewer klik URL di Sheet → buka di browser.
+    Reasoning:
+    - Provider firewall (Cloudeka) sering block port 9000 → MinIO tidak accessible
+      dari browser reviewer eksternal.
+    - Workaround: serve image lewat backend (`/api/files/{key}`) yang sudah di
+      port 80 (open). Backend bertindak sebagai reverse proxy ke MinIO internal.
+    - Pros: single entry point, gampang tambah auth, MinIO tetap private.
+    - Cons: backend di critical path untuk image serving (acceptable untuk POC).
+
+    Untuk production yang butuh direct CDN/MinIO public access, override
+    BACKEND_PUBLIC_URL → set ke domain MinIO publik, dan revert ke presigned URL.
     """
-
-    PRESIGNED_EXPIRY = timedelta(days=7)
 
     def __init__(
         self,
@@ -89,16 +95,15 @@ class MinIOStorage(Storage):
         secret_key: str,
         bucket: str,
         secure: bool = False,
-        public_endpoint: str | None = None,
+        backend_public_url: str | None = None,
     ):
         from minio import Minio
 
         self.client = Minio(endpoint, access_key=access_key, secret_key=secret_key, secure=secure)
         self.bucket = bucket
-        # Endpoint yang user/QA reviewer pakai untuk download (dari browser).
-        # Default ke endpoint internal — di POC sebaiknya di-override ke domain publik.
-        self.public_endpoint = public_endpoint or endpoint
-        self.secure = secure
+        # URL backend yang reviewer pakai untuk download via /api/files/{key}.
+        # Default localhost (dev). Production: set BACKEND_PUBLIC_URL ke domain publik.
+        self.backend_public_url = (backend_public_url or "http://localhost:8000").rstrip("/")
 
         # Ensure bucket ada.
         try:
@@ -114,8 +119,8 @@ class MinIOStorage(Storage):
         self.client.put_object(
             self.bucket, key, buf, length=len(data), content_type=content_type
         )
-        url = self.client.presigned_get_object(self.bucket, key, expires=self.PRESIGNED_EXPIRY)
-        return self._rewrite_url_if_needed(url)
+        # Return URL backend yang akan stream object dari MinIO ke reviewer browser.
+        return f"{self.backend_public_url}/api/files/{key}"
 
     def get_sync(self, key: str) -> bytes:
         response = self.client.get_object(self.bucket, key)
@@ -127,27 +132,6 @@ class MinIOStorage(Storage):
 
     def delete_sync(self, key: str) -> None:
         self.client.remove_object(self.bucket, key)
-
-    def _rewrite_url_if_needed(self, url: str) -> str:
-        """Kalau public_endpoint berbeda dari internal endpoint (mis. MinIO di
-        docker network 'minio:9000' tapi external access via 'storage.unhas.ac.id'),
-        rewrite hostname di URL.
-        """
-        if self.public_endpoint == self._internal_endpoint():
-            return url
-        scheme = "https" if self.secure else "http"
-        # URL dari minio client format: http://endpoint/bucket/key?X-Amz-...
-        # Replace host bagian saja.
-        try:
-            from urllib.parse import urlparse, urlunparse
-            parsed = urlparse(url)
-            new = parsed._replace(netloc=self.public_endpoint, scheme=scheme)
-            return urlunparse(new)
-        except Exception:
-            return url
-
-    def _internal_endpoint(self) -> str:
-        return getattr(self.client, "_base_url", None) or ""
 
 
 _storage_instance: Storage | None = None
@@ -170,18 +154,18 @@ def get_storage() -> Storage:
         secret_key = os.getenv("MINIO_SECRET_KEY", "")
         bucket = os.getenv("MINIO_BUCKET", "ragchat-images")
         secure = os.getenv("MINIO_SECURE", "false").lower() == "true"
-        public_endpoint = os.getenv("MINIO_PUBLIC_ENDPOINT") or endpoint
+        backend_public_url = os.getenv("BACKEND_PUBLIC_URL", "http://localhost:8000")
         _storage_instance = MinIOStorage(
             endpoint=endpoint,
             access_key=access_key,
             secret_key=secret_key,
             bucket=bucket,
             secure=secure,
-            public_endpoint=public_endpoint,
+            backend_public_url=backend_public_url,
         )
         logger.info(
-            "storage_backend=minio endpoint=%s public_endpoint=%s bucket=%s",
-            endpoint, public_endpoint, bucket,
+            "storage_backend=minio endpoint=%s backend_public_url=%s bucket=%s",
+            endpoint, backend_public_url, bucket,
         )
     else:
         raise ValueError(f"Unknown STORAGE_BACKEND: {backend!r}")

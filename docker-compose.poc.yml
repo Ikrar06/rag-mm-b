@@ -48,9 +48,10 @@ services:
     volumes:
       - minio_data:/data
     ports:
-      - "9000:9000"   # S3 API — wajib expose supaya presigned URL bisa di-download
-                      # dari browser QA reviewer (di luar docker network)
-      - "9001:9001"   # Console UI untuk buat bucket
+      # Loopback-only — image serving via backend /api/files/* (port 80, sudah open).
+      # SSH tunnel untuk admin: ssh -p 5617 -L 9001:localhost:9001 ubuntu@<vm>
+      - "127.0.0.1:9000:9000"   # S3 API (internal + tunnel only)
+      - "127.0.0.1:9001:9001"   # Console UI (admin via SSH tunnel)
     restart: unless-stopped
 
   # ── LLM Serving (GPU) ──────────────────────────────────────────────────

@@ -87,16 +87,15 @@ async def serve_frontend():
 
 @app.get("/api/files/{key:path}", tags=["infrastructure"], include_in_schema=False)
 async def serve_storage_file(key: str):
-    """Serve image yang di-upload user — hanya untuk STORAGE_BACKEND=filesystem (dev).
+    """Serve image yang di-upload user.
 
-    Production (MinIO): user dapat presigned URL langsung ke MinIO, endpoint
-    ini tidak terpakai.
+    Mendukung kedua storage backend:
+    - filesystem (dev): baca dari ./storage/{key}
+    - minio (POC): proxy fetch dari MinIO internal (minio:9000) → stream ke client.
+      Dipakai supaya tidak perlu expose port 9000 publik (firewall provider).
     """
     from fastapi import HTTPException
     from fastapi.responses import Response
-
-    if os.getenv("STORAGE_BACKEND", "filesystem") != "filesystem":
-        raise HTTPException(404, "Endpoint hanya aktif untuk filesystem storage")
 
     if ".." in key or key.startswith("/"):
         raise HTTPException(400, "Invalid key")
@@ -106,11 +105,25 @@ async def serve_storage_file(key: str):
         data = get_storage().get_sync(key)
     except FileNotFoundError:
         raise HTTPException(404, "File tidak ditemukan")
-    except Exception:
+    except Exception as e:
+        logger.error(f"storage_serve_error key={key} error={e}")
         raise HTTPException(500, "Gagal baca file")
 
-    media = "image/jpeg" if key.endswith((".jpg", ".jpeg")) else "image/png"
-    return Response(content=data, media_type=media)
+    # Detect content type dari extension
+    lower = key.lower()
+    if lower.endswith((".jpg", ".jpeg")):
+        media = "image/jpeg"
+    elif lower.endswith(".webp"):
+        media = "image/webp"
+    else:
+        media = "image/png"
+
+    # Cache 1 jam — image sudah punya UUID unique, content-addressable
+    return Response(
+        content=data,
+        media_type=media,
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @app.get(
