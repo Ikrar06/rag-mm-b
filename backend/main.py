@@ -214,3 +214,10 @@ async def startup_event():
     except Exception as e:
         logger.error(f"keyword_filter_warmup_failed error={e}")
         raise
+
+    # Warm up L3 intent classifier — fail soft (boleh degraded mode kalau model error).
+    try:
+        from backend.services.intent_classifier import warm_up as intent_warm_up
+        intent_warm_up()
+    except Exception as e:
+        logger.warning(f"intent_classifier_warmup_failed error={e}")

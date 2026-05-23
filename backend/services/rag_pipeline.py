@@ -653,6 +653,8 @@ def query(
 
     intent_result = classify_intent(question)
     intent = intent_result["intent"]
+    if intent_result.get("fallback"):
+        logger.warning("L3_using_fallback intent=%s", intent)
     logger.info(f"L3_intent={intent} conf={intent_result['confidence']:.3f}")
 
     _intent = intent
