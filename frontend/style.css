@@ -445,26 +445,33 @@ body {
     justify-content: center;
     width: 44px;
     height: 44px;
-    background: transparent;
-    color: #666;
-    border: 2px solid #e0e0e0;
+    background: #f5f7fa;
+    color: #5a6a7a;
+    border: none;
     border-radius: 50%;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s ease;
     flex-shrink: 0;
     padding: 0;
 }
 
 .attach-btn:hover {
-    background: #f0f4f8;
+    background: #e3eaf2;
     color: #1a3a5c;
-    border-color: #1a3a5c;
+    transform: scale(1.05);
+}
+
+.attach-btn:active {
+    transform: scale(0.95);
 }
 
 .attach-btn.has-images {
     background: #1a3a5c;
     color: #fff;
-    border-color: #1a3a5c;
+}
+
+.attach-btn.has-images:hover {
+    background: #2a5a8c;
 }
 
 .attach-btn:disabled {
