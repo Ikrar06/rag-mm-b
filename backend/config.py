@@ -56,6 +56,8 @@ RERANKER_PROVIDER: Literal["sentence_transformers", "tei"] = os.getenv("RERANKER
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", os.path.join(_PROJECT_ROOT, "models", "bge-reranker-v2-m3"))
 RERANKER_BASE_URL = os.getenv("RERANKER_BASE_URL", "")   # hanya dipakai kalau RERANKER_PROVIDER=tei
 RERANKER_TOP_N = int(os.getenv("RERANKER_TOP_N", "6"))
+# Timeout TEI rerank service. GPU 5s cukup; CPU naikkan ke 30s.
+RERANKER_TIMEOUT = float(os.getenv("RERANKER_TIMEOUT", "5"))
 RERANKER_USE_FP16 = True
 
 # Backward-compat alias

@@ -23,6 +23,7 @@ from backend.config import (
     EMBED_TIMEOUT,
     RERANKER_PROVIDER,
     RERANKER_MODEL,
+    RERANKER_TIMEOUT,
     RERANKER_BASE_URL,
     RERANKER_TOP_N,
     QDRANT_COLLECTION_NAME,
@@ -399,11 +400,15 @@ def _get_retriever():
 
 
 class _TEIRerankPostprocessor(BaseNodePostprocessor):
-    """Custom reranker postprocessor yang panggil TEI /rerank endpoint via HTTP."""
+    """Custom reranker postprocessor yang panggil TEI /rerank endpoint via HTTP.
+
+    Fallback: kalau TEI timeout / 5xx / network error, return top_n dari urutan
+    dense retrieval (sudah sorted by similarity score). Tidak crash query.
+    """
 
     base_url: str
     top_n: int
-    timeout: float = 30.0
+    timeout: float = 5.0
 
     def _postprocess_nodes(
         self, nodes: List[NodeWithScore], query_bundle: Optional[QueryBundle] = None
@@ -425,8 +430,21 @@ class _TEIRerankPostprocessor(BaseNodePostprocessor):
             )
             resp.raise_for_status()
             results = resp.json()
+        except httpx.TimeoutException:
+            logger.warning(
+                "tei_rerank_timeout timeout_sec=%.1f n_nodes=%d — fallback to dense order",
+                self.timeout, len(nodes),
+            )
+            return nodes[: self.top_n]
+        except (httpx.HTTPError, httpx.NetworkError) as e:
+            logger.error(
+                "tei_rerank_http_error error=%s — fallback to dense order", e
+            )
+            return nodes[: self.top_n]
         except Exception as e:
-            logger.error(f"tei_rerank_error error={e} — falling back to original order")
+            logger.error(
+                "tei_rerank_unexpected error=%s — fallback to dense order", e
+            )
             return nodes[: self.top_n]
 
         # TEI returns [{"index": i, "score": s}, ...] sudah sorted desc by score
@@ -450,8 +468,12 @@ def _get_reranker():
         _reranker = _TEIRerankPostprocessor(
             base_url=RERANKER_BASE_URL,
             top_n=RERANKER_TOP_N,
+            timeout=RERANKER_TIMEOUT,
         )
-        logger.info(f"reranker_provider=tei base_url={RERANKER_BASE_URL}")
+        logger.info(
+            "reranker_provider=tei base_url=%s timeout=%.1fs",
+            RERANKER_BASE_URL, RERANKER_TIMEOUT,
+        )
     else:
         # Dev: in-process via sentence-transformers
         _reranker = SentenceTransformerRerank(
