@@ -302,6 +302,69 @@ def _chitchat_response(question: str, history: list[dict] = None) -> str:
     return str(llm.complete(prompt))
 
 
+def _out_of_scope_response(question: str, history: list[dict] = None) -> str:
+    """Generate OOS response yang aware konteks history.
+
+    Beda dari canned message generik, ini LLM-generated:
+    - Kalau ada history → acknowledge konteks user (mis. reaksi follow-up)
+    - Steer kembali ke topik akademik UNHAS dengan natural
+    - Variasi tone tergantung sentimen user (excited, sedih, casual)
+    - Bukan robot-style "Maaf, saya hanya bisa membantu urusan akademik..."
+    """
+    history = history or []
+    llm = get_llm(temperature=0.6)
+
+    history_block = ""
+    if history:
+        lines = []
+        for msg in history[-4:]:
+            role = "Mahasiswa" if msg["role"] == "user" else "Asisten"
+            content = msg["content"][:150] + "..." if len(msg["content"]) > 150 else msg["content"]
+            lines.append(f"{role}: {content}")
+        history_block = "Riwayat percakapan:\n" + "\n".join(lines) + "\n\n"
+
+    prompt = (
+        "Kamu asisten akademik UNHAS yang ramah dan hangat. Mahasiswa baru saja "
+        "mengirim pesan yang di luar topik akademik UNHAS — bisa berupa reaksi, "
+        "curhat, basa-basi, atau pertanyaan random.\n\n"
+        "TUGAS: respond secara natural dan hangat sesuai konteks (lihat riwayat). "
+        "Acknowledge dulu pesannya (kalau ada konteks yang bisa di-acknowledge), "
+        "BARU steer ringan kembali ke topik akademik.\n\n"
+        "ATURAN:\n"
+        "- JANGAN pakai kalimat template seperti 'Maaf, saya hanya dapat membantu...'\n"
+        "- JANGAN langsung tolak — acknowledge dulu emosi/konteksnya\n"
+        "- Maks 2 kalimat — singkat tapi hangat\n"
+        "- Sapa dengan 'Anda', bukan 'kamu'\n"
+        "- Boleh ucapan selamat, simpati, atau sekadar respond casual sesuai sentimen\n"
+        "- Penutup: tawaran bantuan akademik secara halus, BUKAN paksa\n\n"
+        "CONTOH BAGUS:\n\n"
+        "Riwayat: Asisten: 'Jumlah mahasiswa Teknik Informatika diterima SNBP 2023: 23 kursi.'\n"
+        "Pesan: 'wow berarti saya beruntung ya masuk diantara 23 orang itu'\n"
+        "Jawaban: Selamat ya, Anda masuk dalam 23 kursi yang cukup ketat persaingannya! "
+        "Semoga lancar perkuliahannya. Kalau ada hal lain seputar UNHAS yang ingin "
+        "Anda tanyakan, silakan.\n\n"
+        "Riwayat: Asisten: 'UKT prodi Kedokteran Rp 25 juta per semester.'\n"
+        "Pesan: 'aduh mahal sekali ya'\n"
+        "Jawaban: Iya, untuk prodi tertentu memang lebih tinggi karena fasilitasnya juga. "
+        "Tapi UNHAS menyediakan beasiswa KIP-K dan bantuan lain — saya bisa bantu cek "
+        "kalau Anda tertarik.\n\n"
+        "Riwayat: Asisten: 'Pendaftaran KKN dibuka di awal semester.'\n"
+        "Pesan: 'duh saya belum siap'\n"
+        "Jawaban: Wajar, KKN memang butuh persiapan. Kalau Anda butuh info syarat atau "
+        "alur pendaftarannya supaya lebih siap, saya bantu jelaskan.\n\n"
+        "Pesan tanpa riwayat: 'cuaca panas banget hari ini'\n"
+        "Jawaban: Iya memang lagi terik banget. Semoga Anda tetap fit. Ada urusan "
+        "akademik UNHAS yang bisa saya bantu hari ini?\n\n"
+        "Pesan: 'resep nasi goreng dong'\n"
+        "Jawaban: Maaf, untuk resep masakan saya tidak bisa bantu. Tapi kalau Anda butuh "
+        "info akademik UNHAS, saya siap.\n\n"
+        f"{history_block}"
+        f"Pesan mahasiswa: {question}\n\n"
+        "Jawaban asisten (natural, hangat, 1-2 kalimat):"
+    )
+    return str(llm.complete(prompt))
+
+
 def _low_relevance_response(question: str) -> str:
     llm = get_llm(temperature=0.5)
     prompt = (
@@ -768,12 +831,8 @@ def _vision_query(
         # Threshold 0.85 lebih ketat dari INTENT_CONFIDENCE_THRESHOLD biasa.
         if intent == "out_of_scope" and intent_conf >= 0.85:
             logger.info("vision_early_reject reason=oos_high_confidence")
-            return _make(
-                "Maaf, pertanyaan dan gambar Anda terlihat di luar topik akademik UNHAS. "
-                "Saya hanya bisa bantu informasi seputar prosedur, kebijakan, dan layanan "
-                "akademik. Kalau Anda punya dokumen seperti KRS atau KTM, silakan kirim.",
-                mode="out_of_scope",
-            )
+            answer = filter_output(_out_of_scope_response(question, history))
+            return _make(answer, mode="out_of_scope")
     except Exception as e:
         # L3 failure di vision path tidak fatal — lanjut ke VL.
         logger.warning("vision_L3_skipped error=%s", e)
@@ -927,9 +986,9 @@ def query(
         answer = filter_output(_chitchat_response(question, history))
         return _make_result(answer, mode="chitchat", intent=_intent, intent_conf=_intent_conf)
     if intent == "out_of_scope":
+        answer = filter_output(_out_of_scope_response(question, history))
         return _make_result(
-            "Maaf, saya hanya dapat membantu urusan akademik UNHAS. "
-            "Untuk pertanyaan lain, silakan gunakan layanan yang sesuai.",
+            answer,
             mode="out_of_scope",
             intent=_intent, intent_conf=_intent_conf,
         )
@@ -1157,8 +1216,7 @@ def query_stream(
                                                    intent=_intent, intent_conf=_intent_conf))
         return
     if intent == "out_of_scope":
-        msg = ("Maaf, saya hanya dapat membantu urusan akademik UNHAS. "
-               "Untuk pertanyaan lain, silakan gunakan layanan yang sesuai.")
+        msg = filter_output(_out_of_scope_response(question, history))
         yield from _fake_stream(msg, _make_meta(msg, "out_of_scope",
                                                 intent=_intent, intent_conf=_intent_conf))
         return
