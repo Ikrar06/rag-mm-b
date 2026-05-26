@@ -62,11 +62,17 @@ Task: Check if there is unsafe content in the message according to our safety po
 <BEGIN_UNSAFE_CONTENT_CATEGORIES>
 S1: Violent Crimes
 S2: Non-Violent Crimes
-S6: Specialized Advice (dangerous medical/legal/financial)
 S9: Indiscriminate Weapons
 S10: Hate Speech
 S11: Suicide & Self-Harm
 <END_UNSAFE_CONTENT_CATEGORIES>
+
+NOTE: Pertanyaan medis ringan ("sakit perut", "demam", "cara mengobati X"),
+pertanyaan legal umum, atau pertanyaan finansial umum BUKAN unsafe content
+dari sudut pandang chatbot akademik UNHAS. Itu akan di-handle oleh layer
+berikutnya (intent classifier) sebagai out-of-scope dengan tone ramah —
+bot tidak akan memberi advice medis/legal/finansial spesifik, jadi tidak
+perlu di-block di sini.
 
 <BEGIN_CONVERSATION>
 User: {message}
