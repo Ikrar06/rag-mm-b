@@ -512,30 +512,48 @@ Semua service di `docker-compose.poc.yml` sudah aktif (tidak ada yang di-comment
 ### Arsitektur Service POC
 
 ```
-   Internet
+   Internet (browser user + QA reviewer)
+      │
+      ▼ port 80 (HTTP) atau 443 (HTTPS via nginx)
+  [Reverse Proxy / Load Balancer]   ← nginx/Traefik (di luar compose, opsional)
       │
       ▼
-  [Reverse Proxy / Load Balancer]   ← nginx/Traefik (di luar compose)
-      │
-      ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     Docker Network: ragchat                     │
-│                                                                 │
-│   [Backend :8000] ──────────┬─────────────────────────────────  │
-│   (GPU — PaddleOCR)         │                                   │
-│         │                   │                                   │
-│         ├──▶ [vLLM :8001]              (GPU — Qwen3-VL-8B)      │
-│         ├──▶ [Ollama :11434]           (GPU — Llama Guard 3 1B) │
-│         ├──▶ [TEI Embed :8002]         (GPU — Embedding)        │
-│         ├──▶ [TEI Rerank :8003]        (GPU — Reranker)         │
-│         ├──▶ [Qdrant :6333]            (Vector DB)              │
-│         ├──▶ [PostgreSQL :5432]        (Session DB)             │
-│         ├──▶ [Redis Stack :6379]       (Semantic cache)         │
-│         └──▶ [MinIO :9000]             (Image storage utk vision RAG) │
-│                                                                 │
-│   [Prometheus :9090] ◀── scrape /metrics dari backend            │
-│   [Grafana :3000]    ◀── dashboard performance                  │
-└─────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│                       Docker Network: ragchat                          │
+│                                                                        │
+│   [Backend :8000]                                                      │
+│   (GPU — PaddleOCR)                                                    │
+│   ↑ port 80:8000 exposed publik                                        │
+│   ↑ /api/chat, /api/query, /api/files/{key}, /api/health, dst          │
+│         │                                                              │
+│         ├──▶ [vLLM :8001]              (GPU — Qwen3-VL-8B multimodal)  │
+│         ├──▶ [Ollama :11434]           (GPU — Llama Guard 3 1B)        │
+│         ├──▶ [TEI Embed :8002]         (GPU — Qwen3-Embedding-0.6B)    │
+│         ├──▶ [TEI Rerank :8003]        (GPU — bge-reranker-v2-m3)      │
+│         ├──▶ [Qdrant :6333]            (Vector DB — unhas_docs)        │
+│         ├──▶ [PostgreSQL :5432]        (Session + messages + images)   │
+│         ├──▶ [Redis Stack :6379]       (Semantic cache, skip vision)   │
+│         └──▶ [MinIO :9000]             (Image storage — internal only) │
+│                                          loopback bind 127.0.0.1       │
+│                                                                        │
+│   [QA Sheet Sync] ──▶ PostgreSQL ──▶ Google Sheets (1 jam/cycle)       │
+│   (image standalone, image URL = backend /api/files/*)                 │
+│                                                                        │
+│   [Prometheus :9090]  ◀── scrape /metrics dari backend                 │
+│   [Grafana :3000]     ◀── dashboard performance                        │
+└────────────────────────────────────────────────────────────────────────┘
+
+Image upload flow (vision):
+  Browser → POST /api/chat (with base64 image)
+         → backend validate + resize + upload ke MinIO internal
+         → presigned key disimpan ke postgres messages.images
+         → response answer ke browser
+
+Image download (QA Sheet):
+  Reviewer click URL di Sheet (http://<vm>/api/files/<key>)
+         → backend stream object dari MinIO internal
+         → image tampil di browser reviewer
+  (port 9000 MinIO TIDAK perlu di-expose publik — backend yang proxy)
 ```
 
 ### Prasyarat
@@ -669,18 +687,26 @@ Wajib ganti:
 | `POSTGRES_PASSWORD` | password random (≥ 16 karakter) untuk PostgreSQL container |
 | `DATABASE_URL` | ganti `CHANGE_ME` dengan nilai `POSTGRES_PASSWORD` yang sama (harus identik agar backend bisa connect ke PostgreSQL) |
 | `MINIO_USER` | username admin MinIO |
-| `MINIO_PASSWORD` | password admin MinIO (≥ 8 karakter) |
-| `MINIO_ACCESS_KEY` | bisa sama dengan `MINIO_USER` |
-| `MINIO_SECRET_KEY` | bisa sama dengan `MINIO_PASSWORD` |
+| `MINIO_PASSWORD` | password admin MinIO (≥ 8 karakter) — generate: `python -c "import secrets; print(secrets.token_urlsafe(24))"` |
+| `MINIO_ACCESS_KEY` | sama persis dengan `MINIO_USER` |
+| `MINIO_SECRET_KEY` | sama persis dengan `MINIO_PASSWORD` |
+| `BACKEND_PUBLIC_URL` | URL publik backend yang reviewer QA pakai untuk akses gambar via `/api/files/*`. Format: `http://<ip-vm>` (tanpa port kalau port 80 mapping; dengan port kalau langsung 8000) |
 | `GRAFANA_PASSWORD` | password admin Grafana |
 | `ALLOWED_ORIGINS` | domain frontend production, dipisah koma |
 | `HF_TOKEN` | (opsional) HuggingFace token, lihat Step 4 |
 | `UNHAS_API_BASE_URL` | (opsional) kosongkan jika belum ada |
+| `QA_SYNC_GOOGLE_CREDENTIALS_FILE` | path service account JSON di container — default `/run/secrets/google_service_account.json` |
+| `QA_SYNC_SPREADSHEET_ID` | ID Google Sheet untuk evaluasi QA (dari URL sheet) |
+| `QA_SYNC_WORKSHEET_NAME` | nama tab worksheet (default `Sheet1`) |
+| `QA_SYNC_INTERVAL_SECONDS` | interval auto-sync DB → Sheet (default 3600 = 1 jam) |
+| `QA_SYNC_START_FROM` | (opsional) ISO timestamp untuk skip message historical. Format: `2026-05-25T14:00:00+08:00` |
 
 **Contoh konkret:** kalau `POSTGRES_PASSWORD=Rahasia123Banget`, maka:
 ```
 DATABASE_URL=postgresql://ragchat:Rahasia123Banget@postgres:5432/ragchat
 ```
+
+**Catatan `BACKEND_PUBLIC_URL`:** ini krusial untuk QA Sheet integration. URL gambar yang masuk ke kolom `gambar_user` di Sheet adalah `{BACKEND_PUBLIC_URL}/api/files/<key>`. Reviewer click URL → backend stream image dari MinIO internal → tampil di browser. Approach ini menghindari kebutuhan expose port 9000 MinIO publik (firewall provider friendly).
 
 ### Step 4 — HF_TOKEN (jika butuh model gated)
 
@@ -1051,33 +1077,118 @@ diff docker-compose.poc.yml.vm-backup docker-compose.poc.yml   # lihat perubahan
 
 #### Setelah Pull — Rebuild & Restart
 
+**Skenario A — perubahan di backend Python (paling sering):**
 ```bash
-# Kalau Dockerfile / requirements.txt berubah, perlu rebuild backend (lama, 10-15 min karena CUDA base)
-docker compose -f docker-compose.poc.yml build backend
+# Rebuild — cache hit di semua layer kecuali COPY backend/
+# Estimasi: 1-3 menit
+sudo docker compose -f docker-compose.poc.yml build backend
 
-# Force recreate hanya service yang berubah
-docker compose -f docker-compose.poc.yml up -d --force-recreate backend
+# Recreate
+sudo docker compose -f docker-compose.poc.yml up -d --force-recreate backend qa-sheet-sync
 
-# Cek log startup
-docker compose -f docker-compose.poc.yml logs -f backend
+# Flush cache supaya tidak return jawaban lama
+sudo docker exec rag-prototype-redis-1 redis-cli FLUSHDB
+```
+
+**Skenario B — perubahan di frontend (HTML/CSS/JS):**
+```bash
+# Quick path (tanpa rebuild image, ~10 detik):
+sudo docker cp frontend/index.html rag-prototype-backend-1:/app/frontend/
+sudo docker cp frontend/style.css rag-prototype-backend-1:/app/frontend/
+sudo docker cp frontend/app.js rag-prototype-backend-1:/app/frontend/
+# Hard refresh browser (Ctrl+Shift+R) — tidak perlu restart container
+
+# Persistent path (rebuild image):
+sudo docker compose -f docker-compose.poc.yml build backend
+sudo docker compose -f docker-compose.poc.yml up -d --force-recreate backend
+```
+
+**Skenario C — perubahan di Dockerfile/requirements (jarang):**
+```bash
+# Rebuild full — bisa 10-25 menit kalau perlu re-install CUDA base + paddle/torch
+sudo docker compose -f docker-compose.poc.yml build backend
+sudo docker compose -f docker-compose.poc.yml up -d --force-recreate backend
+```
+
+**Skenario D — perubahan di docker-compose.poc.yml (port, env, dll):**
+```bash
+# Tidak perlu rebuild, cukup recreate
+sudo docker compose -f docker-compose.poc.yml up -d
+# Atau force-recreate kalau perubahan env var:
+sudo docker compose -f docker-compose.poc.yml up -d --force-recreate backend
+```
+
+**Skenario E — perubahan di prompt template (`.py`) saja:**
+```bash
+# Prompt di-import saat module load — restart tidak cukup,
+# harus recreate container karena file di image lama.
+sudo docker compose -f docker-compose.poc.yml build backend
+sudo docker compose -f docker-compose.poc.yml up -d --force-recreate backend
+
+# ATAU shortcut tanpa rebuild (tidak persistent):
+sudo docker cp backend/prompts/templates.py rag-prototype-backend-1:/app/backend/prompts/templates.py
+sudo docker compose -f docker-compose.poc.yml restart backend
+sudo docker exec rag-prototype-redis-1 redis-cli FLUSHDB
+```
+
+**Verifikasi setelah recreate:**
+```bash
+# Cek startup log — harus muncul keyword_filter_loaded, storage_backend, intent_classifier_loaded
+sudo docker compose -f docker-compose.poc.yml logs backend --tail 30
+
+# Cek health
+curl http://localhost/api/health | python3 -m json.tool
+# Expected: status=healthy, vision_enabled=true, moderation_circuit=closed
 ```
 
 #### Backup & Operations
 
 ```bash
-# Backup PostgreSQL
-docker compose -f docker-compose.poc.yml exec postgres \
+# Backup PostgreSQL (termasuk messages.images — sudah include data attachment URL)
+sudo docker compose -f docker-compose.poc.yml exec postgres \
   pg_dump -U ragchat ragchat > backup_$(date +%Y%m%d).sql
 
-# Backup Qdrant volume
-docker run --rm -v rag-prototype_qdrant_data:/data -v $(pwd):/backup \
+# Backup Qdrant volume (chunks dokumen + narasi)
+sudo docker run --rm -v rag-prototype_qdrant_data:/data -v $(pwd):/backup \
   alpine tar czf /backup/qdrant_$(date +%Y%m%d).tar.gz /data
 
+# Backup MinIO data (gambar user upload)
+sudo docker run --rm -v rag-prototype_minio_data:/data -v $(pwd):/backup \
+  alpine tar czf /backup/minio_$(date +%Y%m%d).tar.gz /data
+
+# Force sync QA Sheet manual (di luar interval otomatis)
+sudo docker exec rag-prototype-qa-sheet-sync-1 \
+  python -m automation_qa.sync_to_sheets --once
+
+# Dry-run sync (read DB & Sheet tanpa append — verify count)
+sudo docker exec rag-prototype-qa-sheet-sync-1 \
+  python -m automation_qa.sync_to_sheets --once --dry-run
+
+# Flush Redis cache (semantic cache + intent cache)
+sudo docker exec rag-prototype-redis-1 redis-cli FLUSHDB
+
 # Scale backend (butuh load balancer di depan)
-docker compose -f docker-compose.poc.yml up -d --scale backend=2
+sudo docker compose -f docker-compose.poc.yml up -d --scale backend=2
 
 # View log filter request_id
-docker compose -f docker-compose.poc.yml logs backend | grep "request_id=a3f9b1c2"
+sudo docker compose -f docker-compose.poc.yml logs backend | grep "request_id=a3f9b1c2"
+
+# Tail log live multiple service
+sudo docker compose -f docker-compose.poc.yml logs -f backend qa-sheet-sync vllm
+```
+
+#### SSH Tunnel untuk Admin Tools
+
+MinIO Console dan Qdrant Dashboard bind ke loopback `127.0.0.1` (tidak ke-expose publik). Akses via SSH tunnel dari laptop:
+
+```bash
+# Di laptop, terminal baru:
+ssh -p 5617 -L 9001:localhost:9001 -L 6333:localhost:6333 ubuntu@<vm-ip>
+# Biarkan terbuka
+
+# Di browser laptop:
+http://localhost:9001        # MinIO Console (login: MINIO_USER / MINIO_PASSWORD)
+http://localhost:6333/dashboard   # Qdrant Dashboard
 ```
 
 ### Troubleshooting
@@ -1101,23 +1212,63 @@ docker compose -f docker-compose.poc.yml logs backend | grep "request_id=a3f9b1c
 | PaddleOCR error `ConvertPirAttribute2RuntimeAttribute not support` | Bug PaddlePaddle PIR + oneDNN saat CPU mode | Pakai GPU mode (default POC). Kalau terpaksa CPU, set env `FLAGS_use_mkldnn=0` di service backend |
 | Backend OOM saat OCR + vLLM concurrent | VRAM tidak cukup | Turunkan vLLM `--gpu-memory-utilization` (0.80 → 0.75), atau set `OCR_USE_GPU=false` di `.env` |
 | `paddlepaddle-gpu` install gagal di Dockerfile | Network / channel Paddle tidak reachable | Cek koneksi ke `paddlepaddle.org.cn`. Kalau diblok, install dari PyPI mirror: `pip install paddlepaddle-gpu==3.0.0 --index-url https://pypi.tuna.tsinghua.edu.cn/simple` |
+| Vision query: `(psycopg2.errors.UndefinedColumn) column messages.images does not exist` | DB existing belum punya kolom `images` (Message model ditambah setelah deploy) | Restart backend — startup akan auto-run `ALTER TABLE messages ADD COLUMN IF NOT EXISTS images JSON` via `init_db()` |
+| Image upload sukses tapi URL di Sheet 404 | `BACKEND_PUBLIC_URL` di `.env` salah / pakai `localhost` padahal reviewer dari laptop lain | Set `BACKEND_PUBLIC_URL=http://<ip-publik-vm>` (tanpa port kalau port 80), restart backend |
+| Image upload `403 SignatureDoesNotMatch` | Pakai presigned MinIO URL langsung (versi lama). Versi sekarang serve via backend `/api/files/*` | Pull commit terbaru — `MinIOStorage.put_sync` return `BACKEND_PUBLIC_URL/api/files/<key>`, bukan presigned MinIO URL |
+| Image upload `bucket_check_failed` | MinIO credential salah / bucket belum ada | Verify `MINIO_ACCESS_KEY=MINIO_USER`, `MINIO_SECRET_KEY=MINIO_PASSWORD`. Backend auto-create bucket `ragchat-images` di startup |
+| QA Sheet sync error: kolom shift | Header sheet belum di-update jadi 14 kolom (tambah `gambar_user` di posisi C) | Manual insert kolom di Google Sheet (lihat `automation_qa/README.md`) |
+| Pertanyaan medis di-block (`blocked_moderation` S6) | Llama Guard 3 over-restrictive untuk konteks akademik | Sudah di-fix — `S6: Specialized Advice` dihapus dari moderation prompt. Pull commit terbaru |
+| Bot tawarkan bantuan untuk topik OOS (mis. "tips Mobile Legend") | LLM 8B interpret "acknowledge dulu" terlalu jauh | Sudah di-fix di OOS prompt — pull commit terbaru, rebuild backend, flush Redis cache |
+| Response selalu pakai "Semoga membantu. Mau cek hal lain?" | Cached response lama atau prompt belum re-deploy | `docker exec rag-prototype-backend-1 grep -c "Semoga membantu" /app/backend/prompts/templates.py` — kalau > 3 berarti image lama, rebuild backend |
+| Frontend tidak ada tombol attach gambar | File frontend di image lama, perlu re-copy atau rebuild | Pakai docker cp shortcut (Skenario B Maintenance) atau rebuild backend |
 
 ### Production Checklist
 
 Sebelum go-live, pastikan:
 
+**Security & Credentials:**
 - [ ] Semua `CHANGE_ME` di `.env` sudah diganti
 - [ ] `JWT_SECRET` minimal 32 byte hex
+- [ ] `MINIO_PASSWORD` random ≥ 16 karakter (generate via `secrets.token_urlsafe(24)`)
+- [ ] `POSTGRES_PASSWORD` random ≥ 16 karakter
 - [ ] HTTPS aktif (Let's Encrypt atau cert lain)
 - [ ] `ALLOWED_ORIGINS` dibatasi ke domain production
-- [ ] Firewall: hanya port 443 terbuka publik (port 9001, 3000 untuk akses internal saja)
-- [ ] Backup otomatis PostgreSQL + Qdrant terjadwal (cron)
+- [ ] Firewall: hanya port 443 + 80 terbuka publik
+- [ ] Port 9000 (MinIO API), 9001 (MinIO Console), 6333 (Qdrant), 3000 (Grafana) tidak ke-expose publik — bind ke loopback atau buka SSH tunnel
+- [ ] Service account Google credential (`automation_qa/secrets/google_service_account.json`) tidak di-commit ke git
+
+**Data & Backup:**
+- [ ] Backup otomatis PostgreSQL terjadwal (cron, termasuk `messages.images`)
+- [ ] Backup otomatis Qdrant volume terjadwal
+- [ ] Backup otomatis MinIO volume terjadwal (kalau image attachment penting)
 - [ ] Log rotation aktif (`logrotate`)
-- [ ] Grafana dashboard sudah di-import untuk monitoring backend
-- [ ] Rate limit production-grade (default `8/min` text, `2/min` vision)
+
+**Functional:**
+- [ ] PDF index ke Qdrant sudah selesai (cek `points_count` > 0)
 - [ ] Test query end-to-end dengan 3 role: `public`, `mahasiswa`, `admin`
+- [ ] Test vision upload: kirim gambar via UI → URL muncul di QA Sheet, click-able
+- [ ] Test OOS handling: pertanyaan random (game/makanan/dll) → response ramah, BUKAN canned
+- [ ] Test medis ringan: "perut sakit" → arahkan ke poliklinik UNHAS, BUKAN blocked
 - [ ] Llama Guard 3 sudah di-pull (`ollama list`)
 - [ ] Health check return `healthy`, bukan `degraded`
+- [ ] Health check `vision_enabled: true` (kalau pakai vision)
+
+**Observability:**
+- [ ] Grafana dashboard sudah di-import untuk monitoring backend
+- [ ] Prometheus scrape backend `/metrics` aktif
+- [ ] Rate limit production-grade (default `8/min` text, `2/min` vision)
+
+**QA Sheet Integration:**
+- [ ] Service account email di-share ke Google Sheet dengan role Editor
+- [ ] Header sheet 14 kolom (sudah include `gambar_user` di posisi C)
+- [ ] `QA_SYNC_START_FROM` di-set ke timestamp launch (skip data historis)
+- [ ] Sync test: kirim message dummy → tunggu sync cycle / force sync → row muncul di Sheet
+- [ ] URL gambar di Sheet click-able dan tampil di browser reviewer
+
+**Tuning:**
+- [ ] `LLM_TEMPERATURE` di-set sesuai use case (0.3 untuk balance accuracy + variasi)
+- [ ] `SCORE_THRESHOLD` + `LOW_CONFIDENCE_BUFFER` dikalibrasi berdasarkan QA evaluation
+- [ ] `RERANKER_TIMEOUT` sesuai (5s untuk GPU, 30s untuk CPU)
 
 ---
 
@@ -1487,15 +1638,59 @@ data: {"type": "meta", "answer": "...", "sources": [...], "debug": {...}}
 
 | Method | Endpoint | Auth | Deskripsi |
 |---|---|---|---|
-| POST | `/api/query` | — | RAG query untuk integrasi BE |
+| POST | `/api/query` | — | RAG query untuk integrasi BE (support `images[]` untuk vision) |
 | POST | `/api/query/stream` | — | Streaming variant `/api/query` |
-| POST | `/api/chat` | Cookie/JWT | Chat dengan session management |
+| POST | `/api/chat` | Cookie/JWT | Chat dengan session management (support `images[]`) |
 | POST | `/api/chat/stream` | Cookie/JWT | Streaming chat |
 | GET | `/api/sessions` | Cookie/JWT | Daftar sesi percakapan user |
 | POST | `/api/auth/login` | — | Login, dapat JWT cookie |
 | POST | `/api/auth/logout` | Cookie | Logout |
-| GET | `/api/health` | — | Status semua service |
+| GET | `/api/health` | — | Status semua service (termasuk `vision_enabled`, `moderation_circuit`) |
+| GET | `/api/files/{key}` | — | Serve image yang user upload (proxy ke MinIO). Dipakai di QA Sheet |
 | POST | `/api/index` | — | Trigger indexing PDF |
+| GET | `/metrics` | — | Prometheus metrics |
+
+---
+
+### Vision Input (Image Attachment)
+
+Endpoint `/api/query`, `/api/chat`, dan stream variant-nya menerima field `images[]` opsional:
+
+```json
+{
+  "query": "ini KRS saya, SKS-nya sudah cukup belum?",
+  "session_id": "uuid-xxx",
+  "images": [
+    {
+      "mime_type": "image/jpeg",
+      "data": "<base64-encoded-image-tanpa-prefix-data:>"
+    }
+  ]
+}
+```
+
+**Constraint:**
+- Max 2 gambar per request (`MAX_IMAGES_PER_MESSAGE`)
+- Max 10 MB per gambar (`MAX_IMAGE_SIZE_MB`)
+- MIME yang diterima: `image/jpeg`, `image/png`, `image/webp`
+- Auto-resize ke 1280px (`IMAGE_RESIZE_MAX_DIM`) — hemat token VL
+
+**Pipeline saat ada `images[]`:**
+1. L1 keyword filter pada query text → block atau lanjut
+2. L2 Llama Guard moderation pada query text → block atau lanjut
+3. L3 intent classifier — early reject kalau OOS confidence ≥ 0.85
+4. Image upload ke MinIO internal → URL disimpan di `messages.images`
+5. L5c retrieval RAG berdasarkan query text → konteks tambahan
+6. VL generation (Qwen3-VL) dengan multimodal prompt
+7. L6 output filter
+
+**Response `debug.mode` saat vision:**
+- `vision_rag` — sukses, image dianalisis dengan konteks RAG
+- `vision_error` — image invalid atau VL gagal
+- `out_of_scope` — text + image dianggap OOS (early reject sebelum VL call)
+
+**URL gambar untuk QA Sheet:**
+Setiap gambar yang user upload disimpan di MinIO dengan key `chat-uploads/<session_id>/<uuid>.{jpg|png}`. URL yang masuk ke kolom `gambar_user` di Google Sheet adalah `{BACKEND_PUBLIC_URL}/api/files/<key>` — di-stream lewat backend (port 80), tidak butuh port 9000 MinIO publik.
 
 ---
 
@@ -1504,13 +1699,16 @@ data: {"type": "meta", "answer": "...", "sources": [...], "debug": {...}}
 | Mode | Arti |
 |---|---|
 | `rag` | Dijawab dari dokumen RAG |
-| `chitchat` | Dijawab langsung (sapaan/basa-basi) |
-| `out_of_scope` | Diluar topik akademik UNHAS |
-| `blocked` | Diblokir keyword berbahaya (L1) |
-| `blocked_moderation` | Diblokir model moderasi (L2) |
-| `clarification_needed` | Intent tidak jelas, minta klarifikasi |
-| `get_info_private` | Dijawab dari API UNHAS |
-| `cache_hit` | Dijawab dari cache Redis |
+| `rag_low_relevance` | RAG retrieve tapi top_score di bawah threshold — bot akui tidak tahu |
+| `vision_rag` | Dijawab dari Qwen3-VL multimodal + konteks RAG (ada image attachment) |
+| `vision_error` | Vision pipeline gagal (image invalid / VL timeout) |
+| `chitchat` | Dijawab langsung (sapaan/basa-basi/reaksi follow-up) |
+| `out_of_scope` | Diluar topik akademik UNHAS — response LLM-generated ramah |
+| `blocked` | Diblokir keyword berbahaya (L1 hard_block) |
+| `blocked_moderation` | Diblokir Llama Guard 3 (L2) — kategori serius (kekerasan, weapons, hate, self-harm) |
+| `clarification_needed` | Intent confidence rendah, minta klarifikasi |
+| `get_info_private` | Dijawab dari API UNHAS (intent classifier route `get_info_private`) |
+| `cache_hit` | Dijawab dari Redis semantic cache (skip kalau ada image) |
 
 ---
 
@@ -1525,19 +1723,43 @@ Semua config dibaca dari `.env`. Template tersedia di `.env.dev` (dev lokal) dan
 | `LLM_PROVIDER` | `ollama` | Provider LLM: `ollama` / `vllm` / `openai` |
 | `LLM_MODEL` | `qwen2.5:7b` | Nama model |
 | `LLM_BASE_URL` | `http://localhost:11434` | URL endpoint LLM |
+| `LLM_TEMPERATURE` | `0.3` | Temperature LLM utama (RAG generation) |
+| `LLM_SUPPORTS_VISION` | `false` | True kalau LLM support multimodal (Qwen3-VL di POC) |
 | `EMBED_PROVIDER` | `huggingface` | Provider embedding: `huggingface` / `tei` |
 | `EMBED_MODEL` | `Qwen/Qwen3-Embedding-0.6B` | Model embedding |
 | `RERANKER_PROVIDER` | `sentence_transformers` | Provider reranker |
+| `RERANKER_TIMEOUT` | `5` | Timeout TEI rerank service (5s GPU, 30s CPU) |
 | `QDRANT_URL` | `http://localhost:6333` | URL Qdrant |
 | `QDRANT_COLLECTION` | `unhas_docs` | Nama collection |
+| `SCORE_THRESHOLD` | `0.3` | Threshold reranker — di bawah ini → low_relevance fallback |
+| `LOW_CONFIDENCE_BUFFER` | `0.15` | Buffer marginal disclaimer di atas threshold |
 | `DATABASE_URL` | `postgresql://...` | Connection string PostgreSQL |
 | `REDIS_URL` | `redis://localhost:6379/0` | Connection string Redis |
 | `JWT_SECRET` | *(set di .env)* | Secret key JWT |
 | `MODERATION_BACKEND` | `passthrough` | `passthrough` / `ollama` |
+| `MODERATION_TIMEOUT` | `20` | Timeout Llama Guard call (sebelum circuit breaker fail-open) |
 | `INTENT_MODEL_PATH` | `models/intent_classifier` | Path model IndoBERT |
-| `RATE_LIMIT_TEXT_PER_MINUTE` | `20` | Rate limit per user per menit |
+| `INTENT_CONFIDENCE_THRESHOLD` | `0.6` | Threshold confidence intent — di bawah ini → clarification_needed |
+| `OCR_USE_GPU` | `true` | PaddleOCR pakai GPU (POC). False untuk dev RTX 3060 atau backend tanpa GPU |
+| `MAX_IMAGES_PER_MESSAGE` | `2` | Max attachment image per request |
+| `MAX_IMAGE_SIZE_MB` | `10` | Max size per image (setelah base64 decode) |
+| `IMAGE_RESIZE_MAX_DIM` | `1280` | Auto-resize jika dimensi melebihi (hemat token VL) |
+| `RATE_LIMIT_TEXT_PER_MINUTE` | `8` | Rate limit text query per user per menit |
+| `RATE_LIMIT_VISION_PER_MINUTE` | `3` | Rate limit vision query per user per menit |
 | `ALLOWED_ORIGINS` | `http://localhost:*` | CORS origins |
 | `UNHAS_API_BASE_URL` | *(kosong)* | Base URL API UNHAS (isi jika sudah tersedia) |
+| **Storage** | | |
+| `STORAGE_BACKEND` | `filesystem` | `filesystem` (dev) / `minio` (POC) |
+| `BACKEND_PUBLIC_URL` | `http://localhost:8000` | URL backend publik untuk QA Sheet (POC: `http://<ip-vm>`) |
+| `MINIO_ENDPOINT` | `minio:9000` | Endpoint internal MinIO (docker DNS) |
+| `MINIO_ACCESS_KEY` / `_SECRET_KEY` | *(set di .env)* | MinIO credential |
+| `MINIO_BUCKET` | `ragchat-images` | Bucket untuk image upload |
+| **QA Sheet Sync** | | |
+| `QA_SYNC_GOOGLE_CREDENTIALS_FILE` | `automation_qa/secrets/google_service_account.json` | Path SA JSON |
+| `QA_SYNC_SPREADSHEET_ID` | *(set di .env)* | ID Google Sheet target |
+| `QA_SYNC_WORKSHEET_NAME` | `Sheet1` | Nama worksheet |
+| `QA_SYNC_INTERVAL_SECONDS` | `3600` | Interval auto-sync (1 jam) |
+| `QA_SYNC_START_FROM` | *(kosong)* | ISO timestamp untuk skip message historical |
 
 ---
 
