@@ -376,7 +376,7 @@ Sistem ini didesain untuk 3 level deployment, dari yang paling ringan ke paling 
 ### 1. Clone & Virtual Environment
 
 ```powershell
-git clone https://github.com/Ikrar06/rag-prototype
+git clone https://github.com/ai-llm-unhas/rag-core-system
 cd rag-prototype
 
 python -m venv venv
@@ -612,7 +612,7 @@ docker run --rm --gpus all nvidia/cuda:12.2.0-base-ubuntu22.04 nvidia-smi
 ### Step 2 — Clone & Siapkan Model + Data
 
 ```bash
-git clone https://github.com/Ikrar06/rag-prototype
+git clone https://github.com/ai-llm-unhas/rag-core-system
 cd rag-prototype
 
 # Python venv untuk persiapan model lokal
