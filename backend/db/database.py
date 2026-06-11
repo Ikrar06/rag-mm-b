@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,       # reconnect jika koneksi putus
-    pool_size=5,
-    max_overflow=10,
+    pool_size=20,
+    max_overflow=20,
     echo=False,               # set True untuk debug SQL queries
 )
 
