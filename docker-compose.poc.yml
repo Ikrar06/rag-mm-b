@@ -37,6 +37,8 @@ services:
     image: qdrant/qdrant:latest
     volumes:
       - qdrant_data:/qdrant/storage
+    ports:
+      - "127.0.0.1:6333:6333"
     restart: unless-stopped
 
   minio:
@@ -165,7 +167,7 @@ services:
       - ./data/json:/app/data/json:ro
       - ./data/pdfs:/app/data/pdfs:ro
     ports:
-      - "8000:8000"
+      - "80:8000" #sementara di L40S kasih 80:8000, nanti diubah ke 8000:8000
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
