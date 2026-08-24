@@ -14,7 +14,9 @@ Element types yang dihasilkan:
 import hashlib
 import logging
 import os
+import re
 import tempfile
+import unicodedata
 from pathlib import Path
 from typing import Iterable
 
@@ -25,6 +27,9 @@ from backend.config import (
     CHUNK_SIZE, CHUNK_OVERLAP,
     IMAGES_DIR,
     INDEX_MAX_CHUNK_TOKENS,
+    INDEX_MIN_CHUNK_TOKENS,
+    INDEX_STRUCTURAL_METADATA,
+    INDEX_TABLES_AS_OWN_CHUNKS,
     PDF_EXTRACTION_STRATEGY,
     PDF_EXTRACT_IMAGES, PDF_DESCRIBE_IMAGES,
     PDF_EXTRACT_TABLES, PDF_TABLE_MAX_CHARS,
@@ -97,6 +102,32 @@ def file_sha256(path: str | Path) -> str:
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+# ─── Hash teks chunk (jaring pengaman pemetaan ulang anotasi gold) ────────────
+
+_WHITESPACE_RUN_RE = re.compile(r"\s+")
+
+
+def normalize_for_hash(text: str) -> str:
+    """Normalisasi teks sebelum di-hash.
+
+    NFKC menyatukan bentuk unicode yang setara; deretan whitespace dirapatkan
+    karena ekstraksi PDF dan OCR menghasilkan spasi/newline yang tidak stabil
+    antar-run. Kapitalisasi TIDAK diturunkan: casing stabil antar re-index, dan
+    menurunkannya hanya menambah peluang tabrakan.
+    """
+    return _WHITESPACE_RUN_RE.sub(" ", unicodedata.normalize("NFKC", text)).strip()
+
+
+def text_sha(text: str) -> str:
+    """Hash pendek isi chunk, untuk memetakan ulang anotasi gold saat
+    penomoran bergeser. 16 hex = 64 bit, cukup untuk skala korpus akademik.
+
+    Dihitung atas konten milik chunk itu SENDIRI — sebelum prefix overlap
+    ditempel — sehingga tidak ikut berubah saat chunk tetangga berubah.
+    """
+    return hashlib.sha256(normalize_for_hash(text).encode("utf-8")).hexdigest()[:16]
 
 
 # ─── Strategy detection ───────────────────────────────────────────────────────
@@ -177,15 +208,63 @@ def _extract_fast(pdf_path: Path) -> list[dict]:
 
 # ─── HI_RES PATH — Unstructured.io layout-aware ───────────────────────────────
 
-def _html_table_to_markdown(html: str) -> str:
-    """Convert tabel HTML dari Unstructured ke Markdown."""
+def _html_table_to_markdown(html: str) -> tuple[str, str]:
+    """Convert tabel HTML dari Unstructured ke Markdown.
+
+    Returns (text, format) dengan format "markdown" atau "html". Saat markdownify
+    gagal, fungsi ini mengembalikan HTML mentah — tanpa penanda, chunk
+    element_type="Table" bisa berisi Markdown atau HTML tanpa cara membedakannya.
+    Penanda inilah yang diteruskan ke payload sebagai `table_format`.
+    """
     try:
         from markdownify import markdownify
-        md = markdownify(html, heading_style="ATX").strip()
-        return md
+        return markdownify(html, heading_style="ATX").strip(), "markdown"
     except Exception as e:
-        logger.debug(f"html_table_md_fail error={e}")
-        return html
+        logger.warning("html_table_md_fail error=%s — chunk berisi HTML mentah", e)
+        return html, "html"
+
+
+def _element_bbox(el) -> list[float] | None:
+    """Bounding box element sebagai [x0, y0, x1, y1] ternormalisasi ke [0, 1].
+
+    `el.metadata.coordinates` (unstructured 0.16.11, elements.py:164) berisi
+    `.points` — tuple pasangan (x, y) di ruang piksel layout — dan `.system`
+    dengan `.width`/`.height`. Piksel layout tidak bermakna di luar konteks
+    ekstraksi itu, jadi koordinat dinormalisasi terhadap dimensi layout supaya
+    bisa dipakai lintas alat tanpa perlu menyimpan dimensinya.
+
+    Mengembalikan None bila koordinat tidak tersedia — `bbox` di skema riset
+    memang bertipe "array[float] atau null, bila tersedia".
+    """
+    coords = getattr(getattr(el, "metadata", None), "coordinates", None)
+    if coords is None:
+        return None
+
+    points = getattr(coords, "points", None)
+    system = getattr(coords, "system", None)
+    if not points or system is None:
+        return None
+
+    width = getattr(system, "width", None)
+    height = getattr(system, "height", None)
+    if not width or not height:
+        return None
+
+    try:
+        xs = [float(p[0]) for p in points]
+        ys = [float(p[1]) for p in points]
+    except (TypeError, IndexError, ValueError):
+        return None
+
+    if not xs or not ys:
+        return None
+
+    return [
+        round(min(xs) / width, 4),
+        round(min(ys) / height, 4),
+        round(max(xs) / width, 4),
+        round(max(ys) / height, 4),
+    ]
 
 
 def _extract_hi_res(pdf_path: Path) -> list[dict]:
@@ -221,14 +300,23 @@ def _extract_hi_res(pdf_path: Path) -> list[dict]:
         if category in ("Header", "Footer", "PageNumber", "PageBreak"):
             continue
 
+        bbox = _element_bbox(el)
+
         if category == "Table":
             html = getattr(el.metadata, "text_as_html", None)
-            md = _html_table_to_markdown(html) if html else el.text
+            if html:
+                text, table_format = _html_table_to_markdown(html)
+            else:
+                text, table_format = el.text, "text"
             elements.append({
-                "text": md,
+                "text": text,
                 "category": "Table",
                 "page": page,
-                "metadata": {"raw_html": html or ""},
+                "metadata": {
+                    "raw_html": html or "",
+                    "table_format": table_format,
+                    "bbox": bbox,
+                },
             })
 
         elif category in ("Image", "Figure"):
@@ -240,7 +328,7 @@ def _extract_hi_res(pdf_path: Path) -> list[dict]:
                 "text": "",  # diisi nanti dengan deskripsi
                 "category": "Image",
                 "page": page,
-                "metadata": {"image_base64": image_b64},
+                "metadata": {"image_base64": image_b64, "bbox": bbox},
             })
 
         else:
@@ -252,7 +340,7 @@ def _extract_hi_res(pdf_path: Path) -> list[dict]:
                 "text": text,
                 "category": category,
                 "page": page,
-                "metadata": {},
+                "metadata": {"bbox": bbox},
             })
 
     return elements
@@ -299,7 +387,9 @@ def _describe_image_elements(elements: list[dict]) -> list[dict]:
             "text": description,
             "category": "ImageDescription",
             "page": el["page"],
-            "metadata": {},
+            # bbox diteruskan; image_base64 tetap dibuang di sini (gambar belum
+            # disimpan ke disk — lihat INSPECTION_REPORT_2.md butir #3).
+            "metadata": {"bbox": el["metadata"].get("bbox")},
         })
 
     return output
@@ -443,17 +533,35 @@ def _split_for_budget(text: str, splittable: bool = True) -> list[str]:
         final.extend(_hard_cut(p, budget) if _ntok(p) > budget else [p])
 
     final = _merge_fitting([p for p in final if p.strip()], budget)
-    final = _apply_overlap(final, budget)
     logger.info(
         "chunk_split_oversized tokens=%d budget=%d pieces=%d",
         _ntok(text), budget, len(final),
     )
+    # Overlap TIDAK diterapkan di sini. Pemanggil (`emit`) menempelkannya setelah
+    # menghitung text_sha, supaya hash mencerminkan konten milik chunk itu
+    # sendiri dan tidak ikut berubah saat chunk tetangga berubah.
     return final
 
 
 # ─── Chunking — preserve section context ──────────────────────────────────────
 
-def _chunk_elements(elements: list[dict], pdf_name: str) -> list[dict]:
+def _page_segment(page) -> str:
+    """Segmen halaman untuk chunk_id/image_id.
+
+    `_extract_hi_res` memakai 0 sebagai penanda "halaman tidak diketahui"
+    (`page_number` absen). Nilai itu ditangani eksplisit sebagai "pNA" — memakai
+    "p0" akan terbaca sebagai halaman nol dan mencampur dua hal berbeda.
+    """
+    try:
+        n = int(page)
+    except (TypeError, ValueError):
+        return "pNA"
+    return f"p{n}" if n > 0 else "pNA"
+
+
+def _chunk_elements(
+    elements: list[dict], pdf_name: str, document_id: str | None = None
+) -> list[dict]:
     """Smart chunking: group element di bawah Title, jangan split Table.
 
     Strategy:
@@ -461,30 +569,130 @@ def _chunk_elements(elements: list[dict], pdf_name: str) -> list[dict]:
     - Text/ListItem di-merge sampai mendekati CHUNK_SIZE
     - Table & ImageDescription jadi chunk tersendiri (tidak di-merge)
     - Overlap CHUNK_OVERLAP karakter antar chunk text
+
+    `document_id` hanya dipakai saat INDEX_STRUCTURAL_METADATA aktif, untuk
+    membangun chunk_id berformat {document_id}_p{page}_c{NN}.
     """
     chunks: list[dict] = []
     current_section: str = ""
     current_buffer: list[str] = []
     current_page: int = 1
     current_categories: set[str] = set()
+    current_bboxes: list[list[float]] = []
+    # Ekor chunk sebelumnya yang disemai ke buffer ini sebagai overlap. Dikeluarkan
+    # dari dasar text_sha supaya hash tidak bergantung pada isi chunk tetangga.
+    current_overlap_seed: str = ""
 
-    def emit(text: str, page: int, element_type: str, splittable: bool = True):
+    # Pencacah ordinal DALAM halaman, terpisah per segmen halaman. Ember "pNA"
+    # menampung element yang halamannya tidak diketahui.
+    page_counters: dict[str, int] = {}
+    unknown_page_chunks = 0
+
+    def _is_title_only(text: str) -> bool:
+        """True bila chunk hanya berisi baris judul section.
+
+        Chunk semacam itu tidak membawa konten unik — `section` sudah ada di
+        metadata setiap chunk — tapi tetap divektorkan dan mencemari presisi.
+        """
+        if not current_section:
+            return False
+        return normalize_for_hash(text) == normalize_for_hash(f"# {current_section}")
+
+    def emit(
+        text: str,
+        page: int,
+        element_type: str,
+        splittable: bool = True,
+        extra: dict | None = None,
+        inherited_prefix: str = "",
+    ):
         """Tambahkan chunk, dipecah dulu bila melewati INDEX_MAX_CHUNK_TOKENS.
 
-        chunk_index diberikan berurutan per potongan — satu nomor per chunk
-        keluaran, supaya tidak ada dua chunk yang berbagi nomor.
+        Urutan operasi penting: pecah -> saring -> hash -> tempel overlap.
+
+        text_sha dihitung atas konten milik chunk itu SENDIRI, dengan dua sumber
+        overlap dikeluarkan dari perhitungan:
+        1. Overlap antar-potongan hasil pemecahan — ditempel setelah hash.
+        2. Overlap antar-chunk dari buffer (lihat cabang teks di bawah, yang
+           menyemai buffer baru dengan ekor element terakhir) — dipotong lewat
+           `inherited_prefix`.
+
+        Tanpa keduanya, hash sebuah chunk ikut berubah saat chunk tetangganya
+        berubah, dan pemetaan ulang anotasi gold gagal justru pada skenario
+        kaskade yang paling sering terjadi.
         """
-        for piece in _split_for_budget(text, splittable=splittable):
-            if not piece.strip():
+        nonlocal unknown_page_chunks
+
+        pieces = _split_for_budget(text, splittable=splittable)
+        budget = INDEX_MAX_CHUNK_TOKENS if INDEX_MAX_CHUNK_TOKENS > 0 else 0
+        final_texts = _apply_overlap(pieces, budget) if budget else pieces
+
+        for position, (core, final_text) in enumerate(zip(pieces, final_texts)):
+            if not final_text.strip():
                 continue
-            chunks.append({
-                "text": piece,
+
+            # Potongan pertama bisa diawali ekor chunk sebelumnya; buang dari
+            # dasar hash supaya isi milik chunk ini saja yang terhitung.
+            hash_basis = core
+            if position == 0 and inherited_prefix and core.startswith(inherited_prefix):
+                trimmed = core[len(inherited_prefix):].strip()
+                if trimmed:
+                    hash_basis = trimmed
+
+            if INDEX_MIN_CHUNK_TOKENS > 0:
+                if _is_title_only(core):
+                    logger.info(
+                        "chunk_dropped reason=title_only section=%r", current_section
+                    )
+                    continue
+                if _ntok(final_text) < INDEX_MIN_CHUNK_TOKENS:
+                    logger.info(
+                        "chunk_dropped reason=below_min_tokens tokens=%d min=%d text=%r",
+                        _ntok(final_text), INDEX_MIN_CHUNK_TOKENS, final_text[:60],
+                    )
+                    continue
+
+            chunk = {
+                "text": final_text,
                 "page": page,
                 "file_name": pdf_name,
                 "chunk_index": len(chunks),
                 "element_type": element_type,
                 "section": current_section,
-            })
+            }
+
+            if INDEX_STRUCTURAL_METADATA:
+                segment = _page_segment(page)
+                if segment == "pNA":
+                    unknown_page_chunks += 1
+                ordinal = page_counters.get(segment, 0)
+                page_counters[segment] = ordinal + 1
+                if document_id:
+                    chunk["document_id"] = document_id
+                    chunk["chunk_id"] = f"{document_id}_{segment}_c{ordinal:02d}"
+                chunk["text_sha"] = text_sha(hash_basis)
+                for key, value in (extra or {}).items():
+                    if value not in (None, ""):
+                        chunk[key] = value
+
+            chunks.append(chunk)
+
+    def _union_bbox() -> list[float] | None:
+        """Gabungan bbox element yang ada di buffer saat ini.
+
+        Chunk teks bisa merangkum beberapa element, jadi bbox-nya adalah kotak
+        yang melingkupi semuanya. Untuk chunk hasil pemecahan, bbox tetap
+        merujuk element sumber — bukan potongan — karena pemecahan terjadi di
+        ruang teks, bukan ruang halaman.
+        """
+        if not current_bboxes:
+            return None
+        return [
+            round(min(b[0] for b in current_bboxes), 4),
+            round(min(b[1] for b in current_bboxes), 4),
+            round(max(b[2] for b in current_bboxes), 4),
+            round(max(b[3] for b in current_bboxes), 4),
+        ]
 
     def flush():
         if not current_buffer:
@@ -497,6 +705,8 @@ def _chunk_elements(elements: list[dict], pdf_name: str) -> list[dict]:
             current_page,
             "+".join(sorted(current_categories)) or "text",
             splittable=True,
+            extra={"bbox": _union_bbox()},
+            inherited_prefix=current_overlap_seed,
         )
 
     for el in elements:
@@ -504,24 +714,35 @@ def _chunk_elements(elements: list[dict], pdf_name: str) -> list[dict]:
         text = el["text"]
         page = el["page"]
 
+        el_bbox = (el.get("metadata") or {}).get("bbox")
+
         if cat == "Title":
             # Flush sebelumnya, mulai section baru
             flush()
             current_buffer = []
             current_categories = set()
+            current_bboxes = []
+            current_overlap_seed = ""
             current_section = text
             current_page = page
             # Title juga jadi bagian buffer (header context)
             current_buffer.append(f"# {text}")
             current_categories.add("Title")
+            if el_bbox:
+                current_bboxes.append(el_bbox)
             continue
 
         if cat == "Table":
-            # Table jadi chunk independen kalau besar, atau di-append jika kecil
-            if len(text) > PDF_TABLE_MAX_CHARS:
+            # Tabel jadi chunk independen kalau besar, atau kalau
+            # INDEX_TABLES_AS_OWN_CHUNKS aktif — yang terakhir supaya setiap
+            # tabel punya hubungan 1:1 dengan satu chunk beserta raw_html-nya.
+            mandiri = len(text) > PDF_TABLE_MAX_CHARS or INDEX_TABLES_AS_OWN_CHUNKS
+            if mandiri:
                 flush()
                 current_buffer = []
                 current_categories = set()
+                current_bboxes = []
+                current_overlap_seed = ""
                 # splittable=False: memecah Markdown tabel memisahkan baris
                 # header dari baris data, dan relasi baris-kolom itu justru
                 # yang diukur RCAA di lapis 3.
@@ -530,11 +751,21 @@ def _chunk_elements(elements: list[dict], pdf_name: str) -> list[dict]:
                     page,
                     "Table",
                     splittable=False,
+                    extra={
+                        "raw_html": (el.get("metadata") or {}).get("raw_html"),
+                        "table_format": (el.get("metadata") or {}).get("table_format"),
+                        "bbox": el_bbox,
+                    },
                 )
             else:
-                # Tabel kecil → append ke buffer dengan separator
+                # Tabel kecil → append ke buffer dengan separator.
+                # raw_html tabel ini TIDAK terwakili di payload mana pun: chunk
+                # hasilnya bercampur prosa sehingga tidak ada hubungan 1:1.
+                # Aktifkan INDEX_TABLES_AS_OWN_CHUNKS untuk mengubahnya.
                 current_buffer.append(f"**Tabel:**\n{text}")
                 current_categories.add("Table")
+                if el_bbox:
+                    current_bboxes.append(el_bbox)
                 if not current_page:
                     current_page = page
 
@@ -543,6 +774,8 @@ def _chunk_elements(elements: list[dict], pdf_name: str) -> list[dict]:
             flush()
             current_buffer = []
             current_categories = set()
+            current_bboxes = []
+            current_overlap_seed = ""
             # splittable=False: satu deskripsi = satu gambar. Memecahnya merusak
             # relasi narrative_summary <-> image_id. Praktisnya tidak pernah
             # terpicu karena image_describer.py:150 membatasi max_tokens=300.
@@ -551,6 +784,7 @@ def _chunk_elements(elements: list[dict], pdf_name: str) -> list[dict]:
                 page,
                 "ImageDescription",
                 splittable=False,
+                extra={"bbox": el_bbox},
             )
 
         else:
@@ -563,13 +797,26 @@ def _chunk_elements(elements: list[dict], pdf_name: str) -> list[dict]:
                 overlap_text = tail[-CHUNK_OVERLAP:] if len(tail) > CHUNK_OVERLAP else tail
                 current_buffer = [overlap_text] if overlap_text else []
                 current_categories = set()
+                current_bboxes = []
+                current_overlap_seed = overlap_text
 
             current_buffer.append(text)
             current_categories.add(cat)
+            if el_bbox:
+                current_bboxes.append(el_bbox)
             if not current_page:
                 current_page = page
 
     flush()
+
+    if unknown_page_chunks:
+        logger.warning(
+            "chunk_id_page_unknown file=%s chunks=%d — memakai segmen 'pNA'. "
+            "Sumbernya page_number absen di metadata Unstructured "
+            "(preprocessing.py:254).",
+            pdf_name, unknown_page_chunks,
+        )
+
     return chunks
 
 
@@ -609,10 +856,17 @@ def extract_from_pdf(pdf_path: str | Path) -> dict:
     }
 
 
-def chunk_documents(elements: list[dict] | dict, file_name: str | None = None) -> list[dict]:
+def chunk_documents(
+    elements: list[dict] | dict,
+    file_name: str | None = None,
+    document_id: str | None = None,
+) -> list[dict]:
     """Chunk elements jadi documents siap di-embed.
 
     Backward compatible: terima output dari extract_from_pdf (dict) atau list elements.
+
+    `document_id` hanya dipakai saat INDEX_STRUCTURAL_METADATA aktif; pemanggil
+    (indexing.py) yang meresolusinya lewat backend.services.document_registry.
     """
     if isinstance(elements, dict):
         file_name = elements.get("file_name", file_name or "unknown.pdf")
@@ -623,6 +877,6 @@ def chunk_documents(elements: list[dict] | dict, file_name: str | None = None) -
     if not elements:
         return []
 
-    chunks = _chunk_elements(elements, file_name)
+    chunks = _chunk_elements(elements, file_name, document_id=document_id)
     logger.info(f"pdf_chunked file={file_name} chunks={len(chunks)}")
     return chunks

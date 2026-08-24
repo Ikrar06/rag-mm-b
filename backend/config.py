@@ -143,6 +143,14 @@ NON_SEMANTIC_METADATA_KEYS = (
     "element_type",
     "extraction_strategy",
     "source_type",
+    # Tahap 2 — identitas & metadata struktural. Semuanya provenance:
+    # id sintetis, hash, koordinat, dan representasi HTML mentah.
+    "document_id",
+    "chunk_id",
+    "text_sha",
+    "raw_html",
+    "table_format",
+    "bbox",
 )
 
 # Batas token untuk setiap chunk yang dikeluarkan _chunk_elements.
@@ -186,6 +194,63 @@ INDEX_MAX_CHUNK_TOKENS = int(os.getenv("INDEX_MAX_CHUNK_TOKENS", "0"))
 INDEX_DISABLE_NODE_PARSER = os.getenv(
     "INDEX_DISABLE_NODE_PARSER", "false"
 ).lower() == "true"
+
+# Ambang minimum token untuk sebuah chunk diemisikan. 0 = mati (perilaku lama).
+#
+# Mengaktifkan DUA penyaring sekaligus:
+#   1. Chunk dengan token < nilai ini tidak diemisikan.
+#   2. Chunk yang teks ternormalisasinya persis sama dengan baris judul section
+#      ("# {section}") tidak diemisikan, BERAPA PUN panjangnya.
+#
+# Penyaring kedua ada karena panjang saja tidak memisahkan judul dari konten:
+# terukur pada korpus contoh, judul panjang = 18 token sedangkan kalimat asli
+# terpendek = 8 token. Ambang yang cukup tinggi untuk menangkap semua judul akan
+# ikut membuang kalimat asli. Judul-saja terbukti tidak membawa konten unik
+# karena `section` sudah ada di metadata setiap chunk.
+#
+# Nilai riset yang dibekukan: 8 (tepat di batas kalimat asli terpendek terukur).
+INDEX_MIN_CHUNK_TOKENS = int(os.getenv("INDEX_MIN_CHUNK_TOKENS", "0"))
+
+# =============================================================================
+# Identitas & metadata struktural (Tahap 2) — semua opt-in, default mati
+# =============================================================================
+
+# Aktifkan field identitas dan metadata struktural di payload chunk:
+# document_id, chunk_id, text_sha, raw_html, table_format, bbox.
+#
+# MEMBUTUHKAN data/document_registry.json terisi. Berkas PDF yang tidak
+# terdaftar (atau terdaftar dengan document_id kosong) DILEWATI saat indexing
+# dengan error log — tidak diberi id provisional, karena anotasi gold yang
+# terlanjur menempel pada id sementara akan patah saat id sebenarnya menyusul.
+#
+# Semua field ini provenance, bukan konten semantik, jadi masuk
+# NON_SEMANTIC_METADATA_KEYS dan tidak ikut divektorkan.
+INDEX_STRUCTURAL_METADATA = os.getenv(
+    "INDEX_STRUCTURAL_METADATA", "false"
+).lower() == "true"
+
+# Jadikan tabel kecil (< PDF_TABLE_MAX_CHARS) chunk mandiri, bukan digabung ke
+# buffer teks sekitarnya. Default false (perilaku lama).
+#
+# Diperlukan agar setiap tabel punya hubungan 1:1 dengan satu chunk beserta
+# raw_html-nya — deck riset menuntut structured_summary tabel di images.jsonl
+# sama dengan text_as_html chunk terkait, dan itu mustahil bila tabel melebur
+# ke dalam prosa.
+#
+# PERHATIAN: ini MENGGESER BATAS CHUNK TEKS di sekitar tabel, bukan sekadar
+# menambah chunk tabel. Prosa yang tadinya satu chunk bersama tabel kini
+# terbelah menjadi chunk sebelum dan sesudah. Fork lain wajib memakai nilai
+# yang sama.
+INDEX_TABLES_AS_OWN_CHUNKS = os.getenv(
+    "INDEX_TABLES_AS_OWN_CHUNKS", "false"
+).lower() == "true"
+
+# Lokasi registry pemetaan nama berkas PDF -> document_id.
+# Buat kerangkanya dengan: python scripts/scaffold_document_registry.py
+DOCUMENT_REGISTRY_PATH = os.getenv(
+    "DOCUMENT_REGISTRY_PATH",
+    os.path.join(_PROJECT_ROOT, "data", "document_registry.json"),
+)
 
 # =============================================================================
 # RAG Pipeline
