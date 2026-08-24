@@ -24,6 +24,7 @@ from backend.config import (
     OCR_LANG, OCR_USE_GPU,
     CHUNK_SIZE, CHUNK_OVERLAP,
     IMAGES_DIR,
+    INDEX_MAX_CHUNK_TOKENS,
     PDF_EXTRACTION_STRATEGY,
     PDF_EXTRACT_IMAGES, PDF_DESCRIBE_IMAGES,
     PDF_EXTRACT_TABLES, PDF_TABLE_MAX_CHARS,
@@ -35,6 +36,7 @@ logger = logging.getLogger(__name__)
 # ─── Lazy initialized engines ─────────────────────────────────────────────────
 
 _ocr_engine = None
+_tokenizer = None
 
 
 def _get_ocr_engine():
@@ -303,6 +305,152 @@ def _describe_image_elements(elements: list[dict]) -> list[dict]:
     return output
 
 
+# ─── Pembatas ukuran chunk (opt-in via INDEX_MAX_CHUNK_TOKENS) ───────────────
+
+# Urutan pemisah dari yang paling menjaga struktur ke yang paling merusak.
+# Baris ("\n") didahulukan sebelum kalimat karena page.get_text() di jalur fast
+# memisahkan baris dengan newline tunggal, dan daftar bernomor SOP lebih baik
+# pecah per baris daripada di tengah kalimat.
+_SPLIT_SEPARATORS = ("\n\n", "\n", ". ", " ")
+
+
+def _get_tokenizer():
+    """Tokenizer yang SAMA dengan yang dipakai node parser LlamaIndex.
+
+    Diimpor lazy supaya modul ini tetap bisa dipakai untuk ekstraksi murni
+    tanpa llama-index terpasang.
+    """
+    global _tokenizer
+    if _tokenizer is None:
+        from llama_index.core.utils import get_tokenizer
+        _tokenizer = get_tokenizer()
+    return _tokenizer
+
+
+def _ntok(text: str) -> int:
+    return len(_get_tokenizer()(text))
+
+
+def _pack(units: list[str], sep: str, budget: int) -> list[str]:
+    """Gabungkan unit berurutan sampai mendekati budget token."""
+    out: list[str] = []
+    current = ""
+    for unit in units:
+        candidate = f"{current}{sep}{unit}" if current else unit
+        if current and _ntok(candidate) > budget:
+            out.append(current)
+            current = unit
+        else:
+            current = candidate
+    if current:
+        out.append(current)
+    return out
+
+
+def _hard_cut(text: str, budget: int) -> list[str]:
+    """Potong paksa blok yang tidak punya pemisah apa pun.
+
+    Memakai pencarian biner atas panjang karakter — tokenizer tidak menyediakan
+    pemetaan balik token->karakter yang stabil.
+    """
+    pieces: list[str] = []
+    sisa = text
+    while sisa and _ntok(sisa) > budget:
+        lo, hi, cut = 1, len(sisa), 1
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            if _ntok(sisa[:mid]) <= budget:
+                cut, lo = mid, mid + 1
+            else:
+                hi = mid - 1
+        pieces.append(sisa[:cut])
+        sisa = sisa[cut:]
+    if sisa:
+        pieces.append(sisa)
+    return pieces
+
+
+def _merge_fitting(pieces: list[str], budget: int) -> list[str]:
+    """Gabungkan kembali potongan bertetangga yang muat dalam satu budget.
+
+    Pemecahan berjenjang bisa meninggalkan serpihan kecil (mis. ekor paragraf
+    atau baris judul). Penggabungan ini tidak pernah melewati budget, jadi aman
+    dijalankan setelah pemecahan.
+    """
+    if len(pieces) < 2:
+        return pieces
+
+    out = [pieces[0]]
+    for piece in pieces[1:]:
+        candidate = f"{out[-1]}\n\n{piece}"
+        if _ntok(candidate) <= budget:
+            out[-1] = candidate
+        else:
+            out.append(piece)
+    return out
+
+
+def _apply_overlap(pieces: list[str], budget: int) -> list[str]:
+    """Awali tiap potongan (selain pertama) dengan ekor potongan sebelumnya.
+
+    Konsisten dengan overlap antar-chunk yang sudah ada di _chunk_elements.
+    Prefix dipangkas bila membuat potongan balik melewati budget.
+    """
+    if len(pieces) < 2 or CHUNK_OVERLAP <= 0:
+        return pieces
+
+    out = [pieces[0]]
+    for prev, piece in zip(pieces, pieces[1:]):
+        prefix = prev[-CHUNK_OVERLAP:]
+        while prefix and _ntok(f"{prefix}\n{piece}") > budget:
+            prefix = prefix[len(prefix) // 2:] if len(prefix) > 8 else ""
+        out.append(f"{prefix}\n{piece}" if prefix else piece)
+    return out
+
+
+def _split_for_budget(text: str, splittable: bool = True) -> list[str]:
+    """Pecah `text` agar tiap potongan muat dalam INDEX_MAX_CHUNK_TOKENS.
+
+    Mengembalikan [text] apa adanya bila fitur mati (budget <= 0), bila teks
+    sudah muat, atau bila `splittable` False (tabel & deskripsi gambar).
+    """
+    if INDEX_MAX_CHUNK_TOKENS <= 0 or not text:
+        return [text]
+
+    budget = INDEX_MAX_CHUNK_TOKENS
+    if _ntok(text) <= budget:
+        return [text]
+
+    if not splittable:
+        logger.warning(
+            "chunk_over_budget_kept_whole tokens=%d budget=%d chars=%d "
+            "— sengaja tidak dipecah (relasi struktural)",
+            _ntok(text), budget, len(text),
+        )
+        return [text]
+
+    pieces = [text]
+    for sep in _SPLIT_SEPARATORS:
+        if all(_ntok(p) <= budget for p in pieces):
+            break
+        expanded: list[str] = []
+        for p in pieces:
+            expanded.extend(_pack(p.split(sep), sep, budget) if _ntok(p) > budget else [p])
+        pieces = expanded
+
+    final: list[str] = []
+    for p in pieces:
+        final.extend(_hard_cut(p, budget) if _ntok(p) > budget else [p])
+
+    final = _merge_fitting([p for p in final if p.strip()], budget)
+    final = _apply_overlap(final, budget)
+    logger.info(
+        "chunk_split_oversized tokens=%d budget=%d pieces=%d",
+        _ntok(text), budget, len(final),
+    )
+    return final
+
+
 # ─── Chunking — preserve section context ──────────────────────────────────────
 
 def _chunk_elements(elements: list[dict], pdf_name: str) -> list[dict]:
@@ -320,20 +468,36 @@ def _chunk_elements(elements: list[dict], pdf_name: str) -> list[dict]:
     current_page: int = 1
     current_categories: set[str] = set()
 
+    def emit(text: str, page: int, element_type: str, splittable: bool = True):
+        """Tambahkan chunk, dipecah dulu bila melewati INDEX_MAX_CHUNK_TOKENS.
+
+        chunk_index diberikan berurutan per potongan — satu nomor per chunk
+        keluaran, supaya tidak ada dua chunk yang berbagi nomor.
+        """
+        for piece in _split_for_budget(text, splittable=splittable):
+            if not piece.strip():
+                continue
+            chunks.append({
+                "text": piece,
+                "page": page,
+                "file_name": pdf_name,
+                "chunk_index": len(chunks),
+                "element_type": element_type,
+                "section": current_section,
+            })
+
     def flush():
         if not current_buffer:
             return
         text = "\n\n".join(current_buffer).strip()
         if not text:
             return
-        chunks.append({
-            "text": text,
-            "page": current_page,
-            "file_name": pdf_name,
-            "chunk_index": len(chunks),
-            "element_type": "+".join(sorted(current_categories)) or "text",
-            "section": current_section,
-        })
+        emit(
+            text,
+            current_page,
+            "+".join(sorted(current_categories)) or "text",
+            splittable=True,
+        )
 
     for el in elements:
         cat = el["category"]
@@ -358,14 +522,15 @@ def _chunk_elements(elements: list[dict], pdf_name: str) -> list[dict]:
                 flush()
                 current_buffer = []
                 current_categories = set()
-                chunks.append({
-                    "text": (f"## {current_section}\n\n" if current_section else "") + text,
-                    "page": page,
-                    "file_name": pdf_name,
-                    "chunk_index": len(chunks),
-                    "element_type": "Table",
-                    "section": current_section,
-                })
+                # splittable=False: memecah Markdown tabel memisahkan baris
+                # header dari baris data, dan relasi baris-kolom itu justru
+                # yang diukur RCAA di lapis 3.
+                emit(
+                    (f"## {current_section}\n\n" if current_section else "") + text,
+                    page,
+                    "Table",
+                    splittable=False,
+                )
             else:
                 # Tabel kecil → append ke buffer dengan separator
                 current_buffer.append(f"**Tabel:**\n{text}")
@@ -378,14 +543,15 @@ def _chunk_elements(elements: list[dict], pdf_name: str) -> list[dict]:
             flush()
             current_buffer = []
             current_categories = set()
-            chunks.append({
-                "text": (f"## {current_section}\n\n" if current_section else "") + f"[Deskripsi Gambar] {text}",
-                "page": page,
-                "file_name": pdf_name,
-                "chunk_index": len(chunks),
-                "element_type": "ImageDescription",
-                "section": current_section,
-            })
+            # splittable=False: satu deskripsi = satu gambar. Memecahnya merusak
+            # relasi narrative_summary <-> image_id. Praktisnya tidak pernah
+            # terpicu karena image_describer.py:150 membatasi max_tokens=300.
+            emit(
+                (f"## {current_section}\n\n" if current_section else "") + f"[Deskripsi Gambar] {text}",
+                page,
+                "ImageDescription",
+                splittable=False,
+            )
 
         else:
             # Text biasa → tambah ke buffer

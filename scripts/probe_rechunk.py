@@ -50,9 +50,10 @@ from backend.config import (
     CHUNK_OVERLAP,
     PDF_TABLE_MAX_CHARS,
     INDEX_EXCLUDE_METADATA_FROM_EMBED,
+    INDEX_MAX_CHUNK_TOKENS,
     NON_SEMANTIC_METADATA_KEYS,
 )
-from backend.services.preprocessing import _html_table_to_markdown
+from backend.services.preprocessing import _html_table_to_markdown, _split_for_budget
 
 TOKENIZER = get_tokenizer()
 
@@ -240,20 +241,33 @@ def bagian_b(splitter: SentenceSplitter) -> list[tuple]:
         ("fast path: 1 halaman padat (:161-170)", teks_naratif(3500)),
     ]
 
-    print(f"{'kasus':<44}{'chars':>7}{'token':>7}{'node':>6}  {'chunk_index node':<22}")
+    print("Tiap kasus dilewatkan _split_for_budget (seperti _chunk_elements),")
+    print("lalu SETIAP potongan dijalankan melalui SentenceSplitter.")
+    print("Kolom 'chunk' = potongan hasil 1B; 'node' = total node setelah splitter.")
+    print()
+    print(f"{'kasus':<44}{'chars':>7}{'token':>7}{'chunk':>6}{'node':>6}  {'chunk_index':<14}")
     print("-" * 78)
 
     hasil = []
     for nama, teks in kasus:
         et = "Table" if "tabel" in nama else (
             "ImageDescription" if "gambar" in nama else "NarrativeText")
-        d = doc(teks, element_type=et)
-        nodes = splitter.get_nodes_from_documents([d])
-        idxs = [n.metadata.get("chunk_index") for n in nodes]
-        tanda = "  <-- DIPECAH" if len(nodes) > 1 else ""
-        seragam = "semua = %s" % idxs[0] if len(set(idxs)) == 1 else "BERBEDA: %s" % idxs
-        print(f"{nama:<44}{len(teks):>7}{ntok(teks):>7}{len(nodes):>6}  {seragam:<22}{tanda}")
-        hasil.append((nama, teks, len(nodes), idxs))
+        splittable = et not in ("Table", "ImageDescription")
+
+        potongan = _split_for_budget(teks, splittable=splittable)
+        total_nodes, idxs = 0, []
+        for i, p in enumerate(potongan):
+            # chunk_index berurutan per potongan, seperti emit() di _chunk_elements.
+            nodes = splitter.get_nodes_from_documents([doc(p, element_type=et, chunk_index=i)])
+            total_nodes += len(nodes)
+            idxs.extend(n.metadata.get("chunk_index") for n in nodes)
+
+        pecah_lagi = total_nodes > len(potongan)
+        tanda = "  <-- MASIH DIPECAH" if pecah_lagi else ""
+        unik = "unik" if len(set(idxs)) == len(idxs) else f"TABRAKAN {idxs}"
+        print(f"{nama:<44}{len(teks):>7}{ntok(teks):>7}{len(potongan):>6}{total_nodes:>6}"
+              f"  {unik:<14}{tanda}")
+        hasil.append((nama, teks, total_nodes, idxs, len(potongan)))
     return hasil
 
 
@@ -425,6 +439,8 @@ def main() -> None:
     print()
     print("KONFIGURASI AKTIF (jalankan ulang dengan env berbeda untuk membandingkan)")
     print(f"  INDEX_EXCLUDE_METADATA_FROM_EMBED = {INDEX_EXCLUDE_METADATA_FROM_EMBED}")
+    print(f"  INDEX_MAX_CHUNK_TOKENS            = {INDEX_MAX_CHUNK_TOKENS}"
+          f"{'  (0 = pemecahan 1B mati)' if INDEX_MAX_CHUNK_TOKENS <= 0 else ''}")
     if EXCLUDED_KEYS:
         print(f"    dikecualikan: {', '.join(EXCLUDED_KEYS)}")
         tersisa = [k for k in META_SEKARANG if k not in EXCLUDED_KEYS]
@@ -441,27 +457,25 @@ def main() -> None:
     bagian_e(r_naratif)
 
     rule("RINGKASAN")
-    dipecah = [(n, t, k) for n, t, k, _ in hasil if k > 1]
-    utuh = [(n, t, k) for n, t, k, _ in hasil if k == 1]
-    print(f"Kasus diuji     : {len(hasil)}")
-    print(f"Dipecah ulang   : {len(dipecah)}")
-    for n, t, k in dipecah:
-        print(f"    {n}  ({len(t)} char / {ntok(t)} tok) -> {k} node")
-    print(f"Tetap utuh      : {len(utuh)}")
+    # Gagal = splitter kedua masih memecah, yaitu node > potongan hasil 1B.
+    gagal = [(n, t, k, c) for n, t, k, _, c in hasil if k > c]
+    print(f"Kasus diuji                     : {len(hasil)}")
+    print(f"Masih dipecah splitter kedua    : {len(gagal)}")
+    for n, t, k, c in gagal:
+        print(f"    {n}  ({len(t)} char / {ntok(t)} tok) -> {c} chunk -> {k} node")
 
-    semua_seragam = all(len(set(i)) == 1 for _, _, k, i in hasil if k > 1)
-    if dipecah:
-        print()
-        print(f"chunk_index pada node hasil pecahan seragam? "
-              f"{'YA — beberapa titik Qdrant berbagi satu chunk_index' if semua_seragam else 'tidak'}")
+    tabrakan = [n for n, _, _, i, _ in hasil if len(set(i)) != len(i)]
+    print(f"chunk_index bertabrakan         : {len(tabrakan)}")
+    for n in tabrakan:
+        print(f"    {n}")
 
     print()
     print("-" * 78)
-    if dipecah:
-        print(f"VERDICT: GAGAL — {len(dipecah)} dari {len(hasil)} kasus menghasilkan >1 node.")
+    if gagal:
+        print(f"VERDICT: GAGAL — {len(gagal)} dari {len(hasil)} kasus masih dipecah splitter kedua.")
         print("Kriteria lulus: tidak ada satu pun kasus uji yang menghasilkan lebih dari satu node.")
     else:
-        print(f"VERDICT: LULUS — seluruh {len(hasil)} kasus menghasilkan tepat 1 node.")
+        print(f"VERDICT: LULUS — seluruh {len(hasil)} kasus 1 chunk = 1 node, chunk_index unik.")
     print("-" * 78)
 
     print()

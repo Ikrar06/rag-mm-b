@@ -135,6 +135,28 @@ INDEX_EXCLUDE_METADATA_FROM_EMBED = os.getenv(
 # sisanya provenance, ordinal, atau konstanta.
 # Ditaruh di config (bukan indexing.py) agar dapat diimpor tanpa menyeret
 # qdrant_client — scripts/probe_rechunk.py mengandalkan itu.
+# Batas token untuk setiap chunk yang dikeluarkan _chunk_elements.
+# 0 = mati (perilaku lama dipertahankan persis).
+#
+# Akar masalah yang ditangani: pemeriksaan flush di preprocessing.py terjadi
+# SEBELUM append, sehingga satu element yang lebih besar dari CHUNK_SIZE masuk
+# utuh tanpa pernah diperiksa. Di jalur fast, _extract_fast membuat satu element
+# per HALAMAN (570-1030 token), yang lalu dipecah ulang oleh node parser
+# LlamaIndex menjadi beberapa titik Qdrant dengan chunk_index yang sama.
+#
+# Satuannya TOKEN, memakai tokenizer yang sama dengan splitter LlamaIndex,
+# supaya batas di sini dan effective_chunk_size di sana tidak bisa berselisih.
+#
+# Nilai yang disarankan: <= effective_chunk_size terkecil yang direncanakan.
+# Dengan INDEX_EXCLUDE_METADATA_FROM_EMBED aktif dan seluruh field masa depan
+# terpasang, effective_chunk_size = 380. Nilai 350 memberi sisa aman.
+#
+# Tabel dan deskripsi gambar TIDAK PERNAH dipecah walau melewati batas ini:
+# memecah tabel merusak relasi baris-kolom yang diukur RCAA, dan memecah
+# deskripsi gambar merusak relasi satu-deskripsi-satu-gambar. Keduanya hanya
+# dicatat sebagai warning.
+INDEX_MAX_CHUNK_TOKENS = int(os.getenv("INDEX_MAX_CHUNK_TOKENS", "0"))
+
 NON_SEMANTIC_METADATA_KEYS = (
     "file_name",
     "file_hash",
