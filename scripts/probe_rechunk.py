@@ -52,9 +52,15 @@ from backend.config import (
     INDEX_DISABLE_NODE_PARSER,
     INDEX_EXCLUDE_METADATA_FROM_EMBED,
     INDEX_MAX_CHUNK_TOKENS,
+    INDEX_MIN_CHUNK_TOKENS,
+    INDEX_STRUCTURAL_METADATA,
+    INDEX_TABLES_AS_OWN_CHUNKS,
     NON_SEMANTIC_METADATA_KEYS,
 )
-from backend.services.preprocessing import _html_table_to_markdown, _split_for_budget
+from backend.services.preprocessing import (
+    _chunk_elements,
+    _html_table_to_markdown,
+)
 
 TOKENIZER = get_tokenizer()
 
@@ -123,7 +129,7 @@ def tabel_markdown_mendekati(target_chars: int) -> str:
     Konversi memakai _html_table_to_markdown yang ASLI dari repo."""
     n, terakhir = 1, ""
     while n < 200:
-        md = _html_table_to_markdown(tabel_persyaratan_html(n))
+        md, _ = _html_table_to_markdown(tabel_persyaratan_html(n))
         if len(md) > target_chars:
             return terakhir or md
         terakhir, n = md, n + 1
@@ -242,39 +248,56 @@ def bagian_b(splitter: SentenceSplitter) -> list[tuple]:
         ("fast path: 1 halaman padat (:161-170)", teks_naratif(3500)),
     ]
 
-    print("Tiap kasus dilewatkan _split_for_budget (seperti _chunk_elements),")
-    print("lalu SETIAP potongan dijalankan melalui SentenceSplitter.")
-    print("Kolom 'chunk' = potongan hasil 1B; 'node' = total node setelah splitter.")
+    print("Tiap kasus dilewatkan _chunk_elements (jalur nyata indexing),")
+    print("lalu SETIAP chunk dijalankan melalui SentenceSplitter.")
+    print("Kolom 'chunk' = keluaran _chunk_elements; 'node' = total setelah splitter.")
     print()
-    print(f"{'kasus':<44}{'chars':>7}{'token':>7}{'chunk':>6}{'node':>6}  {'chunk_index':<14}")
+    print(f"{'kasus':<42}{'token':>7}{'chunk':>6}{'node':>6}  {'chunk_index':<12}{'chunk_id':<10}")
     print("-" * 78)
 
     hasil = []
     for nama, teks in kasus:
         et = "Table" if "tabel" in nama else (
             "ImageDescription" if "gambar" in nama else "NarrativeText")
-        splittable = et not in ("Table", "ImageDescription")
 
-        potongan = _split_for_budget(teks, splittable=splittable)
+        element = {
+            "category": et,
+            "text": teks,
+            "page": 3,
+            "metadata": {
+                "raw_html": "<table><tr><td>x</td></tr></table>" if et == "Table" else None,
+                "table_format": "markdown" if et == "Table" else None,
+                "bbox": [0.1, 0.2, 0.9, 0.8],
+            },
+        }
+        chunks = _chunk_elements([element], "probe.pdf", document_id="probe-doc")
+
         total_nodes, idxs = 0, []
-        for i, p in enumerate(potongan):
-            # chunk_index berurutan per potongan, seperti emit() di _chunk_elements.
-            d = doc(p, element_type=et, chunk_index=i)
+        for c in chunks:
             if INDEX_DISABLE_NODE_PARSER:
                 # transformations=[] di indexing.py: 1 Document -> 1 node.
                 total_nodes += 1
-                idxs.append(i)
+                idxs.append(c["chunk_index"])
             else:
+                d = doc(c["text"], element_type=c["element_type"],
+                        chunk_index=c["chunk_index"])
                 nodes = splitter.get_nodes_from_documents([d])
                 total_nodes += len(nodes)
                 idxs.extend(n.metadata.get("chunk_index") for n in nodes)
 
-        pecah_lagi = total_nodes > len(potongan)
-        tanda = "  <-- MASIH DIPECAH" if pecah_lagi else ""
-        unik = "unik" if len(set(idxs)) == len(idxs) else f"TABRAKAN {idxs}"
-        print(f"{nama:<44}{len(teks):>7}{ntok(teks):>7}{len(potongan):>6}{total_nodes:>6}"
-              f"  {unik:<14}{tanda}")
-        hasil.append((nama, teks, total_nodes, idxs, len(potongan)))
+        ids = [c.get("chunk_id") for c in chunks if c.get("chunk_id")]
+        if not ids:
+            status_id = "-"
+        elif len(set(ids)) == len(ids):
+            status_id = "unik"
+        else:
+            status_id = "TABRAKAN"
+
+        tanda = "  <-- MASIH DIPECAH" if total_nodes > len(chunks) else ""
+        unik = "unik" if len(set(idxs)) == len(idxs) else "TABRAKAN"
+        print(f"{nama:<42}{ntok(teks):>7}{len(chunks):>6}{total_nodes:>6}"
+              f"  {unik:<12}{status_id:<10}{tanda}")
+        hasil.append((nama, teks, total_nodes, idxs, len(chunks), ids))
     return hasil
 
 
@@ -448,6 +471,10 @@ def main() -> None:
     print(f"  INDEX_EXCLUDE_METADATA_FROM_EMBED = {INDEX_EXCLUDE_METADATA_FROM_EMBED}")
     print(f"  INDEX_MAX_CHUNK_TOKENS            = {INDEX_MAX_CHUNK_TOKENS}"
           f"{'  (0 = pemecahan 1B mati)' if INDEX_MAX_CHUNK_TOKENS <= 0 else ''}")
+    print(f"  INDEX_MIN_CHUNK_TOKENS            = {INDEX_MIN_CHUNK_TOKENS}"
+          f"{'  (0 = penyaring chunk pendek mati)' if INDEX_MIN_CHUNK_TOKENS <= 0 else ''}")
+    print(f"  INDEX_STRUCTURAL_METADATA         = {INDEX_STRUCTURAL_METADATA}")
+    print(f"  INDEX_TABLES_AS_OWN_CHUNKS        = {INDEX_TABLES_AS_OWN_CHUNKS}")
     print(f"  INDEX_DISABLE_NODE_PARSER         = {INDEX_DISABLE_NODE_PARSER}"
           f"{'  (transformations=[], 1 Document = 1 node)' if INDEX_DISABLE_NODE_PARSER else ''}")
     if EXCLUDED_KEYS:
@@ -466,25 +493,39 @@ def main() -> None:
     bagian_e(r_naratif)
 
     rule("RINGKASAN")
-    # Gagal = splitter kedua masih memecah, yaitu node > potongan hasil 1B.
-    gagal = [(n, t, k, c) for n, t, k, _, c in hasil if k > c]
+    gagal = [(n, t, k, c) for n, t, k, _, c, _ in hasil if k > c]
     print(f"Kasus diuji                     : {len(hasil)}")
     print(f"Masih dipecah splitter kedua    : {len(gagal)}")
     for n, t, k, c in gagal:
         print(f"    {n}  ({len(t)} char / {ntok(t)} tok) -> {c} chunk -> {k} node")
 
-    tabrakan = [n for n, _, _, i, _ in hasil if len(set(i)) != len(i)]
+    tabrakan = [n for n, _, _, i, _, _ in hasil if len(set(i)) != len(i)]
     print(f"chunk_index bertabrakan         : {len(tabrakan)}")
     for n in tabrakan:
         print(f"    {n}")
 
+    id_tabrakan = [n for n, _, _, _, _, ids in hasil if ids and len(set(ids)) != len(ids)]
+    total_ids = sum(len(ids) for *_, ids in hasil)
+    if INDEX_STRUCTURAL_METADATA:
+        print(f"chunk_id bertabrakan            : {len(id_tabrakan)}  ({total_ids} id diperiksa)")
+        for n in id_tabrakan:
+            print(f"    {n}")
+    else:
+        print("chunk_id                        : tidak dihasilkan "
+              "(INDEX_STRUCTURAL_METADATA mati)")
+
     print()
     print("-" * 78)
-    print("Kriteria lulus: nol tabrakan chunk_index.")
-    if tabrakan:
-        print(f"VERDICT: GAGAL — {len(tabrakan)} dari {len(hasil)} kasus punya chunk_index bertabrakan.")
+    print("Kriteria lulus: nol tabrakan chunk_index, dan chunk_id unik.")
+    if tabrakan or id_tabrakan:
+        print(f"VERDICT: GAGAL — chunk_index bertabrakan di {len(tabrakan)} kasus, "
+              f"chunk_id di {len(id_tabrakan)} kasus.")
+    elif INDEX_STRUCTURAL_METADATA and total_ids == 0:
+        print("VERDICT: GAGAL — INDEX_STRUCTURAL_METADATA aktif tapi tidak ada chunk_id "
+              "yang dihasilkan.")
     else:
-        print(f"VERDICT: LULUS — {len(hasil)}/{len(hasil)} kasus, nol tabrakan chunk_index.")
+        print(f"VERDICT: LULUS — {len(hasil)}/{len(hasil)} kasus, nol tabrakan chunk_index"
+              + (f", {total_ids} chunk_id unik." if total_ids else "."))
         if gagal:
             print(f"         ({len(gagal)} kasus masih dipecah splitter kedua tapi tidak "
                   f"bertabrakan — periksa apakah itu disengaja.)")
