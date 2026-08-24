@@ -22,15 +22,68 @@ from backend.config import (
     QDRANT_COLLECTION_NAME,
     EMBED_DIMENSION,
     DATA_DIR,
+    DOCUMENT_REGISTRY_PATH,
     INDEX_DISABLE_NODE_PARSER,
     INDEX_EXCLUDE_METADATA_FROM_EMBED,
+    INDEX_STRUCTURAL_METADATA,
     NON_SEMANTIC_METADATA_KEYS,
 )
+from backend.services import document_registry
 from backend.services.preprocessing import (
     extract_from_pdf, chunk_documents, file_sha256,
 )
 
 logger = logging.getLogger(__name__)
+
+# Field yang diproduksi _chunk_elements saat INDEX_STRUCTURAL_METADATA aktif.
+# Diteruskan ke payload apa adanya bila ada; tidak semua chunk punya semuanya
+# (mis. raw_html hanya pada chunk Table, bbox hanya bila koordinat tersedia).
+_STRUCTURAL_METADATA_KEYS = (
+    "document_id",
+    "chunk_id",
+    "text_sha",
+    "raw_html",
+    "table_format",
+    "bbox",
+)
+
+
+def _check_flag_consistency() -> None:
+    """Tolak kombinasi flag yang pasti menjatuhkan indexing di tengah jalan.
+
+    `raw_html` sebuah tabel bisa mencapai ratusan token. Bila ia ikut masuk
+    metadata_str DAN node parser masih berjalan, SentenceSplitter melempar
+    ValueError("Metadata length (N) is longer than chunk size") — terukur 987
+    token pada tabel 30 baris, jauh di atas CHUNK_SIZE 512.
+
+    Aman bila salah satu terpenuhi: raw_html dikecualikan dari metadata_str,
+    atau node parser dimatikan sehingga tidak ada yang menghitung metadata_len.
+    """
+    if not INDEX_STRUCTURAL_METADATA:
+        return
+    if INDEX_EXCLUDE_METADATA_FROM_EMBED or INDEX_DISABLE_NODE_PARSER:
+        return
+    raise ValueError(
+        "Kombinasi flag tidak aman: INDEX_STRUCTURAL_METADATA=true menambahkan "
+        "raw_html ke metadata chunk, tapi INDEX_EXCLUDE_METADATA_FROM_EMBED dan "
+        "INDEX_DISABLE_NODE_PARSER dua-duanya mati. SentenceSplitter akan "
+        "melempar ValueError saat metadata_len melewati CHUNK_SIZE. "
+        "Nyalakan salah satu (untuk riset: keduanya)."
+    )
+
+
+def _resolve_document_id(pdf_path) -> str | None:
+    """document_id dari registry, atau None bila berkas tidak layak di-index.
+
+    Kegagalan memuat registry diperlakukan sebagai "tidak terdaftar" untuk
+    SELURUH berkas — bukan crash — supaya pesannya muncul sekali per berkas
+    lewat ringkasan skipped_unregistered, bukan sebagai traceback.
+    """
+    try:
+        return document_registry.get_document_id(pdf_path.name)
+    except document_registry.RegistryError as e:
+        logger.error("document_registry_error error=%s", e)
+        return None
 
 
 def get_qdrant_client() -> QdrantClient:
@@ -204,6 +257,8 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
     Returns:
         Jumlah chunks yang berhasil di-index
     """
+    _check_flag_consistency()
+
     target_dir = Path(data_dir or DATA_DIR)
 
     if force:
@@ -253,14 +308,31 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
     # Step 1: Extract + chunk semua file
     all_documents: list[Document] = []
 
+    excluded_keys = (
+        list(NON_SEMANTIC_METADATA_KEYS)
+        if INDEX_EXCLUDE_METADATA_FROM_EMBED
+        else []
+    )
+    skipped_unregistered: list[str] = []
+    sha_mismatch: list[str] = []
+
     for pdf_path in files_to_process:
+        document_id = None
+        if INDEX_STRUCTURAL_METADATA:
+            document_id = _resolve_document_id(pdf_path)
+            if document_id is None:
+                skipped_unregistered.append(pdf_path.name)
+                continue
+            if not document_registry.check_sha256(pdf_path.name, file_sha256(pdf_path)):
+                sha_mismatch.append(pdf_path.name)
+
         try:
             result = extract_from_pdf(pdf_path)
         except Exception as e:
             logger.error(f"pdf_extract_failed file={pdf_path.name} error={e}", exc_info=True)
             continue
 
-        chunks = chunk_documents(result)
+        chunks = chunk_documents(result, document_id=document_id)
         if not chunks:
             logger.warning(f"pdf_no_chunks file={pdf_path.name}")
             continue
@@ -268,32 +340,45 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
         file_hash = result["file_hash"]
         strategy_used = result["strategy"]
 
-        excluded_keys = (
-            list(NON_SEMANTIC_METADATA_KEYS)
-            if INDEX_EXCLUDE_METADATA_FROM_EMBED
-            else []
-        )
-
         for chunk in chunks:
-            doc = Document(
+            metadata = {
+                "file_name": chunk["file_name"],
+                "file_hash": file_hash,
+                "page": chunk["page"],
+                "chunk_index": chunk["chunk_index"],
+                "element_type": chunk.get("element_type", "text"),
+                "section": chunk.get("section", ""),
+                "extraction_strategy": strategy_used,
+                "source_type": "pdf",
+            }
+            # Field struktural Tahap 2 hanya ada bila _chunk_elements
+            # menghasilkannya (INDEX_STRUCTURAL_METADATA aktif).
+            for key in _STRUCTURAL_METADATA_KEYS:
+                if key in chunk:
+                    metadata[key] = chunk[key]
+
+            all_documents.append(Document(
                 text=chunk["text"],
-                metadata={
-                    "file_name": chunk["file_name"],
-                    "file_hash": file_hash,
-                    "page": chunk["page"],
-                    "chunk_index": chunk["chunk_index"],
-                    "element_type": chunk.get("element_type", "text"),
-                    "section": chunk.get("section", ""),
-                    "extraction_strategy": strategy_used,
-                    "source_type": "pdf",
-                },
+                metadata=metadata,
                 excluded_embed_metadata_keys=list(excluded_keys),
                 excluded_llm_metadata_keys=list(excluded_keys),
-            )
-            all_documents.append(doc)
+            ))
 
         logger.info(
             f"pdf_chunked file={pdf_path.name} chunks={len(chunks)} strategy={strategy_used}"
+        )
+
+    if skipped_unregistered:
+        logger.error(
+            "pdf_skipped_unregistered count=%d files=%s — tambahkan document_id di %s "
+            "(buat kerangkanya: python scripts/scaffold_document_registry.py)",
+            len(skipped_unregistered), skipped_unregistered, DOCUMENT_REGISTRY_PATH,
+        )
+    if sha_mismatch:
+        logger.error(
+            "pdf_sha256_mismatch count=%d files=%s — nama berkas dipakai ulang untuk "
+            "isi berbeda; anotasi gold bisa menunjuk dokumen yang salah",
+            len(sha_mismatch), sha_mismatch,
         )
 
     if not all_documents:
