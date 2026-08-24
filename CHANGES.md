@@ -1,4 +1,4 @@
-# CHANGES — Tahap 1: identitas chunk & pemecahan ganda
+# CHANGES — Tahap 1 & 2: identitas chunk, pemecahan ganda, metadata struktural
 
 Branch `chunk-identity-and-dump`, bercabang dari tag `baseline-riset`.
 Salinan riset di `github.com/Ikrar06/rag-mm-b`. Push hanya ke `origin`.
@@ -238,17 +238,195 @@ level modul). Tidak butuh Qdrant, tidak memuat model embedding.
 
 ## Residu yang diketahui
 
-**Chunk judul yatim.** Saat sebuah element teks panjang dipecah, baris judul
-`# {section}` yang ditambahkan `_chunk_elements` bisa terpisah menjadi chunk sendiri
-berukuran ~6 token bila potongan pertama sesudahnya sudah memenuhi anggaran.
-`_merge_fitting` menggabungkan serpihan bertetangga yang muat, tetapi judul + potongan
-350-token tidak muat sehingga tetap terpisah. Dampaknya kecil (`section` tetap ada di
-metadata setiap chunk), tetapi chunk pendek itu ikut divektorkan.
-
 **Belum terjawab tanpa korpus.** Probe memakai teks susunan tangan yang meniru bentuk
 dokumen di deck. Yang belum diketahui: berapa **proporsi** chunk nyata yang melewati
-ambang, dan berapa banyak tabel yang melewati `PDF_TABLE_MAX_CHARS`. Setelah
-`data/pdfs` terisi, jalankan V9 di `INSPECTION_REPORT_2.md`.
+ambang, berapa banyak tabel yang melewati `PDF_TABLE_MAX_CHARS`, dan apakah
+`el.metadata.coordinates` benar-benar terisi pada `strategy="hi_res"` untuk korpus ini.
+Setelah `data/pdfs` terisi, jalankan V9 dan V13 di `INSPECTION_REPORT_2.md`.
+
+**Chunk judul yatim — SELESAI di Tahap 2.** Lihat bagian Tahap 2 di bawah.
+
+---
+---
+
+# TAHAP 2 — identitas berlapis tiga & metadata struktural
+
+## Residu Tahap 1 yang ditutup
+
+**Chunk judul yatim.** Diselesaikan dengan `INDEX_MIN_CHUNK_TOKENS`, yang
+mengaktifkan **dua** penyaring sekaligus. Pengukuran menunjukkan ambang panjang saja
+tidak cukup:
+
+| Token | Isi |
+|---:|---|
+| 6 | `# Persyaratan Sidang` — judul |
+| 8 | `Pengajuan ditolak.` — kalimat asli |
+| 10 | `Berkas diverifikasi oleh admin prodi.` — kalimat asli |
+| 18 | `# Persyaratan Pengajuan Izin Ujian Akhir Online Bagi Mahasiswa` — judul |
+
+Ambang 18+ untuk menangkap semua judul akan ikut membuang kalimat asli 8–10 token.
+Karena itu penyaring kedua bersifat struktural: chunk yang teks ternormalisasinya
+persis sama dengan `# {section}` dibuang berapa pun panjangnya. Nol false positive —
+`section` sudah ada di metadata setiap chunk, jadi chunk itu terbukti tidak membawa
+konten unik. Nilai riset: **8**.
+
+**`INDEX_MAX_CHUNK_TOKENS=350` dibekukan** dan didokumentasikan di `.env.example`
+beserta turunan angkanya.
+
+## Perubahan per berkas (Tahap 2)
+
+### Berkas baru
+
+| Path | Isi |
+|---|---|
+| `backend/services/document_registry.py` | Pemetaan nama berkas → `document_id`, dengan validasi slug dan deteksi id ganda |
+| `scripts/scaffold_document_registry.py` | Membuat/memperbarui kerangka registry; aman dijalankan berulang |
+| `.env.example` | Flag riset Tahap 1 & 2 beserta alasan tiap angka |
+
+### `backend/config.py`
+
+| Baris | Tambahan |
+|---|---|
+| `190-212` | `INDEX_MIN_CHUNK_TOKENS` (int, default `0`) |
+| `214-241` | `INDEX_STRUCTURAL_METADATA` (bool, default `false`) |
+| `243-248` | `INDEX_TABLES_AS_OWN_CHUNKS` (bool, default `false`) |
+| `250-253` | `DOCUMENT_REGISTRY_PATH` |
+| `146-153` | 6 field Tahap 2 ditambahkan ke `NON_SEMANTIC_METADATA_KEYS` |
+
+### `backend/services/preprocessing.py`
+
+| Baris | Perubahan |
+|---|---|
+| `107-130` | `normalize_for_hash`, `text_sha` |
+| `211-224` | `_html_table_to_markdown` kini mengembalikan `(text, format)` |
+| `227-267` | `_element_bbox` — normalisasi koordinat ke [0,1] |
+| `548-559` | `_page_segment` — penanganan `page=0` sebagai `pNA` |
+| `601-676` | `emit()` dengan `chunk_id`, `text_sha`, `extra`, `inherited_prefix`, dua penyaring |
+| `680-695` | `_union_bbox` |
+| `538-543` | `_split_for_budget` tidak lagi menempel overlap |
+
+### `backend/services/indexing.py`
+
+| Baris | Perubahan |
+|---|---|
+| `41-49` | `_STRUCTURAL_METADATA_KEYS` |
+| `51-73` | `_check_flag_consistency` |
+| `75-86` | `_resolve_document_id` |
+| `316-380` | Resolusi registry, cek sha256, passthrough field struktural, ringkasan error |
+
+## Hasil terukur (Tahap 2)
+
+Probe 9 kasus, seluruh flag aktif:
+
+| Kasus | Token | Baseline | Final |
+|---|---:|---|---|
+| teks pendek | 81 | 1 chunk → 1 node | 1 → 1, id unik |
+| teks ~CHUNK_SIZE char | 160 | 1 → 1 | 1 → 1, id unik |
+| teks 1 element panjang | 476 | 1 → **2 tabrakan** | 2 → 2, id unik |
+| teks 1 element sangat panjang | 1.187 | 1 → **5 tabrakan** | 4 → 4, id unik |
+| tabel kecil | 224 | 1 → 1 | 1 → 1, id unik |
+| tabel besar | 811 | 1 → **3 tabrakan** | 1 → 1, id unik |
+| deskripsi gambar | 196 | 1 → 1 | 1 → 1, id unik |
+| fast path 1 halaman A4 | 713 | 1 → **3 tabrakan** | 3 → 3, id unik |
+| fast path 1 halaman padat | 1.029 | 1 → **4 tabrakan** | 4 → 4, id unik |
+
+**Baseline 5/9 bertabrakan → final 0/9, dengan 18 `chunk_id` unik.**
+
+### Anggaran metadata final
+
+| | field | metadata_len | effective_chunk_size |
+|---|---:|---:|---:|
+| Tanpa exclusion | 14 | **987 tok** | **−475 → ValueError** |
+| Dengan exclusion | 14 | **14 tok** | **498** |
+
+`raw_html` sebuah tabel 30 baris sendirian mencapai ~772–987 token. Anggaran
+`INDEX_MAX_CHUNK_TOKENS=350` menyisakan **148 token headroom** terhadap 498.
+
+### Independensi `text_sha`
+
+Uji: satu paragraf diubah, dua paragraf lain identik.
+
+| | sha bertahan |
+|---|---|
+| Sebelum perbaikan `inherited_prefix` | 1 dari 3 |
+| Sesudah | **2 dari 3** |
+
+Yang tersisa berbeda adalah chunk yang isinya memang ikut berubah. Ada **dua**
+mekanisme overlap di `_chunk_elements` dan keduanya harus dikeluarkan dari dasar
+hash: overlap antar-potongan hasil pemecahan, dan overlap antar-chunk dari buffer.
+Memindahkan `_apply_overlap` saja hanya menutup yang pertama.
+
+## Kombinasi flag yang ditolak
+
+`INDEX_STRUCTURAL_METADATA=true` **tanpa** `INDEX_EXCLUDE_METADATA_FROM_EMBED`
+maupun `INDEX_DISABLE_NODE_PARSER` akan membuat `SentenceSplitter` melempar
+`ValueError("Metadata length (772) is longer than chunk size (512)")` di tengah
+indexing. `_check_flag_consistency` menolaknya di awal dengan penjelasan.
+
+| Kombinasi | Hasil |
+|---|---|
+| semua mati | lolos |
+| `STRUCTURAL` saja | **ditolak** |
+| `STRUCTURAL` + `EXCLUDE` | lolos |
+| `STRUCTURAL` + `DISABLE_NODE_PARSER` | lolos |
+
+## Tambahan untuk peneliti fork lain
+
+Di luar daftar Tahap 1, ini juga wajib identik:
+
+```
+INDEX_MIN_CHUNK_TOKENS=8
+INDEX_STRUCTURAL_METADATA=true
+INDEX_TABLES_AS_OWN_CHUNKS=true
+```
+
+**`INDEX_TABLES_AS_OWN_CHUNKS` menggeser batas chunk teks, bukan sekadar menambah
+chunk tabel.** Prosa yang tadinya satu chunk bersama tabel kecil kini terbelah
+menjadi chunk sebelum dan sesudah tabel — sehingga `chunk_index`, `chunk_id`, dan
+`text_sha` seluruh dokumen berubah, bukan hanya di sekitar tabel. Fork yang memakai
+nilai berbeda menghasilkan pembagian chunk yang tidak sebanding.
+
+**`data/document_registry.json` harus sama persis di kedua fork.** `document_id`
+yang berbeda menghasilkan `chunk_id` yang berbeda untuk konten yang sama, dan
+`gold_chunk_ids` tidak akan cocok lintas fork. Registry ini sebaiknya dibagikan,
+bukan dibuat ulang masing-masing.
+
+**Re-index penuh diperlukan lagi.** `chunk_index` bergeser karena penyaring
+`INDEX_MIN_CHUNK_TOKENS` membuang chunk, dan `INDEX_TABLES_AS_OWN_CHUNKS` mengubah
+batas. Index dari Tahap 1 dan Tahap 2 tidak sebanding.
+
+## Verifikasi (Tahap 2)
+
+```bash
+# Kerangka registry — jalan tanpa korpus
+python scripts/scaffold_document_registry.py
+
+# Baseline — harus 5/9 bertabrakan
+python scripts/probe_rechunk.py
+
+# Final — harus 0/9 dan chunk_id unik
+INDEX_EXCLUDE_METADATA_FROM_EMBED=true \
+INDEX_MAX_CHUNK_TOKENS=350 \
+INDEX_MIN_CHUNK_TOKENS=8 \
+INDEX_DISABLE_NODE_PARSER=true \
+INDEX_STRUCTURAL_METADATA=true \
+INDEX_TABLES_AS_OWN_CHUNKS=true \
+python scripts/probe_rechunk.py
+```
+
+## Catatan lingkungan verifikasi
+
+Probe dijalankan di venv terisolasi dengan **Python 3.14**, sedangkan repo menarget
+**Python 3.12** (`requirements.txt:3`). Konsekuensinya dua paket pinned tidak dapat
+dipasang di sana: `unstructured==0.16.11` (butuh `<3.13`) dan
+`llama-index-vector-stores-qdrant==0.10.1` (butuh `<3.14`).
+
+- API koordinat `unstructured` diverifikasi dengan memeriksa **wheel resmi 0.16.11**
+  (`elements.py:164`, `CoordinatesMetadata.points`/`.system`), bukan dari ingatan.
+- `_check_flag_consistency` diuji dengan men-stub modul qdrant — fungsinya murni
+  boolean, jadi stub tidak mengurangi validitas.
+- Yang **belum** diverifikasi dengan menjalankan `partition_pdf` sungguhan: apakah
+  `coordinates` benar-benar terisi pada korpus ini. Menunggu PDF.
 
 ---
 
