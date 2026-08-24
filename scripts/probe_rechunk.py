@@ -45,10 +45,21 @@ from llama_index.core import Document, Settings
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.utils import get_tokenizer
 
-from backend.config import CHUNK_SIZE, CHUNK_OVERLAP, PDF_TABLE_MAX_CHARS
+from backend.config import (
+    CHUNK_SIZE,
+    CHUNK_OVERLAP,
+    PDF_TABLE_MAX_CHARS,
+    INDEX_EXCLUDE_METADATA_FROM_EMBED,
+    NON_SEMANTIC_METADATA_KEYS,
+)
 from backend.services.preprocessing import _html_table_to_markdown
 
 TOKENIZER = get_tokenizer()
+
+# Mirror indexing.py:262-266 — pengecualian hanya aktif saat flag menyala.
+EXCLUDED_KEYS = (
+    list(NON_SEMANTIC_METADATA_KEYS) if INDEX_EXCLUDE_METADATA_FROM_EMBED else []
+)
 
 
 def ntok(text: str) -> int:
@@ -154,9 +165,15 @@ META_RENCANA_TAMBAHAN = {
 
 
 def doc(text: str, **override) -> Document:
+    """Bangun Document persis seperti indexing.py:248-270, termasuk exclusion."""
     meta = dict(META_SEKARANG)
     meta.update(override)
-    return Document(text=text, metadata=meta)
+    return Document(
+        text=text,
+        metadata=meta,
+        excluded_embed_metadata_keys=list(EXCLUDED_KEYS),
+        excluded_llm_metadata_keys=list(EXCLUDED_KEYS),
+    )
 
 
 # ─── A. Kalibrasi satuan: token vs karakter ──────────────────────────────────
@@ -303,7 +320,12 @@ def bagian_d() -> None:
     print(f"{'skenario':<42}{'field':>6}{'meta tok':>10}{'efektif':>9}{'status':>11}")
     print("-" * 78)
     for nama, meta in skenario:
-        d = Document(text="x", metadata=meta)
+        d = Document(
+            text="x",
+            metadata=meta,
+            excluded_embed_metadata_keys=list(EXCLUDED_KEYS),
+            excluded_llm_metadata_keys=list(EXCLUDED_KEYS),
+        )
         # Replikasi interface.py:248-259
         from llama_index.core.schema import MetadataMode
         s_embed = d.get_metadata_str(mode=MetadataMode.EMBED)
@@ -351,7 +373,15 @@ def bagian_e(r_naratif: float) -> None:
     print(f"{'skenario':<34}{'ambang tok':>11}{'~char naratif':>15}{'~char tabel':>13}")
     print("-" * 78)
     for nama, meta in skenario:
-        d = Document(text="x", metadata=meta)
+        def _mk(text: str) -> Document:
+            return Document(
+                text=text,
+                metadata=meta,
+                excluded_embed_metadata_keys=list(EXCLUDED_KEYS),
+                excluded_llm_metadata_keys=list(EXCLUDED_KEYS),
+            )
+
+        d = _mk("x")
         s_e = d.get_metadata_str(mode=MetadataMode.EMBED)
         s_l = d.get_metadata_str(mode=MetadataMode.LLM)
         mlen = ntok(s_e if len(s_e) > len(s_l) else s_l)
@@ -362,7 +392,7 @@ def bagian_e(r_naratif: float) -> None:
         tok_utuh_max, tok_pecah_min = 0, None
         for target in range(200, 5000, 60):
             t = teks_naratif(target)
-            n = len(splitter.get_nodes_from_documents([Document(text=t, metadata=meta)]))
+            n = len(splitter.get_nodes_from_documents([_mk(t)]))
             if n == 1:
                 tok_utuh_max = max(tok_utuh_max, ntok(t))
             elif tok_pecah_min is None:
@@ -390,8 +420,17 @@ def bagian_e(r_naratif: float) -> None:
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    print("probe_rechunk.py — Tahap 0")
+    print("probe_rechunk.py")
     print(f"repo: {ROOT}")
+    print()
+    print("KONFIGURASI AKTIF (jalankan ulang dengan env berbeda untuk membandingkan)")
+    print(f"  INDEX_EXCLUDE_METADATA_FROM_EMBED = {INDEX_EXCLUDE_METADATA_FROM_EMBED}")
+    if EXCLUDED_KEYS:
+        print(f"    dikecualikan: {', '.join(EXCLUDED_KEYS)}")
+        tersisa = [k for k in META_SEKARANG if k not in EXCLUDED_KEYS]
+        print(f"    divektorkan : {', '.join(tersisa)}")
+    else:
+        print("    dikecualikan: (tidak ada — seluruh field divektorkan)")
 
     splitter = SentenceSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
 
@@ -415,6 +454,15 @@ def main() -> None:
         print()
         print(f"chunk_index pada node hasil pecahan seragam? "
               f"{'YA — beberapa titik Qdrant berbagi satu chunk_index' if semua_seragam else 'tidak'}")
+
+    print()
+    print("-" * 78)
+    if dipecah:
+        print(f"VERDICT: GAGAL — {len(dipecah)} dari {len(hasil)} kasus menghasilkan >1 node.")
+        print("Kriteria lulus: tidak ada satu pun kasus uji yang menghasilkan lebih dari satu node.")
+    else:
+        print(f"VERDICT: LULUS — seluruh {len(hasil)} kasus menghasilkan tepat 1 node.")
+    print("-" * 78)
 
     print()
     print("BELUM TERJAWAB TANPA KORPUS")

@@ -22,6 +22,8 @@ from backend.config import (
     QDRANT_COLLECTION_NAME,
     EMBED_DIMENSION,
     DATA_DIR,
+    INDEX_EXCLUDE_METADATA_FROM_EMBED,
+    NON_SEMANTIC_METADATA_KEYS,
 )
 from backend.services.preprocessing import (
     extract_from_pdf, chunk_documents, file_sha256,
@@ -245,6 +247,12 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
         file_hash = result["file_hash"]
         strategy_used = result["strategy"]
 
+        excluded_keys = (
+            list(NON_SEMANTIC_METADATA_KEYS)
+            if INDEX_EXCLUDE_METADATA_FROM_EMBED
+            else []
+        )
+
         for chunk in chunks:
             doc = Document(
                 text=chunk["text"],
@@ -258,6 +266,8 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
                     "extraction_strategy": strategy_used,
                     "source_type": "pdf",
                 },
+                excluded_embed_metadata_keys=list(excluded_keys),
+                excluded_llm_metadata_keys=list(excluded_keys),
             )
             all_documents.append(doc)
 

@@ -110,6 +110,41 @@ PDF_MAX_IMAGE_DIM = int(os.getenv("PDF_MAX_IMAGE_DIM", "1280"))         # resize
 PDF_EXTRACT_TABLES = os.getenv("PDF_EXTRACT_TABLES", "true").lower() == "true"
 PDF_TABLE_MAX_CHARS = int(os.getenv("PDF_TABLE_MAX_CHARS", "2000"))      # keep table utuh jika < ini
 
+# Kecualikan field metadata non-semantik dari teks yang di-embed.
+# Default false: perilaku indexing lama dipertahankan persis.
+#
+# Saat true, hanya `section` yang ikut divektorkan; file_hash/page/chunk_index/
+# element_type/extraction_strategy/source_type/file_name dikecualikan. Field-nya
+# TETAP tersimpan penuh di payload Qdrant — pengecualian hanya memengaruhi teks
+# yang di-embed dan get_metadata_str(), bukan node.metadata.
+#
+# Alasan: metadata memotong kuota chunk lewat
+# effective_chunk_size = chunk_size - metadata_len (llama-index sentence.py:158).
+# Terukur pada korpus contoh: 128 token -> 14 token, kuota 384 -> 498.
+#
+# CATATAN JALUR QUERY: SentenceTransformerRerank membaca MetadataMode.EMBED
+# (sbert_rerank.py:75), jadi mengaktifkan flag ini mengubah teks yang di-rerank
+# saat RERANKER_PROVIDER=sentence_transformers (.env.dev, .env.alt.poc).
+# Jalur TEI tidak terpengaruh — ia memakai get_content() default MetadataMode.NONE.
+INDEX_EXCLUDE_METADATA_FROM_EMBED = os.getenv(
+    "INDEX_EXCLUDE_METADATA_FROM_EMBED", "false"
+).lower() == "true"
+
+# Field yang dikecualikan saat flag di atas aktif. Hanya `section` yang tidak
+# ada di daftar ini — judul bagian punya nilai semantik dalam bahasa korpus,
+# sisanya provenance, ordinal, atau konstanta.
+# Ditaruh di config (bukan indexing.py) agar dapat diimpor tanpa menyeret
+# qdrant_client — scripts/probe_rechunk.py mengandalkan itu.
+NON_SEMANTIC_METADATA_KEYS = (
+    "file_name",
+    "file_hash",
+    "page",
+    "chunk_index",
+    "element_type",
+    "extraction_strategy",
+    "source_type",
+)
+
 # =============================================================================
 # RAG Pipeline
 # =============================================================================
