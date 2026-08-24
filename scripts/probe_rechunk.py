@@ -216,6 +216,11 @@ def bagian_b(splitter: SentenceSplitter) -> list[tuple]:
          tabel_markdown_mendekati(PDF_TABLE_MAX_CHARS)),
         ("deskripsi gambar (chunk sendiri :381-388)",
          f"## {META_SEKARANG['section']}\n\n[Deskripsi Gambar] {DESKRIPSI_FLOWCHART}"),
+        # Jalur fast: _extract_fast (:161-170) membuat SATU element per HALAMAN,
+        # lalu :393 mem-flush buffer sebelum append sehingga tiap halaman jadi
+        # satu chunk utuh. Halaman A4 teks Indonesia lazimnya 2.000-3.500 karakter.
+        ("fast path: 1 halaman A4 penuh (:161-170)", teks_naratif(2500)),
+        ("fast path: 1 halaman padat (:161-170)", teks_naratif(3500)),
     ]
 
     print(f"{'kasus':<44}{'chars':>7}{'token':>7}{'node':>6}  {'chunk_index node':<22}")
