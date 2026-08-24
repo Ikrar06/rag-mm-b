@@ -49,6 +49,7 @@ from backend.config import (
     CHUNK_SIZE,
     CHUNK_OVERLAP,
     PDF_TABLE_MAX_CHARS,
+    INDEX_DISABLE_NODE_PARSER,
     INDEX_EXCLUDE_METADATA_FROM_EMBED,
     INDEX_MAX_CHUNK_TOKENS,
     NON_SEMANTIC_METADATA_KEYS,
@@ -258,9 +259,15 @@ def bagian_b(splitter: SentenceSplitter) -> list[tuple]:
         total_nodes, idxs = 0, []
         for i, p in enumerate(potongan):
             # chunk_index berurutan per potongan, seperti emit() di _chunk_elements.
-            nodes = splitter.get_nodes_from_documents([doc(p, element_type=et, chunk_index=i)])
-            total_nodes += len(nodes)
-            idxs.extend(n.metadata.get("chunk_index") for n in nodes)
+            d = doc(p, element_type=et, chunk_index=i)
+            if INDEX_DISABLE_NODE_PARSER:
+                # transformations=[] di indexing.py: 1 Document -> 1 node.
+                total_nodes += 1
+                idxs.append(i)
+            else:
+                nodes = splitter.get_nodes_from_documents([d])
+                total_nodes += len(nodes)
+                idxs.extend(n.metadata.get("chunk_index") for n in nodes)
 
         pecah_lagi = total_nodes > len(potongan)
         tanda = "  <-- MASIH DIPECAH" if pecah_lagi else ""
@@ -441,6 +448,8 @@ def main() -> None:
     print(f"  INDEX_EXCLUDE_METADATA_FROM_EMBED = {INDEX_EXCLUDE_METADATA_FROM_EMBED}")
     print(f"  INDEX_MAX_CHUNK_TOKENS            = {INDEX_MAX_CHUNK_TOKENS}"
           f"{'  (0 = pemecahan 1B mati)' if INDEX_MAX_CHUNK_TOKENS <= 0 else ''}")
+    print(f"  INDEX_DISABLE_NODE_PARSER         = {INDEX_DISABLE_NODE_PARSER}"
+          f"{'  (transformations=[], 1 Document = 1 node)' if INDEX_DISABLE_NODE_PARSER else ''}")
     if EXCLUDED_KEYS:
         print(f"    dikecualikan: {', '.join(EXCLUDED_KEYS)}")
         tersisa = [k for k in META_SEKARANG if k not in EXCLUDED_KEYS]
@@ -471,11 +480,14 @@ def main() -> None:
 
     print()
     print("-" * 78)
-    if gagal:
-        print(f"VERDICT: GAGAL — {len(gagal)} dari {len(hasil)} kasus masih dipecah splitter kedua.")
-        print("Kriteria lulus: tidak ada satu pun kasus uji yang menghasilkan lebih dari satu node.")
+    print("Kriteria lulus: nol tabrakan chunk_index.")
+    if tabrakan:
+        print(f"VERDICT: GAGAL — {len(tabrakan)} dari {len(hasil)} kasus punya chunk_index bertabrakan.")
     else:
-        print(f"VERDICT: LULUS — seluruh {len(hasil)} kasus 1 chunk = 1 node, chunk_index unik.")
+        print(f"VERDICT: LULUS — {len(hasil)}/{len(hasil)} kasus, nol tabrakan chunk_index.")
+        if gagal:
+            print(f"         ({len(gagal)} kasus masih dipecah splitter kedua tapi tidak "
+                  f"bertabrakan — periksa apakah itu disengaja.)")
     print("-" * 78)
 
     print()

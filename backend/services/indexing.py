@@ -22,6 +22,7 @@ from backend.config import (
     QDRANT_COLLECTION_NAME,
     EMBED_DIMENSION,
     DATA_DIR,
+    INDEX_DISABLE_NODE_PARSER,
     INDEX_EXCLUDE_METADATA_FROM_EMBED,
     NON_SEMANTIC_METADATA_KEYS,
 )
@@ -159,11 +160,31 @@ def _embed_and_store(documents: list[Document]):
     )
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-    VectorStoreIndex.from_documents(
-        documents,
-        storage_context=storage_context,
-        show_progress=True,
-    )
+    if INDEX_DISABLE_NODE_PARSER:
+        # transformations=[] SENGAJA kosong: satu Document -> satu node, tanpa
+        # pemecahan ulang. _chunk_elements sudah menjamin ukuran chunk lewat
+        # INDEX_MAX_CHUNK_TOKENS, jadi parser kedua hanya memecah tabel besar
+        # yang memang harus utuh.
+        #
+        # Efeknya juga menyeragamkan dua entry point: tanpa argumen ini,
+        # POST /api/index memakai Settings default (1024/200) sedangkan CLI
+        # memakai 512/128 lewat _configure_settings.
+        #
+        # PERHATIAN: daftar kosong ini akan MENGHALANGI transformasi lain
+        # (mis. ekstraktor metadata) kalau suatu saat dibutuhkan — tambahkan
+        # ke daftar ini, jangan hapus argumennya.
+        VectorStoreIndex.from_documents(
+            documents,
+            storage_context=storage_context,
+            transformations=[],
+            show_progress=True,
+        )
+    else:
+        VectorStoreIndex.from_documents(
+            documents,
+            storage_context=storage_context,
+            show_progress=True,
+        )
 
 
 def index_documents(data_dir: str | None = None, force: bool = False) -> int:

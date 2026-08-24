@@ -130,11 +130,21 @@ INDEX_EXCLUDE_METADATA_FROM_EMBED = os.getenv(
     "INDEX_EXCLUDE_METADATA_FROM_EMBED", "false"
 ).lower() == "true"
 
-# Field yang dikecualikan saat flag di atas aktif. Hanya `section` yang tidak
-# ada di daftar ini — judul bagian punya nilai semantik dalam bahasa korpus,
-# sisanya provenance, ordinal, atau konstanta.
+# Field yang dikecualikan saat INDEX_EXCLUDE_METADATA_FROM_EMBED aktif. Hanya
+# `section` yang tidak ada di daftar ini — judul bagian punya nilai semantik
+# dalam bahasa korpus, sisanya provenance, ordinal, atau konstanta.
 # Ditaruh di config (bukan indexing.py) agar dapat diimpor tanpa menyeret
 # qdrant_client — scripts/probe_rechunk.py mengandalkan itu.
+NON_SEMANTIC_METADATA_KEYS = (
+    "file_name",
+    "file_hash",
+    "page",
+    "chunk_index",
+    "element_type",
+    "extraction_strategy",
+    "source_type",
+)
+
 # Batas token untuk setiap chunk yang dikeluarkan _chunk_elements.
 # 0 = mati (perilaku lama dipertahankan persis).
 #
@@ -157,15 +167,25 @@ INDEX_EXCLUDE_METADATA_FROM_EMBED = os.getenv(
 # dicatat sebagai warning.
 INDEX_MAX_CHUNK_TOKENS = int(os.getenv("INDEX_MAX_CHUNK_TOKENS", "0"))
 
-NON_SEMANTIC_METADATA_KEYS = (
-    "file_name",
-    "file_hash",
-    "page",
-    "chunk_index",
-    "element_type",
-    "extraction_strategy",
-    "source_type",
-)
+# Matikan node parser LlamaIndex saat indexing. Default false (perilaku lama).
+#
+# indexing.py memanggil VectorStoreIndex.from_documents() tanpa argumen
+# transformations=, sehingga LlamaIndex memakai Settings.node_parser dan
+# memecah ulang Document yang melewati Settings.chunk_size. Node anak mewarisi
+# metadata induk, termasuk chunk_index — jadi beberapa titik Qdrant berbagi
+# satu chunk_index.
+#
+# Flag terpisah dari INDEX_MAX_CHUNK_TOKENS secara sengaja: keduanya perlu bisa
+# dinyalakan sendiri-sendiri agar run_manifest.json mencatat dua keputusan yang
+# memang berbeda.
+#
+# Menutup juga perbedaan dua entry point: POST /api/index tidak pernah memanggil
+# _configure_settings sehingga memakai default LlamaIndex (1024/200), sedangkan
+# CLI memakai 512/128. Dengan transformations=[] keduanya tidak lagi bergantung
+# pada Settings sama sekali.
+INDEX_DISABLE_NODE_PARSER = os.getenv(
+    "INDEX_DISABLE_NODE_PARSER", "false"
+).lower() == "true"
 
 # =============================================================================
 # RAG Pipeline
