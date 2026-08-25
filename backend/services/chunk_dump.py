@@ -8,6 +8,8 @@ Tiga berkas per run, di bawah CHUNK_DUMP_DIR/<run_id>/:
     chunks.jsonl        kanonik, satu baris JSON per chunk
     chunks_review.csv   untuk dibaca manusia + kolom kosong untuk anotasi
     run_manifest.json   konfigurasi efektif yang menghasilkan chunk itu
+    images.jsonl        satu baris per gambar (hanya bila ada gambar tersimpan)
+    images_review.csv   untuk anotasi visual_type oleh manusia
 
 KESETIAAN DUMP
 --------------
@@ -18,9 +20,9 @@ yang kebesaran, (b) mem-strip trailing whitespace bahkan pada Document yang
 tidak dipecah — terverifikasi. `run_manifest.json` mencatat status ini di
 `dump_faithful`; jangan pakai dump yang `dump_faithful: false` sebagai dataset.
 
-Yang di-EMBED juga bukan `text_content` apa adanya, melainkan
-`get_content(MetadataMode.EMBED)` = "section: <nilai>\\n\\n<text>" saat
-INDEX_EXCLUDE_METADATA_FROM_EMBED aktif. Manifest mencatatnya di
+Saat INDEX_EXCLUDE_METADATA_FROM_EMBED aktif, TIDAK ADA metadata yang
+divektorkan — `text_content` sama persis dengan string yang di-embed, sehingga
+dataset lapis 2 cukup untuk mereproduksi index. Manifest mencatatnya di
 `embedded_text_shape`.
 """
 
@@ -51,6 +53,7 @@ _CSV_COLUMNS = [
     "chunk_type",
     "element_type",
     "chunk_index",
+    "image_id",
     "text_sha",
     "n_chars",
     "has_table_html",
@@ -114,6 +117,11 @@ def _record(doc) -> dict:
         "text_as_html": meta.get("raw_html") or None,
         "bbox": meta.get("bbox"),
         # ── kolom tambahan di luar skema minimum ──
+        # image_id menautkan chunk ImageDescription ke barisnya di images.jsonl.
+        # Tanpa ini metrik lapis 1 tidak dapat distratifikasi per tipe visual,
+        # karena visual_type hidup di images.jsonl sementara retrieval
+        # menghasilkan chunk.
+        "image_id": meta.get("image_id"),
         "text_sha": meta.get("text_sha"),
         "chunk_index": meta.get("chunk_index"),
         "element_type": meta.get("element_type"),
@@ -144,6 +152,7 @@ def _row(rec: dict) -> dict:
         "chunk_type": rec.get("chunk_type") or "",
         "element_type": rec.get("element_type") or "",
         "chunk_index": rec.get("chunk_index"),
+        "image_id": rec.get("image_id") or "",
         "text_sha": rec.get("text_sha") or "",
         "n_chars": len(text),
         "has_table_html": "ya" if html else "",
@@ -154,6 +163,79 @@ def _row(rec: dict) -> dict:
         "file_name": rec.get("file_name") or "",
         "text_preview": preview,
         "text_content": text,
+        "visual_type": "",
+        "verdict": "",
+        "catatan_reviewer": "",
+    }
+
+
+# ─── Gambar: images.jsonl + images_review.csv ────────────────────────────────
+
+_IMAGE_CSV_COLUMNS = [
+    "image_id",
+    "document_id",
+    "page_number",
+    "file_path",
+    "mime_type",
+    "size_kb",
+    "width",
+    "height",
+    "sha256",
+    "has_narrative",
+    "narrative_preview",
+    "source_file",
+    # ── kolom kosong untuk anotasi manusia ──
+    "visual_type",
+    "verdict",
+    "catatan_reviewer",
+]
+
+
+def _image_record(img: dict) -> dict:
+    """Satu baris images.jsonl, mengikuti skema lapis 2.
+
+    `visual_type` dan `structured_summary` sengaja null: yang pertama berasal
+    dari anotasi manusia (isi lewat images_review.csv), yang kedua menunggu
+    kontrak describe_image bervarian.
+    """
+    return {
+        # ── skema images.jsonl ──
+        "image_id": img.get("image_id"),
+        "document_id": img.get("document_id"),
+        "page_number": img.get("page_number"),
+        "file_path": img.get("file_path"),
+        "visual_type": img.get("visual_type"),
+        "structured_summary": img.get("structured_summary"),
+        "narrative_summary": img.get("narrative_summary"),
+        # ── kolom tambahan di luar skema minimum ──
+        "sha256": img.get("sha256"),
+        "mime_type": img.get("mime_type"),
+        "size_bytes": img.get("size_bytes"),
+        "width": img.get("width"),
+        "height": img.get("height"),
+        "source_file": img.get("source_file"),
+    }
+
+
+def _image_row(img: dict) -> dict:
+    narrative = img.get("narrative_summary") or ""
+    size = img.get("size_bytes") or 0
+    return {
+        "image_id": img.get("image_id") or "",
+        "document_id": img.get("document_id") or "",
+        "page_number": "" if img.get("page_number") is None else img["page_number"],
+        "file_path": img.get("file_path") or "",
+        "mime_type": img.get("mime_type") or "",
+        "size_kb": round(size / 1024, 1) if size else "",
+        "width": img.get("width") or "",
+        "height": img.get("height") or "",
+        "sha256": (img.get("sha256") or "")[:16],
+        # Kosong berarti gambar TIDAK dideskripsikan — bisa karena dinilai
+        # DEKORATIF, vision mati, atau panggilan gagal. Gambarnya tetap ada
+        # di file_path dan tetap layak dianotasi.
+        "has_narrative": "ya" if narrative else "",
+        "narrative_preview": " ".join(narrative.split())[:_PREVIEW_CHARS],
+        "source_file": img.get("source_file") or "",
         "visual_type": "",
         "verdict": "",
         "catatan_reviewer": "",
@@ -192,11 +274,15 @@ def _registry_sha() -> str | None:
         return None
 
 
-def build_manifest(run_id: str, reports: dict[str, dict], n_chunks: int) -> dict:
+def build_manifest(run_id: str, reports: dict[str, dict], n_chunks: int,
+                   images: list[dict] | None = None) -> dict:
     """Konfigurasi efektif yang menghasilkan chunk pada run ini."""
     faithful = config.INDEX_DISABLE_NODE_PARSER
+    # Saat exclusion aktif, TIDAK ADA metadata yang divektorkan — `text_content`
+    # di chunks.jsonl sama persis dengan string yang di-embed, sehingga dataset
+    # lapis 2 cukup untuk mereproduksi index tanpa mereplikasi pipeline.
     embedded_shape = (
-        "section: <nilai>\\n\\n<text_content>"
+        "<text_content>"
         if config.INDEX_EXCLUDE_METADATA_FROM_EMBED
         else "<seluruh metadata>\\n\\n<text_content>"
     )
@@ -207,6 +293,12 @@ def build_manifest(run_id: str, reports: dict[str, dict], n_chunks: int) -> dict
         "run_id": run_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "n_chunks": n_chunks,
+        "n_images": len(images or []),
+        "n_images_with_narrative": sum(
+            1 for i in (images or []) if i.get("narrative_summary")
+        ),
+        # file_path di images.jsonl relatif terhadap direktori ini.
+        "images_root": str(Path(config.IMAGES_DIR).parent),
 
         # Apakah dump ini boleh dipakai sebagai dataset — lihat docstring modul.
         "dump_faithful": faithful,
@@ -245,6 +337,7 @@ def build_manifest(run_id: str, reports: dict[str, dict], n_chunks: int) -> dict
             # Tidak diminta eksplisit, tapi WAJIB dicatat: menggeser batas chunk
             # teks di seluruh dokumen, bukan sekadar menambah chunk tabel.
             "INDEX_TABLES_AS_OWN_CHUNKS": config.INDEX_TABLES_AS_OWN_CHUNKS,
+            "INDEX_PERSIST_IMAGES": config.INDEX_PERSIST_IMAGES,
         },
 
         # ── Konstanta hardcoded (E17), dibaca dari sumbernya ──
@@ -312,16 +405,22 @@ def build_manifest(run_id: str, reports: dict[str, dict], n_chunks: int) -> dict
 
 # ─── Penulisan ───────────────────────────────────────────────────────────────
 
-def write_run(documents, reports: dict[str, dict], run_id: str | None = None) -> Path | None:
-    """Tulis tiga berkas untuk satu run. None bila dump tidak aktif.
+def write_run(
+    documents,
+    reports: dict[str, dict],
+    images: list[dict] | None = None,
+    run_id: str | None = None,
+) -> Path | None:
+    """Tulis berkas dump untuk satu run. None bila dump tidak aktif.
 
     `documents` adalah list[Document] persis seperti yang akan dikirim ke
-    _embed_and_store.
+    _embed_and_store. `images` adalah record dari `_persist_image_elements`.
     """
     base = dump_dir()
     if base is None:
         return None
 
+    images = images or []
     run_id = run_id or new_run_id()
     out = base / run_id
     out.mkdir(parents=True, exist_ok=True)
@@ -338,7 +437,18 @@ def write_run(documents, reports: dict[str, dict], run_id: str | None = None) ->
         for rec in records:
             writer.writerow(_row(rec))
 
-    manifest = build_manifest(run_id, reports, len(records))
+    if images:
+        with (out / "images.jsonl").open("w", encoding="utf-8") as f:
+            for img in images:
+                f.write(json.dumps(_image_record(img), ensure_ascii=False) + "\n")
+
+        with (out / "images_review.csv").open("w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=_IMAGE_CSV_COLUMNS, extrasaction="ignore")
+            writer.writeheader()
+            for img in images:
+                writer.writerow(_image_row(img))
+
+    manifest = build_manifest(run_id, reports, len(records), images)
     (out / "run_manifest.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )

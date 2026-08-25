@@ -26,7 +26,7 @@ from backend.config import (
     INDEX_DISABLE_NODE_PARSER,
     INDEX_EXCLUDE_METADATA_FROM_EMBED,
     INDEX_STRUCTURAL_METADATA,
-    NON_SEMANTIC_METADATA_KEYS,
+    EMBED_EXCLUDED_METADATA_KEYS,
 )
 from backend.services import chunk_dump, document_registry
 from backend.services.preprocessing import (
@@ -45,6 +45,7 @@ _STRUCTURAL_METADATA_KEYS = (
     "raw_html",
     "table_format",
     "bbox",
+    "image_id",
 )
 
 
@@ -309,13 +310,14 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
     all_documents: list[Document] = []
 
     excluded_keys = (
-        list(NON_SEMANTIC_METADATA_KEYS)
+        list(EMBED_EXCLUDED_METADATA_KEYS)
         if INDEX_EXCLUDE_METADATA_FROM_EMBED
         else []
     )
     skipped_unregistered: list[str] = []
     sha_mismatch: list[str] = []
     extraction_reports: dict[str, dict] = {}
+    all_images: list[dict] = []
 
     for pdf_path in files_to_process:
         document_id = None
@@ -328,7 +330,7 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
                 sha_mismatch.append(pdf_path.name)
 
         try:
-            result = extract_from_pdf(pdf_path)
+            result = extract_from_pdf(pdf_path, document_id=document_id)
         except Exception as e:
             logger.error(f"pdf_extract_failed file={pdf_path.name} error={e}", exc_info=True)
             continue
@@ -344,6 +346,7 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
         report = result.get("report")
         if report is not None:
             extraction_reports[pdf_path.name] = report.as_dict()
+        all_images.extend(result.get("images") or [])
 
         for chunk in chunks:
             metadata = {
@@ -394,7 +397,7 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
     # Document yang sama persis yang akan dikirim ke _embed_and_store.
     # Kegagalan menulis dump tidak boleh menjatuhkan indexing.
     try:
-        chunk_dump.write_run(all_documents, extraction_reports)
+        chunk_dump.write_run(all_documents, extraction_reports, all_images)
     except Exception as e:
         logger.error("chunk_dump_failed error=%s", e, exc_info=True)
 
