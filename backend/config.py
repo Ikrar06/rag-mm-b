@@ -48,6 +48,21 @@ VISION_MAX_TOKENS = int(os.getenv("VISION_MAX_TOKENS", "300"))
 # di tiap baris images.jsonl. Kosongkan (nilai negatif) untuk tidak mengirim.
 RESEARCH_VISION_SEED = int(os.getenv("RESEARCH_VISION_SEED", "1337"))
 
+# =============================================================================
+# Cache deskripsi gambar — ARTEFAK EKSPERIMEN, bukan optimasi
+# =============================================================================
+# Isi cache adalah SUMBER ISI CHUNK. Dua run yang menghasilkan chunk sama hanya
+# dapat dibuktikan berasal dari deskripsi yang sama bila cache-nya sama.
+# Diperlakukan setara document_registry.json: berkasnya dibagikan antar fork,
+# hash isinya dicatat di manifest, dan TIDAK dihapus di tengah eksperimen.
+#
+# Lokasi default berada di LUAR clone mana pun supaya dapat dibagikan. Lihat
+# CHANGES.md untuk opsi berbagi dan konsekuensi izin berkasnya.
+VISION_CACHE_ENABLED = os.getenv("VISION_CACHE_ENABLED", "false").lower() == "true"
+VISION_CACHE_PATH = os.getenv(
+    "VISION_CACHE_PATH", "~/rag_mm_b_shared/vision_cache.db"
+)
+
 # Panjang konteks Ollama. Tanpa ini Ollama MEMOTONG ke 4096 token secara senyap,
 # dan satu gambar saja bisa menghabiskannya — deskripsi jadi terpotong tanpa
 # jejak. Dikirim eksplisit lewat `options.num_ctx`.

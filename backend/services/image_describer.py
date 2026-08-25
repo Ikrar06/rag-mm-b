@@ -20,6 +20,7 @@ from backend.config import (
     RESEARCH_VISION_SEED, VISION_MAX_TOKENS, VISION_MODEL,
     VISION_NUM_CTX, VISION_TEMPERATURE,
 )
+from backend.services import vision_cache
 
 logger = logging.getLogger(__name__)
 
@@ -207,12 +208,36 @@ def is_likely_informative(image_path: str | Path) -> bool:
         return True  # fail-open: kalau ragu, deskripsikan saja
 
 
+def _classify(raw: str) -> tuple[str, Optional[str]]:
+    """Petakan balasan model ke (verdict, teks).
+
+    Memisahkan KEPUTUSAN MODEL dari KEGAGALAN. Keduanya dulu sama-sama menulis
+    string kosong ke cache proses-lokal — atau, untuk respons kosong, tidak
+    menulis sama sekali. Ambiguitas itu tidak boleh diwarisi cache persisten:
+    keputusan model layak disimpan, kegagalan transient tidak.
+    """
+    cleaned = (raw or "").strip()
+    if not cleaned:
+        return vision_cache.VERDICT_DESCRIBED, None   # dipakai pemanggil sbg gagal
+    upper = cleaned.upper()
+    if upper.startswith("DEKORATIF"):
+        return vision_cache.VERDICT_DECORATIVE, None
+    if upper.startswith("TIDAK JELAS"):
+        return vision_cache.VERDICT_UNCLEAR, None
+    return vision_cache.VERDICT_DESCRIBED, cleaned
+
+
 def describe_image(image_bytes: bytes) -> Optional[str]:
     """Deskripsikan gambar via vision LLM.
 
     Returns:
         - String deskripsi jika sukses
         - None jika skip (vision off, error, atau image dekoratif)
+
+    Cache persisten dikonsultasi lebih dulu bila aktif. Yang disimpan hanya
+    keputusan model (described / decorative / unclear) — kegagalan transient
+    tidak pernah masuk, karena satu timeout yang ter-cache membuat gambar itu
+    hilang dari seluruh eksperimen.
     """
     if not LLM_SUPPORTS_VISION:
         return None
@@ -221,6 +246,22 @@ def describe_image(image_bytes: bytes) -> Optional[str]:
     if img_hash in _description_cache:
         return _description_cache[img_hash]
 
+    # ── Cache persisten. Kunci memakai sha256 PENUH bytes asli, sebelum resize.
+    cache_key = None
+    if vision_cache.enabled():
+        prov = vision_provenance()
+        full_sha = hashlib.sha256(image_bytes).hexdigest()
+        cache_key = vision_cache.make_key(
+            full_sha, vision_cache.VARIANT_NARRATIVE,
+            prov["prompt_sha256"], prov["vision_model_digest"],
+        )
+        hit = vision_cache.get(cache_key)
+        if hit is not None:
+            text = hit.usable_text
+            _description_cache[img_hash] = text or ""
+            return text
+
+    image_bytes_original = image_bytes
     image_bytes = _resize_image_if_needed(image_bytes)
 
     if LLM_PROVIDER not in ("vllm", "ollama"):
@@ -245,26 +286,42 @@ def describe_image(image_bytes: bytes) -> Optional[str]:
         )
         return None
 
-    if not description:
-        # Cache respons kosong juga. Tanpa ini gambar yang menghasilkan respons
-        # kosong dipanggilkan model berulang kali dalam satu proses, karena
-        # tidak ada yang menandai bahwa ia sudah pernah dicoba.
+    if not description or not description.strip():
+        # KEGAGALAN TRANSIENT, bukan keputusan model. Di-cache proses-lokal
+        # supaya tidak dipanggil berulang dalam satu proses, tapi TIDAK PERNAH
+        # masuk cache persisten — satu timeout yang ter-cache membuat gambar itu
+        # hilang dari seluruh eksperimen.
         logger.warning(
             "image_describer_empty provider=%s model=%s sha=%s — model "
-            "mengembalikan respons kosong",
+            "mengembalikan respons kosong; TIDAK di-cache persisten",
             LLM_PROVIDER, VISION_MODEL, img_hash,
         )
         _description_cache[img_hash] = ""
         return None
 
-    # Filter hasil — kalau model bilang dekoratif, treat as skip
-    cleaned = description.strip()
-    if cleaned.upper().startswith("DEKORATIF") or cleaned.upper().startswith("TIDAK JELAS"):
-        _description_cache[img_hash] = ""
-        return None
+    verdict, text = _classify(description)
 
-    _description_cache[img_hash] = cleaned
-    return cleaned
+    if cache_key is not None:
+        prov = vision_provenance()
+        vision_cache.put(
+            cache_key,
+            image_sha256=hashlib.sha256(image_bytes_original).hexdigest(),
+            variant=vision_cache.VARIANT_NARRATIVE,
+            prompt_sha256=prov["prompt_sha256"],
+            vision_model=prov["vision_model"],
+            vision_model_digest=prov["vision_model_digest"],
+            verdict=verdict,
+            description=text,
+        )
+
+    if verdict != vision_cache.VERDICT_DESCRIBED:
+        logger.info(
+            "image_describer_verdict verdict=%s sha=%s — gambar tetap tersimpan "
+            "di disk, hanya tanpa narrative_summary", verdict, img_hash,
+        )
+
+    _description_cache[img_hash] = text or ""
+    return text
 
 
 def _describe_via_vllm(image_bytes: bytes) -> Optional[str]:
