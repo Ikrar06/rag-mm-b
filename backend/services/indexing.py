@@ -17,6 +17,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 from qdrant_client.models import Distance, VectorParams
 
+from backend import config
 from backend.config import (
     QDRANT_URL,
     QDRANT_COLLECTION_NAME,
@@ -73,6 +74,105 @@ def _check_flag_consistency() -> None:
         "INDEX_DISABLE_NODE_PARSER dua-duanya mati. SentenceSplitter akan "
         "melempar ValueError saat metadata_len melewati CHUNK_SIZE. "
         "Nyalakan salah satu (untuk riset: keduanya)."
+    )
+
+
+def _effective_research_flags() -> dict[str, object]:
+    """Nilai efektif tiap flag riset, dibaca dari config yang sudah dimuat."""
+    return {nama: getattr(config, nama, "<TIDAK ADA>")
+            for nama in config.RESEARCH_EXPECTED_FLAGS}
+
+
+def print_effective_flags() -> None:
+    """Cetak nilai efektif tiap flag riset ke stdout saat start.
+
+    Sengaja print(), bukan logger: harus terlihat apa pun konfigurasi logging,
+    dan harus muncul SEBELUM indexing berjalan berjam-jam. Salah lokasi .env
+    membuat seluruh flag jatuh ke default tanpa peringatan lain.
+    """
+    aktual = _effective_research_flags()
+    print("=" * 72)
+    print(f"FLAG RISET  (RESEARCH_MODE={config.RESEARCH_MODE})")
+    print(f"  .env dicari dari lokasi backend/config.py ke atas, BUKAN dari")
+    print(f"  direktori kerja. Repo: {Path(__file__).resolve().parent.parent.parent}")
+    print("-" * 72)
+    for nama, diharapkan in config.RESEARCH_EXPECTED_FLAGS.items():
+        nilai = aktual[nama]
+        tanda = "  " if nilai == diharapkan else "  <-- BEDA, diharapkan %r" % (diharapkan,)
+        print(f"  {nama:<36}{nilai!r}{tanda}")
+    print(f"  {'QDRANT_COLLECTION':<36}{config.QDRANT_COLLECTION!r}"
+          f"  (kirim eksplisit tiap run)")
+    print(f"  {'QDRANT_URL':<36}{config.QDRANT_URL!r}")
+    print(f"  {'VISION_MODEL':<36}{config.VISION_MODEL!r}")
+    print("=" * 72)
+
+
+def _check_research_mode() -> None:
+    """Tolak run bila RESEARCH_MODE aktif tapi ada flag yang tidak sesuai daftar beku.
+
+    Mode kegagalan yang ditangani: load_dotenv() mencari .env dari lokasi
+    config.py KE ATAS, bukan dari direktori kerja. `.env` di direktori kerja lain
+    diabaikan tanpa peringatan, seluruh flag jatuh ke default, dan indexing tetap
+    berjalan — menghasilkan chunk yang salah setelah berjam-jam.
+    """
+    if not config.RESEARCH_MODE:
+        return
+
+    aktual = _effective_research_flags()
+    salah = {n: (aktual[n], d) for n, d in config.RESEARCH_EXPECTED_FLAGS.items()
+             if aktual[n] != d}
+    if not salah:
+        return
+
+    rincian = "\n".join(
+        f"    {n:<36}sekarang={a!r}  diharapkan={d!r}" for n, (a, d) in sorted(salah.items())
+    )
+    raise ValueError(
+        f"RESEARCH_MODE=true tapi {len(salah)} flag riset tidak sesuai daftar beku "
+        f"di CHANGES.md:\n{rincian}\n"
+        f"  Penyebab paling sering: .env tidak berada di ROOT repo. load_dotenv() "
+        f"mencari dari lokasi backend/config.py ke atas, BUKAN dari direktori "
+        f"kerja — .env di tempat lain diabaikan tanpa peringatan.\n"
+        f"  Perbaiki: cp .env.research <root-repo>/.env\n"
+        f"  Atau matikan gerbang ini bila memang menjalankan konfigurasi lain: "
+        f"RESEARCH_MODE=false"
+    )
+
+
+def _check_vision_reachable() -> None:
+    """Tolak bila gambar disimpan tapi tidak akan pernah dideskripsikan.
+
+    should_describe di preprocessing._describe_image_elements bernilai:
+        PDF_DESCRIBE_IMAGES == "true"
+        or (PDF_DESCRIBE_IMAGES == "auto" and LLM_SUPPORTS_VISION)
+
+    LLM_SUPPORTS_VISION default false. Dikombinasikan dengan PDF_DESCRIBE_IMAGES
+    ="auto" (juga default), SETIAP element Image dibuang tanpa satu pun error —
+    narrative_summary null di seluruh images.jsonl, dan varian (b) tidak dapat
+    direplikasi. Mode kegagalan sekelas PDF_EXTRACTION_STRATEGY=auto.
+    """
+    if not INDEX_PERSIST_IMAGES or ALLOW_INCOMPLETE_IMAGE_CORPUS:
+        return
+
+    akan_deskripsi = (
+        config.PDF_DESCRIBE_IMAGES == "true"
+        or (config.PDF_DESCRIBE_IMAGES == "auto" and config.LLM_SUPPORTS_VISION)
+    )
+    if akan_deskripsi:
+        return
+
+    raise ValueError(
+        f"INDEX_PERSIST_IMAGES=true tapi tidak ada gambar yang akan "
+        f"dideskripsikan.\n"
+        f"    PDF_DESCRIBE_IMAGES={config.PDF_DESCRIBE_IMAGES!r}\n"
+        f"    LLM_SUPPORTS_VISION={config.LLM_SUPPORTS_VISION}\n"
+        f"  Dengan kombinasi ini SETIAP element Image dibuang di "
+        f"_describe_image_elements tanpa satu pun error, narrative_summary null "
+        f"di seluruh images.jsonl, dan varian (b) tidak dapat direplikasi.\n"
+        f"  Perbaiki: LLM_SUPPORTS_VISION=true (plus VISION_MODEL yang multimodal "
+        f"dan endpoint yang hidup), atau PDF_DESCRIBE_IMAGES=true.\n"
+        f"  Atau terima korpus tidak lengkap secara sadar: "
+        f"ALLOW_INCOMPLETE_IMAGE_CORPUS=true"
     )
 
 
@@ -327,8 +427,11 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
     Returns:
         Jumlah chunks yang berhasil di-index
     """
+    print_effective_flags()
+    _check_research_mode()
     _check_flag_consistency()
     _check_image_strategy()
+    _check_vision_reachable()
 
     target_dir = Path(data_dir or DATA_DIR)
 

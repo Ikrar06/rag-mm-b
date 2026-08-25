@@ -27,6 +27,32 @@ LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1024"))
 LLM_REQUEST_TIMEOUT = int(os.getenv("LLM_REQUEST_TIMEOUT", "120"))
 LLM_SUPPORTS_VISION = os.getenv("LLM_SUPPORTS_VISION", "false").lower() == "true"
 
+# =============================================================================
+# Vision — model deskripsi gambar, TERPISAH dari model generation
+# =============================================================================
+# LLM_MODEL dipakai dua peran: generation lewat llm_factory, dan deskripsi
+# gambar lewat image_describer. Di server riset keduanya berbeda — LLM_MODEL
+# menunjuk model teks sementara deskripsi gambar butuh model multimodal.
+#
+# Default jatuh ke LLM_MODEL supaya perilaku lama tidak berubah bila tidak diset.
+VISION_MODEL = os.getenv("VISION_MODEL", "") or LLM_MODEL
+
+# Parameter generasi deskripsi gambar. Deskripsi BUKAN metadata — ia isi chunk
+# yang diindeks, jadi nondeterminisme di sini mengubah teks yang divektorkan DAN
+# jumlah chunk (verdict DEKORATIF membuang element, menggeser seluruh penomoran
+# sesudahnya). Lihat INSPECTION_REPORT_2.md G10 konsekuensi 2.
+VISION_TEMPERATURE = float(os.getenv("VISION_TEMPERATURE", "0"))
+VISION_MAX_TOKENS = int(os.getenv("VISION_MAX_TOKENS", "300"))
+
+# Seed generasi. Dikirim ke Ollama lewat `options.seed`; dicatat di manifest dan
+# di tiap baris images.jsonl. Kosongkan (nilai negatif) untuk tidak mengirim.
+RESEARCH_VISION_SEED = int(os.getenv("RESEARCH_VISION_SEED", "1337"))
+
+# Panjang konteks Ollama. Tanpa ini Ollama MEMOTONG ke 4096 token secara senyap,
+# dan satu gambar saja bisa menghabiskannya — deskripsi jadi terpotong tanpa
+# jejak. Dikirim eksplisit lewat `options.num_ctx`.
+VISION_NUM_CTX = int(os.getenv("VISION_NUM_CTX", "8192"))
+
 # Backward-compat alias
 OLLAMA_BASE_URL = LLM_BASE_URL
 
@@ -297,6 +323,41 @@ INDEX_TABLES_AS_OWN_CHUNKS = os.getenv(
 #
 # Hanya jalur hi_res yang mengekstrak gambar; jalur fast tidak sama sekali.
 INDEX_PERSIST_IMAGES = os.getenv("INDEX_PERSIST_IMAGES", "false").lower() == "true"
+
+# =============================================================================
+# RESEARCH_MODE — gerbang konfigurasi eksperimen
+# =============================================================================
+
+# Bila true, indexing memvalidasi bahwa SELURUH flag riset bernilai sesuai
+# daftar beku di CHANGES.md, dan menolak run bila ada yang jatuh ke default.
+# Default false: perilaku produksi tidak berubah.
+#
+# Alasannya sebuah mode kegagalan senyap yang terverifikasi: load_dotenv()
+# mencari .env dari lokasi config.py KE ATAS, bukan dari direktori kerja. `.env`
+# yang ditaruh di direktori kerja lain DIABAIKAN TANPA PERINGATAN, seluruh flag
+# riset jatuh ke default, dan indexing tetap berjalan — menghasilkan chunk yang
+# salah setelah berjam-jam. Sekelas dengan PDF_EXTRACTION_STRATEGY=auto yang
+# sudah ditolak _check_image_strategy.
+RESEARCH_MODE = os.getenv("RESEARCH_MODE", "false").lower() == "true"
+
+# Nilai beku dari CHANGES.md, bagian "DAFTAR FINAL FLAG RISET — BEKU".
+# Satu sumber kebenaran; jangan ubah tanpa mengubah CHANGES.md dan re-index.
+RESEARCH_EXPECTED_FLAGS: dict[str, object] = {
+    "INDEX_EXCLUDE_METADATA_FROM_EMBED": True,
+    "INDEX_MAX_CHUNK_TOKENS": 350,
+    "INDEX_MIN_CHUNK_TOKENS": 8,
+    "INDEX_DISABLE_NODE_PARSER": True,
+    "INDEX_STRUCTURAL_METADATA": True,
+    "INDEX_TABLES_AS_OWN_CHUNKS": True,
+    "INDEX_PERSIST_IMAGES": True,
+    "PDF_EXTRACTION_STRATEGY": "hi_res",
+    "CHUNK_SIZE": 512,
+    "CHUNK_OVERLAP": 128,
+    "PDF_TABLE_MAX_CHARS": 2000,
+    "NEIGHBOR_EXPANSION_ENABLED": True,
+    "NEIGHBOR_EXPANSION_RADIUS": 2,
+    "MAX_EXPANDED_CHUNKS": 30,
+}
 
 # Escape hatch: terima korpus gambar yang TIDAK LENGKAP. Default false.
 #
