@@ -48,6 +48,26 @@ def _hash_image(image_bytes: bytes) -> str:
     return hashlib.sha256(image_bytes).hexdigest()[:16]
 
 
+def _detect_mime(image_bytes: bytes) -> str:
+    """MIME dari isi bytes, bukan asumsi.
+
+    Sebelumnya jalur vLLM meng-hardcode `image/png` untuk semua gambar
+    (lihat _describe_via_vllm), sehingga JPEG yang tidak di-resize dikirim
+    dengan label yang salah.
+    """
+    try:
+        from io import BytesIO
+        from PIL import Image
+        with Image.open(BytesIO(image_bytes)) as img:
+            fmt = (img.format or "").upper()
+        return {
+            "PNG": "image/png", "JPEG": "image/jpeg", "WEBP": "image/webp",
+            "GIF": "image/gif", "BMP": "image/bmp", "TIFF": "image/tiff",
+        }.get(fmt, "image/png")
+    except Exception:
+        return "image/png"
+
+
 def _resize_image_if_needed(image_bytes: bytes, max_dim: int = PDF_MAX_IMAGE_DIM) -> bytes:
     """Resize image jika dimensi melebihi max_dim untuk hemat token VL."""
     try:
@@ -56,6 +76,10 @@ def _resize_image_if_needed(image_bytes: bytes, max_dim: int = PDF_MAX_IMAGE_DIM
 
         img = Image.open(BytesIO(image_bytes))
         w, h = img.size
+        # Format HARUS dibaca sebelum .resize(): objek hasil resize tidak
+        # membawa .format, sehingga `img.format or "PNG"` dulu selalu jatuh ke
+        # PNG dan cabang JPEG di bawah tidak pernah terjangkau.
+        fmt = (img.format or "PNG").upper()
         if max(w, h) <= max_dim:
             return image_bytes
 
@@ -64,8 +88,9 @@ def _resize_image_if_needed(image_bytes: bytes, max_dim: int = PDF_MAX_IMAGE_DIM
         img = img.resize(new_size, Image.Resampling.LANCZOS)
 
         buf = BytesIO()
-        fmt = img.format or "PNG"
         if fmt == "JPEG":
+            if img.mode in ("RGBA", "LA", "P"):
+                img = img.convert("RGB")   # JPEG tidak mendukung alpha
             img.save(buf, format="JPEG", quality=85)
         else:
             img.save(buf, format="PNG", optimize=True)
@@ -128,6 +153,10 @@ def describe_image(image_bytes: bytes) -> Optional[str]:
         return None
 
     if not description:
+        # Cache respons kosong juga. Tanpa ini gambar yang menghasilkan respons
+        # kosong dipanggilkan model berulang kali dalam satu proses, karena
+        # tidak ada yang menandai bahwa ia sudah pernah dicoba.
+        _description_cache[img_hash] = ""
         return None
 
     # Filter hasil — kalau model bilang dekoratif, treat as skip
@@ -145,13 +174,14 @@ def _describe_via_vllm(image_bytes: bytes) -> Optional[str]:
     import httpx
 
     b64 = base64.b64encode(image_bytes).decode("utf-8")
+    mime = _detect_mime(image_bytes)   # bukan asumsi image/png
     payload = {
         "model": LLM_MODEL,
         "messages": [{
             "role": "user",
             "content": [
                 {"type": "text", "text": _DESCRIPTION_PROMPT},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}},
             ],
         }],
         "max_tokens": DESCRIPTION_MAX_TOKENS,

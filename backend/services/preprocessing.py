@@ -29,6 +29,7 @@ from backend.config import (
     IMAGES_DIR,
     INDEX_MAX_CHUNK_TOKENS,
     INDEX_MIN_CHUNK_TOKENS,
+    INDEX_PERSIST_IMAGES,
     INDEX_STRUCTURAL_METADATA,
     INDEX_TABLES_AS_OWN_CHUNKS,
     PDF_EXTRACTION_STRATEGY,
@@ -422,6 +423,135 @@ def _extract_hi_res(
     return elements
 
 
+# ─── Penyimpanan gambar ke disk ───────────────────────────────────────────────
+
+# Format PIL -> ekstensi berkas. MIME/ekstensi TIDAK diasumsikan PNG: gambar
+# yang tidak di-resize keluar dalam format aslinya.
+_PIL_FORMAT_EXT = {
+    "PNG": ("png", "image/png"),
+    "JPEG": ("jpg", "image/jpeg"),
+    "WEBP": ("webp", "image/webp"),
+    "GIF": ("gif", "image/gif"),
+    "TIFF": ("tiff", "image/tiff"),
+    "BMP": ("bmp", "image/bmp"),
+}
+
+
+def _probe_image(raw: bytes) -> tuple[str, str, int | None, int | None]:
+    """(ekstensi, mime, width, height) dari bytes gambar apa adanya.
+
+    Fallback ke png/image/png hanya bila PIL tidak dapat mengenali formatnya.
+    """
+    try:
+        from io import BytesIO
+        from PIL import Image
+        with Image.open(BytesIO(raw)) as img:
+            fmt = (img.format or "").upper()
+            w, h = img.size
+        ext, mime = _PIL_FORMAT_EXT.get(fmt, ("png", "image/png"))
+        return ext, mime, w, h
+    except Exception as e:
+        logger.debug("image_probe_failed error=%s", e)
+        return "png", "image/png", None, None
+
+
+def _persist_image_elements(
+    elements: list[dict], document_id: str | None, pdf_name: str
+) -> tuple[list[dict], list[dict]]:
+    """Tulis setiap element Image ke disk dan beri identitas.
+
+    Dipanggil SEBELUM _describe_image_elements dengan sengaja: gambar yang nanti
+    dinilai DEKORATIF atau gagal dideskripsikan tetap harus tersimpan, karena
+    strategi pembanding memvektorkan gambar aslinya dan riset ini harus bisa
+    menilai ulang tanpa mengulang ekstraksi PDF.
+
+    Penamaan mengikuti skema images.jsonl:
+        image_id  = {document_id}_p{page}_img{NN}
+        file_path = images/{document_id}/p{page}_img{NN}.{ext}   (relatif ke data/)
+
+    `sha256` dihitung atas bytes ASLI, sebelum resize apa pun — resize adalah
+    re-encode lossy yang keluarannya bergantung versi Pillow, jadi hash setelah
+    resize tidak stabil antar lingkungan.
+
+    Returns (elements, image_records). Tanpa document_id atau saat flag mati,
+    elements dikembalikan apa adanya dan records kosong.
+    """
+    if not INDEX_PERSIST_IMAGES:
+        return elements, []
+    if not document_id:
+        logger.error(
+            "image_persist_skipped file=%s — INDEX_PERSIST_IMAGES aktif tapi "
+            "document_id tidak ada; gambar tidak disimpan", pdf_name,
+        )
+        return elements, []
+
+    import base64
+
+    target_dir = Path(IMAGES_DIR) / document_id
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    counters: dict[str, int] = {}
+    records: list[dict] = []
+    out: list[dict] = []
+
+    for el in elements:
+        if el.get("category") != "Image":
+            out.append(el)
+            continue
+
+        b64 = (el.get("metadata") or {}).get("image_base64")
+        if not b64:
+            out.append(el)
+            continue
+
+        try:
+            raw = base64.b64decode(b64)
+        except Exception as e:
+            logger.error("image_decode_failed file=%s error=%s", pdf_name, e)
+            out.append(el)
+            continue
+
+        segment = _page_segment(el.get("page"))
+        ordinal = counters.get(segment, 0)
+        counters[segment] = ordinal + 1
+
+        ext, mime, width, height = _probe_image(raw)
+        image_id = f"{document_id}_{segment}_img{ordinal:02d}"
+        rel_path = f"images/{document_id}/{segment}_img{ordinal:02d}.{ext}"
+
+        try:
+            (target_dir / f"{segment}_img{ordinal:02d}.{ext}").write_bytes(raw)
+        except OSError as e:
+            logger.error("image_write_failed id=%s error=%s", image_id, e)
+            out.append(el)
+            continue
+
+        records.append({
+            "image_id": image_id,
+            "document_id": document_id,
+            "page_number": el.get("page") if _page_segment(el.get("page")) != "pNA" else None,
+            "file_path": rel_path,
+            "visual_type": None,        # anotasi manusia, menyusul
+            "structured_summary": None,  # varian (c), menyusul
+            "narrative_summary": None,   # diisi setelah _describe_image_elements
+            # ── kolom tambahan di luar skema minimum ──
+            "sha256": hashlib.sha256(raw).hexdigest(),
+            "mime_type": mime,
+            "size_bytes": len(raw),
+            "width": width,
+            "height": height,
+            "source_file": pdf_name,
+        })
+
+        out.append({**el, "metadata": {**el["metadata"], "image_id": image_id}})
+
+    if records:
+        logger.info(
+            "images_persisted file=%s count=%d dir=%s", pdf_name, len(records), target_dir
+        )
+    return out, records
+
+
 # ─── Image description (panggil vision LLM) ───────────────────────────────────
 
 def _describe_image_elements(elements: list[dict]) -> list[dict]:
@@ -465,7 +595,10 @@ def _describe_image_elements(elements: list[dict]) -> list[dict]:
             "page": el["page"],
             # bbox diteruskan; image_base64 tetap dibuang di sini (gambar belum
             # disimpan ke disk — lihat INSPECTION_REPORT_2.md butir #3).
-            "metadata": {"bbox": el["metadata"].get("bbox")},
+            "metadata": {
+                "bbox": el["metadata"].get("bbox"),
+                "image_id": el["metadata"].get("image_id"),
+            },
         })
 
     return output
@@ -860,7 +993,10 @@ def _chunk_elements(
                 page,
                 "ImageDescription",
                 splittable=False,
-                extra={"bbox": el_bbox},
+                extra={
+                    "bbox": el_bbox,
+                    "image_id": (el.get("metadata") or {}).get("image_id"),
+                },
             )
 
         else:
@@ -898,7 +1034,7 @@ def _chunk_elements(
 
 # ─── Public API ───────────────────────────────────────────────────────────────
 
-def extract_from_pdf(pdf_path: str | Path) -> dict:
+def extract_from_pdf(pdf_path: str | Path, document_id: str | None = None) -> dict:
     """Extract elements terstruktur dari PDF.
 
     Returns:
@@ -908,6 +1044,7 @@ def extract_from_pdf(pdf_path: str | Path) -> dict:
             "file_hash": "...",
             "strategy": "fast" | "hi_res",   # strategi yang DIMINTA
             "report": ExtractionReport,      # termasuk strategi yang TERPAKAI
+            "images": [...],                 # record images.jsonl, bisa kosong
         }
 
     Catatan: `strategy` adalah strategi yang diminta. Bila hi_res gagal dan
@@ -924,9 +1061,23 @@ def extract_from_pdf(pdf_path: str | Path) -> dict:
 
     logger.info(f"pdf_extract file={pdf_path.name} strategy={strategy} hash={file_hash[:8]}")
 
+    image_records: list[dict] = []
     if strategy == "hi_res":
         elements = _extract_hi_res(pdf_path, report=report)
+        # Penulisan gambar SEBELUM keputusan deskripsi — gambar yang nanti
+        # dinilai DEKORATIF atau gagal dideskripsikan tetap tersimpan.
+        elements, image_records = _persist_image_elements(
+            elements, document_id, pdf_path.name
+        )
         elements = _describe_image_elements(elements)
+        # Deskripsi yang berhasil ditautkan balik ke record gambarnya.
+        by_id = {r["image_id"]: r for r in image_records}
+        for el in elements:
+            if el.get("category") != "ImageDescription":
+                continue
+            rec = by_id.get((el.get("metadata") or {}).get("image_id"))
+            if rec is not None:
+                rec["narrative_summary"] = el["text"]
     else:
         elements = _extract_fast(pdf_path, report=report)
 
@@ -944,6 +1095,7 @@ def extract_from_pdf(pdf_path: str | Path) -> dict:
         "file_hash": file_hash,
         "strategy": strategy,
         "report": report,
+        "images": image_records,
     }
 
 
