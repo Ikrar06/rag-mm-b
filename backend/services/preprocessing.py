@@ -425,34 +425,15 @@ def _extract_hi_res(
 
 # ─── Penyimpanan gambar ke disk ───────────────────────────────────────────────
 
-# Format PIL -> ekstensi berkas. MIME/ekstensi TIDAK diasumsikan PNG: gambar
-# yang tidak di-resize keluar dalam format aslinya.
-_PIL_FORMAT_EXT = {
-    "PNG": ("png", "image/png"),
-    "JPEG": ("jpg", "image/jpeg"),
-    "WEBP": ("webp", "image/webp"),
-    "GIF": ("gif", "image/gif"),
-    "TIFF": ("tiff", "image/tiff"),
-    "BMP": ("bmp", "image/bmp"),
-}
-
-
 def _probe_image(raw: bytes) -> tuple[str, str, int | None, int | None]:
     """(ekstensi, mime, width, height) dari bytes gambar apa adanya.
 
-    Fallback ke png/image/png hanya bila PIL tidak dapat mengenali formatnya.
+    Delegasi ke image_describer.probe_format supaya ekstensi berkas di disk dan
+    MIME pada payload yang dikirim ke model berasal dari SATU peta yang sama —
+    keduanya tidak bisa berselisih.
     """
-    try:
-        from io import BytesIO
-        from PIL import Image
-        with Image.open(BytesIO(raw)) as img:
-            fmt = (img.format or "").upper()
-            w, h = img.size
-        ext, mime = _PIL_FORMAT_EXT.get(fmt, ("png", "image/png"))
-        return ext, mime, w, h
-    except Exception as e:
-        logger.debug("image_probe_failed error=%s", e)
-        return "png", "image/png", None, None
+    from backend.services.image_describer import probe_format
+    return probe_format(raw)
 
 
 def _persist_image_elements(
@@ -486,7 +467,9 @@ def _persist_image_elements(
         return elements, []
 
     import base64
+    from backend.services.image_describer import vision_provenance
 
+    _vision_provenance = vision_provenance
     target_dir = Path(IMAGES_DIR) / document_id
     target_dir.mkdir(parents=True, exist_ok=True)
 
@@ -541,6 +524,11 @@ def _persist_image_elements(
             "width": width,
             "height": height,
             "source_file": pdf_name,
+            # Provenance model vision: deskripsi gambar adalah ISI CHUNK, bukan
+            # metadata, jadi parameter yang menghasilkannya harus terbawa
+            # bersama datanya. Diisi walau deskripsi nanti gagal — yang dicatat
+            # adalah konfigurasi run, bukan hasilnya.
+            **_vision_provenance(),
         })
 
         out.append({**el, "metadata": {**el["metadata"], "image_id": image_id}})
