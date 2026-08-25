@@ -158,7 +158,7 @@ seberapa besar sebuah chunk bisa jadi. **Wajib masuk `run_manifest.json`.**
 
 Deskripsi gambar juga tidak dipecah, dengan alasan sejalan: satu deskripsi = satu
 gambar, dan memecahnya merusak relasi `narrative_summary` ↔ `image_id`. Praktisnya
-tidak pernah terpicu karena `image_describer.py:150` membatasi `max_tokens=300`.
+tidak pernah terpicu karena `image_describer.DESCRIPTION_MAX_TOKENS` membatasinya di 300.
 
 ---
 
