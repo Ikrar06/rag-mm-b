@@ -28,7 +28,7 @@ from backend.config import (
     INDEX_STRUCTURAL_METADATA,
     NON_SEMANTIC_METADATA_KEYS,
 )
-from backend.services import document_registry
+from backend.services import chunk_dump, document_registry
 from backend.services.preprocessing import (
     extract_from_pdf, chunk_documents, file_sha256,
 )
@@ -315,6 +315,7 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
     )
     skipped_unregistered: list[str] = []
     sha_mismatch: list[str] = []
+    extraction_reports: dict[str, dict] = {}
 
     for pdf_path in files_to_process:
         document_id = None
@@ -339,6 +340,10 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
 
         file_hash = result["file_hash"]
         strategy_used = result["strategy"]
+
+        report = result.get("report")
+        if report is not None:
+            extraction_reports[pdf_path.name] = report.as_dict()
 
         for chunk in chunks:
             metadata = {
@@ -384,6 +389,14 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
     if not all_documents:
         logger.warning("no_chunks_produced")
         return 0
+
+    # Step 1b: Dump untuk tinjauan tim evaluasi — SEBELUM embedding, dengan
+    # Document yang sama persis yang akan dikirim ke _embed_and_store.
+    # Kegagalan menulis dump tidak boleh menjatuhkan indexing.
+    try:
+        chunk_dump.write_run(all_documents, extraction_reports)
+    except Exception as e:
+        logger.error("chunk_dump_failed error=%s", e, exc_info=True)
 
     # Step 2: Embed + store batch
     logger.info(f"embedding_start total_chunks={len(all_documents)}")

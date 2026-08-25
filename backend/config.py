@@ -245,6 +245,18 @@ INDEX_TABLES_AS_OWN_CHUNKS = os.getenv(
     "INDEX_TABLES_AS_OWN_CHUNKS", "false"
 ).lower() == "true"
 
+# Direktori dump chunk untuk ditinjau tim evaluasi. Kosong = tidak ada dump
+# (perilaku lama). Diisi = tiap run indexing menulis
+# <dir>/<run_id>/{chunks.jsonl, chunks_review.csv, run_manifest.json}.
+#
+# chunks.jsonl mengikuti skema lapis 2 dataset publikasi riset, bukan dump ad hoc.
+#
+# Dump hanya SETIA (identik dengan yang masuk Qdrant) bila
+# INDEX_DISABLE_NODE_PARSER=true. Tanpa itu node parser LlamaIndex masih memecah
+# dan mem-strip whitespace. run_manifest.json mencatat statusnya di
+# `dump_faithful`.
+CHUNK_DUMP_DIR = os.getenv("CHUNK_DUMP_DIR", "")
+
 # Lokasi registry pemetaan nama berkas PDF -> document_id.
 # Buat kerangkanya dengan: python scripts/scaffold_document_registry.py
 DOCUMENT_REGISTRY_PATH = os.getenv(
