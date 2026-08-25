@@ -184,6 +184,49 @@ def doc(text: str, **override) -> Document:
     )
 
 
+# ─── Lingkungan eksekusi ─────────────────────────────────────────────────────
+
+# Target repo, dari requirements.txt baris 3 ("Python 3.12.x | CUDA 12.6.3").
+TARGET_PYTHON = (3, 12)
+KEY_PACKAGES = ("llama-index-core", "tiktoken", "pymupdf", "markdownify", "unstructured")
+
+
+def bagian_env() -> bool:
+    """Cetak lingkungan eksekusi. Return True bila cocok dengan target repo.
+
+    Seluruh angka Tahap 1 & 2 pertama kali diukur di Python 3.14 karena venv
+    proyek belum ada. Perilaku SentenceSplitter bergantung pada versi
+    llama-index-core dan tiktoken, jadi angka-angka itu harus diverifikasi
+    ulang di venv target sebelum indexing pertama.
+    """
+    import platform
+    try:
+        from importlib.metadata import version, PackageNotFoundError
+    except ImportError:  # pragma: no cover
+        version = None
+
+    aktual = sys.version_info[:2]
+    cocok = aktual == TARGET_PYTHON
+
+    print("LINGKUNGAN EKSEKUSI")
+    tanda = "" if cocok else f"   <-- TARGET REPO {TARGET_PYTHON[0]}.{TARGET_PYTHON[1]}.x"
+    print(f"  python  : {platform.python_version()}{tanda}")
+    for name in KEY_PACKAGES:
+        try:
+            v = version(name) if version else "?"
+        except Exception:
+            v = "(tidak terpasang)"
+        print(f"  {name:<18}: {v}")
+
+    if not cocok:
+        print()
+        print("  PERINGATAN: versi Python berbeda dari target repo.")
+        print("  Angka di bawah belum tentu berlaku untuk lingkungan indexing yang")
+        print("  sebenarnya. Jalankan ulang probe ini di venv target sebelum indexing")
+        print("  pertama, lalu bandingkan seluruh angkanya.")
+    return cocok
+
+
 # ─── A. Kalibrasi satuan: token vs karakter ──────────────────────────────────
 
 def bagian_a() -> float:
@@ -466,6 +509,8 @@ def bagian_e(r_naratif: float) -> None:
 def main() -> None:
     print("probe_rechunk.py")
     print(f"repo: {ROOT}")
+    print()
+    bagian_env()
     print()
     print("KONFIGURASI AKTIF (jalankan ulang dengan env berbeda untuk membandingkan)")
     print(f"  INDEX_EXCLUDE_METADATA_FROM_EMBED = {INDEX_EXCLUDE_METADATA_FROM_EMBED}")
