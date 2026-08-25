@@ -22,10 +22,13 @@ from backend.config import (
     QDRANT_COLLECTION_NAME,
     EMBED_DIMENSION,
     DATA_DIR,
+    ALLOW_INCOMPLETE_IMAGE_CORPUS,
     DOCUMENT_REGISTRY_PATH,
     INDEX_DISABLE_NODE_PARSER,
     INDEX_EXCLUDE_METADATA_FROM_EMBED,
+    INDEX_PERSIST_IMAGES,
     INDEX_STRUCTURAL_METADATA,
+    PDF_EXTRACTION_STRATEGY,
     EMBED_EXCLUDED_METADATA_KEYS,
 )
 from backend.services import chunk_dump, document_registry
@@ -70,6 +73,72 @@ def _check_flag_consistency() -> None:
         "INDEX_DISABLE_NODE_PARSER dua-duanya mati. SentenceSplitter akan "
         "melempar ValueError saat metadata_len melewati CHUNK_SIZE. "
         "Nyalakan salah satu (untuk riset: keduanya)."
+    )
+
+
+def _check_image_strategy() -> None:
+    """Tolak strategi ekstraksi yang membuat gambar hilang tanpa jejak.
+
+    `_extract_fast` tidak mengekstrak gambar sama sekali — ia hanya memanggil
+    page.get_text() per halaman. Dokumen yang diproses lewat jalur itu TIDAK
+    menghasilkan satu baris pun di images.jsonl, bahkan bila halamannya penuh
+    diagram.
+
+    Yang membuat ini berbahaya: ketiadaan baris tidak dapat dibedakan dari
+    "dokumen ini memang tidak punya gambar" dengan melihat berkas hasil saja.
+    Dengan "auto" keputusannya per dokumen dan senyap; dengan "fast" seluruh
+    korpus kehilangan gambarnya.
+    """
+    if not INDEX_PERSIST_IMAGES or ALLOW_INCOMPLETE_IMAGE_CORPUS:
+        return
+    if PDF_EXTRACTION_STRATEGY == "hi_res":
+        return
+    raise ValueError(
+        f"PDF_EXTRACTION_STRATEGY={PDF_EXTRACTION_STRATEGY!r} tidak boleh "
+        f"dipakai bersama INDEX_PERSIST_IMAGES=true.\n"
+        f"  Jalur `fast` tidak mengekstrak gambar sama sekali, sehingga dokumen "
+        f"yang dirutekan ke sana tidak menghasilkan baris apa pun di "
+        f"images.jsonl — dan ketiadaannya TIDAK dapat dibedakan dari 'dokumen "
+        f"ini memang tanpa gambar' dengan melihat berkas hasil.\n"
+        f"  Dengan 'auto', detect_strategy merutekan setiap PDF hasil scan ke "
+        f"`fast` (ambang > 1.0 strict; halaman scan = tepat 1 gambar/halaman).\n"
+        f"  Perbaiki: PDF_EXTRACTION_STRATEGY=hi_res\n"
+        f"  Atau terima korpus tidak lengkap secara sadar: "
+        f"ALLOW_INCOMPLETE_IMAGE_CORPUS=true"
+    )
+
+
+def _check_no_silent_fallback(reports: dict[str, dict]) -> None:
+    """Gagalkan run bila ada dokumen yang jatuh diam-diam dari hi_res ke fast.
+
+    Efeknya identik dengan memakai strategi `fast`: dokumen itu kehilangan
+    seluruh gambarnya, dan itu tidak terbaca dari images.jsonl. Menolak "auto"
+    saja tidak cukup karena fallback terjadi saat runtime, setelah pemeriksaan
+    konfigurasi lewat.
+
+    Dipanggil SETELAH dump ditulis (buktinya tersimpan) dan SEBELUM
+    _embed_and_store (tidak ada yang masuk Qdrant).
+    """
+    if not INDEX_PERSIST_IMAGES or ALLOW_INCOMPLETE_IMAGE_CORPUS:
+        return
+    jatuh = sorted(
+        name for name, r in reports.items() if r.get("hi_res_fallback_reason")
+    )
+    if not jatuh:
+        return
+
+    rincian = "\n".join(
+        f"    - {name}: {reports[name]['hi_res_fallback_reason']}" for name in jatuh
+    )
+    raise RuntimeError(
+        f"{len(jatuh)} dokumen jatuh dari hi_res ke fast dan karenanya "
+        f"KEHILANGAN SELURUH GAMBARNYA:\n{rincian}\n"
+        f"  Tidak ada yang di-index. Dump sudah ditulis — periksa "
+        f"`degraded_documents` di run_manifest.json.\n"
+        f"  Ketiadaan gambar dokumen-dokumen ini tidak akan terbaca dari "
+        f"images.jsonl, jadi run digagalkan alih-alih hanya dicatat.\n"
+        f"  Perbaiki penyebab fallback-nya, atau terima korpus tidak lengkap "
+        f"secara sadar: ALLOW_INCOMPLETE_IMAGE_CORPUS=true"
     )
 
 
@@ -259,6 +328,7 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
         Jumlah chunks yang berhasil di-index
     """
     _check_flag_consistency()
+    _check_image_strategy()
 
     target_dir = Path(data_dir or DATA_DIR)
 
@@ -400,6 +470,10 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
         chunk_dump.write_run(all_documents, extraction_reports, all_images)
     except Exception as e:
         logger.error("chunk_dump_failed error=%s", e, exc_info=True)
+
+    # Gerbang terakhir sebelum apa pun masuk Qdrant. Sengaja SETELAH dump:
+    # buktinya tersimpan walau run digagalkan.
+    _check_no_silent_fallback(extraction_reports)
 
     # Step 2: Embed + store batch
     logger.info(f"embedding_start total_chunks={len(all_documents)}")

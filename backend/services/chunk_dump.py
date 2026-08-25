@@ -338,6 +338,9 @@ def build_manifest(run_id: str, reports: dict[str, dict], n_chunks: int,
             # teks di seluruh dokumen, bukan sekadar menambah chunk tabel.
             "INDEX_TABLES_AS_OWN_CHUNKS": config.INDEX_TABLES_AS_OWN_CHUNKS,
             "INDEX_PERSIST_IMAGES": config.INDEX_PERSIST_IMAGES,
+            # Escape hatch. True berarti korpus gambar diterima TIDAK LENGKAP
+            # secara sadar — keputusan itu terbawa bersama datanya.
+            "ALLOW_INCOMPLETE_IMAGE_CORPUS": config.ALLOW_INCOMPLETE_IMAGE_CORPUS,
         },
 
         # ── Konstanta hardcoded (E17), dibaca dari sumbernya ──

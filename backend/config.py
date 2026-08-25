@@ -290,6 +290,21 @@ INDEX_TABLES_AS_OWN_CHUNKS = os.getenv(
 # Hanya jalur hi_res yang mengekstrak gambar; jalur fast tidak sama sekali.
 INDEX_PERSIST_IMAGES = os.getenv("INDEX_PERSIST_IMAGES", "false").lower() == "true"
 
+# Escape hatch: terima korpus gambar yang TIDAK LENGKAP. Default false.
+#
+# Saat INDEX_PERSIST_IMAGES aktif, indexing menolak dua kondisi yang membuat
+# sebagian dokumen kehilangan seluruh gambarnya tanpa jejak di berkas hasil:
+#   1. PDF_EXTRACTION_STRATEGY bukan "hi_res" (ditolak sebelum run dimulai)
+#   2. Ada dokumen yang jatuh dari hi_res ke fast (gagal keras di akhir run,
+#      setelah dump ditulis, sebelum apa pun masuk Qdrant)
+#
+# Setel true HANYA bila kamu memang menerima korpus tidak lengkap dan sudah
+# memeriksa `degraded_documents` di run_manifest.json. Nilai true tercatat di
+# manifest, sehingga keputusan itu terbawa bersama datanya.
+ALLOW_INCOMPLETE_IMAGE_CORPUS = os.getenv(
+    "ALLOW_INCOMPLETE_IMAGE_CORPUS", "false"
+).lower() == "true"
+
 # Direktori dump chunk untuk ditinjau tim evaluasi. Kosong = tidak ada dump
 # (perilaku lama). Diisi = tiap run indexing menulis
 # <dir>/<run_id>/{chunks.jsonl, chunks_review.csv, run_manifest.json}.
