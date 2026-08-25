@@ -1,4 +1,13 @@
-# CHANGES — Tahap 1 & 2: identitas chunk, pemecahan ganda, metadata struktural
+# CHANGES — Tahap 1–3: identitas chunk, metadata struktural, dump evaluasi
+
+> **PRASYARAT SEBELUM INDEXING PERTAMA.** Seluruh angka di dokumen ini diukur di
+> venv probe **Python 3.14**, sedangkan indexing riil berjalan di **Python 3.12**
+> (`requirements.txt:3`). Perilaku `SentenceSplitter` bergantung pada versi
+> `llama-index-core` dan `tiktoken`, jadi angka-angka ini **wajib diverifikasi
+> ulang di venv target** sebelum korpus di-index. `scripts/probe_rechunk.py`
+> kini mencetak versi Python + paket kunci dan memperingatkan bila tidak cocok.
+> Yang paling perlu dicek ulang: rasio char/token, `metadata_len`,
+> `effective_chunk_size`, dan ambang pecah empiris.
 
 Branch `chunk-identity-and-dump`, bercabang dari tag `baseline-riset`.
 Salinan riset di `github.com/Ikrar06/rag-mm-b`. Push hanya ke `origin`.
@@ -456,3 +465,207 @@ dipasang di sana: `unstructured==0.16.11` (butuh `<3.13`) dan
 ```bash
 git add -f CHANGES.md
 ```
+
+---
+---
+
+# TAHAP 3 — dump chunk untuk tim evaluasi
+
+## Kesetiaan dump — jawaban atas pertanyaan gerbang
+
+Titik hook ada di `indexing.py` antara konstruksi `Document` dan
+`_embed_and_store`. Pertanyaannya: apakah chunk di titik itu identik dengan yang
+masuk Qdrant? **Jawabannya bersyarat**, dan diverifikasi empiris:
+
+| Kondisi | Node | `text` identik? |
+|---|---|---|
+| `INDEX_DISABLE_NODE_PARSER=true` | 1 | **Ya** |
+| Parser aktif, chunk muat anggaran | 1 | **Tidak** — trailing whitespace di-strip |
+| Parser aktif, chunk kebesaran | >1 | **Tidak** — dipecah |
+
+Bahkan pada `Document` yang tidak dipecah, `SentenceSplitter` mem-strip trailing
+whitespace (terukur: 390 → 389 karakter). Karena itu dump **tidak dipaksakan**:
+`run_manifest.json` mencatat `dump_faithful`, dan bila `false` modul menulis
+baris ERROR. Dump dengan `dump_faithful: false` tidak boleh dipakai sebagai
+dataset.
+
+**Yang di-embed bukan `text_content`.** Vektor dihitung dari
+`get_content(MetadataMode.EMBED)` = `"section: <nilai>\n\n<text_content>"` saat
+`INDEX_EXCLUDE_METADATA_FROM_EMBED` aktif. Manifest merekamnya di
+`embedded_text_shape`.
+
+## Berkas baru
+
+| Path | Isi |
+|---|---|
+| `backend/services/chunk_dump.py` | Pemetaan `Document` → skema lapis 2, penulisan tiga berkas, pembangunan manifest |
+
+## Perubahan per berkas
+
+### `backend/config.py`
+| Baris | Tambahan |
+|---|---|
+| `250-260` | `CHUNK_DUMP_DIR` (str, default `""` = mati) |
+
+### `backend/services/preprocessing.py`
+| Baris | Perubahan |
+|---|---|
+| `134-160` | `ExtractionReport` — dataclass pencatat degradasi |
+| `165-168` | `STRATEGY_IMAGE_THRESHOLD`, `STRATEGY_SAMPLE_PAGES` (literal diberi nama) |
+| `199-202` | `OCR_TEXT_THRESHOLD_CHARS`, `OCR_RENDER_DPI` |
+| `205-246` | `_extract_text_from_page_fast` → `(text, ocr_error)`, **`except` per halaman** |
+| `249-273` | `_extract_fast(..., report=)` mengumpulkan halaman gagal |
+| `~300` | `_extract_hi_res(..., report=)` mencatat fallback diam |
+| `~880` | `extract_from_pdf` mengembalikan `report` di hasil |
+
+### `backend/services/image_describer.py`
+| Baris | Perubahan |
+|---|---|
+| `37-42` | `DESCRIPTION_MAX_TOKENS`, `DESCRIPTION_TEMPERATURE` diberi nama |
+
+### `backend/services/indexing.py`
+| Baris | Perubahan |
+|---|---|
+| `~318` | `extraction_reports` dikumpulkan per berkas |
+| `~394` | Hook `chunk_dump.write_run(...)` sebelum `_embed_and_store` |
+
+## Perbaikan: kegagalan OCR tidak lagi membuang seluruh PDF
+
+Blok `try` di `_extract_text_from_page_fast` hanya punya `finally`, tanpa
+`except`. `ImportError` paddleocr atau kegagalan `predict()` merambat naik lewat
+`_extract_fast` dan `extract_from_pdf` sampai ditangkap `indexing.py` — yang lalu
+**melewati seluruh PDF**. Satu halaman scan di halaman 40 membuang 99 halaman lain.
+
+Terverifikasi dengan PDF 2 halaman dan `paddleocr` absen (kondisi aarch64 tanpa
+wheel Paddle):
+
+```
+INFO   page_ocr_fallback page=2
+ERROR  page_ocr_failed page=2 error=ModuleNotFoundError: No module named 'paddleocr'
+       — halaman didegradasi ke teks PyMuPDF apa adanya (5 karakter)
+elements dihasilkan : 2 -> [1, 2]        # sebelumnya: 0, seluruh PDF dibuang
+halaman gagal OCR   : [{'page': 2, 'error': '...', 'fallback_chars': 5}]
+```
+
+Tidak diubah jadi gagal keras, sesuai permintaan — hanya dicatat.
+
+## Contoh isi berkas
+
+### `chunks.jsonl` (satu baris, dirapikan)
+
+```json
+{
+  "chunk_id": "sop-izin-ujian-online-v2_p2_c01",
+  "document_id": "sop-izin-ujian-online-v2",
+  "page_number": 2,
+  "chunk_type": "table",
+  "text_content": "## Persyaratan Sidang Skripsi\n\n| Persyaratan | S1 | S2 |\n| --- | ...",
+  "text_as_html": "<table><thead><tr><th>Persyaratan</th>...",
+  "bbox": [0.1, 0.62, 0.9, 0.75],
+  "text_sha": "ea11b8e7a4559b0b",
+  "chunk_index": 1,
+  "element_type": "Table",
+  "table_format": "markdown",
+  "section": "Persyaratan Sidang Skripsi",
+  "file_name": "sop_izin_ujian_2.pdf",
+  "file_hash": "9f2b1c4e...",
+  "extraction_strategy": "hi_res"
+}
+```
+
+Tujuh field pertama adalah skema lapis 2; sisanya kolom tambahan.
+
+### `chunks_review.csv` — 19 kolom
+
+```
+chunk_id, document_id, page_number, chunk_type, element_type, chunk_index,
+text_sha, n_chars, has_table_html, table_html_chars, table_format, bbox,
+section, file_name, text_preview, text_content,
+visual_type, verdict, catatan_reviewer
+```
+
+Tiga kolom terakhir kosong untuk reviewer. `visual_type` enum:
+`flowchart` / `tabel_sebagai_gambar` / `formulir` / `figur_deskriptif`.
+
+**`raw_html` sengaja TIDAK ada di CSV.** HTML tabel bisa ribuan karakter berisi
+newline dan tanda kutip; walau modul `csv` mengutipnya dengan benar, satu sel
+sebesar itu membuat spreadsheet tak terbaca. Yang dibawa hanya `has_table_html`
+(ya/kosong) dan `table_html_chars`. HTML utuhnya ada di `chunks.jsonl`.
+
+`text_content` **tidak dipotong**, dan `text_preview` (180 karakter, newline
+dirapatkan) disediakan sebagai kolom terpisah untuk pembacaan cepat.
+
+### `run_manifest.json` — ringkasan struktur
+
+```json
+{
+  "run_id": "20260825T025423Z-cb1bb53d",
+  "n_chunks": 3,
+  "dump_faithful": true,
+  "embedded_text_shape": "section: <nilai>\\n\\n<text_content>",
+  "chunking":            { 12 variabel Kelompok 1 },
+  "research_flags":      { 6 flag Tahap 1 & 2 },
+  "hardcoded_constants": { ambang OCR 50, DPI 300, ambang strategi 1.0,
+                           sampel 5 halaman, max_tokens 300, temperature 0.1,
+                           image_description_prompt_sha256 },
+  "models":              { embedding, vision, reranker + penanda `authoritative` },
+  "environment":         { python, platform, versi 4 paket kunci },
+  "provenance":          { git_commit, qdrant_collection,
+                           document_registry_sha256 },
+  "extraction_reports":  { per dokumen },
+  "degraded_documents":  [ ... ],
+  "n_degraded_documents": 2
+}
+```
+
+Penanda `authoritative: false` dipasang pada `embedding` dan `reranker` saat
+provider-nya `tei` — pada jalur itu bobot sebenarnya ditentukan `--model-id` di
+`docker-compose.poc.yml`, bukan nilai di config.
+
+`INDEX_TABLES_AS_OWN_CHUNKS` ikut dicatat meski tidak diminta eksplisit: ia
+menggeser batas chunk teks di seluruh dokumen.
+
+## Field skema yang bernilai null, dan alasannya
+
+| Field | Kapan null |
+|---|---|
+| `chunk_id`, `document_id` | `INDEX_STRUCTURAL_METADATA` mati, atau berkas tidak ada di registry |
+| `page_number` | `page == 0`, penanda "tidak diketahui" dari jalur hi_res — dinormalkan jadi `null`, bukan dilaporkan sebagai halaman nol |
+| `text_as_html` | Chunk bukan tabel; **atau** tabel kecil saat `INDEX_TABLES_AS_OWN_CHUNKS` mati (melebur ke prosa sehingga tidak ada hubungan 1:1) |
+| `bbox` | Jalur `fast` (tidak menyediakan koordinat sama sekali); atau `el.metadata.coordinates` kosong di jalur hi_res |
+| `text_sha` | `INDEX_STRUCTURAL_METADATA` mati |
+| `table_format` | Chunk bukan tabel |
+
+Satu jebakan pemetaan yang perlu diketahui reviewer: **`chunk_type` bisa salah di
+jalur `fast`.** Jalur itu menandai setiap element `"NarrativeText"`, termasuk
+tabel yang tergilas jadi teks datar — chunk semacam itu terpetakan `"text"`
+walau isinya tabel. Kolom `extraction_strategy` di `chunks.jsonl` memungkinkan
+reviewer menyaringnya.
+
+## Tambahan untuk peneliti fork lain
+
+`CHUNK_DUMP_DIR` **tidak** memengaruhi isi chunk — murni observasi. Tidak perlu
+sama antar fork. Tetapi `run_manifest.json` dari kedua fork **wajib dibandingkan
+sebelum eksperimen dimulai**: seluruh blok `chunking`, `research_flags`,
+`hardcoded_constants`, dan `models` harus identik. Yang boleh berbeda hanya
+`run_id`, `created_at`, `qdrant_collection`, dan `git_commit`.
+
+## Verifikasi (Tahap 3)
+
+Korpus belum ada, jadi diuji dengan element sintetis yang melewati
+`_chunk_elements` yang sama:
+
+```bash
+CHUNK_DUMP_DIR=/tmp/dump \
+INDEX_EXCLUDE_METADATA_FROM_EMBED=true INDEX_MAX_CHUNK_TOKENS=350 \
+INDEX_MIN_CHUNK_TOKENS=8 INDEX_DISABLE_NODE_PARSER=true \
+INDEX_STRUCTURAL_METADATA=true INDEX_TABLES_AS_OWN_CHUNKS=true \
+python -m scripts.index_documents
+```
+
+Hasil uji sintetis: 3 chunk, `dump_faithful: true`, 2 dokumen tercatat
+terdegradasi (satu fallback hi_res→fast, satu halaman gagal OCR).
+
+**Belum diverifikasi tanpa korpus:** apakah `partition_pdf` benar-benar mengisi
+`coordinates` sehingga `bbox` tidak selalu null, dan berapa proporsi dokumen
+nyata yang jatuh ke fallback.
