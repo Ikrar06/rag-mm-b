@@ -356,6 +356,9 @@ def build_manifest(run_id: str, reports: dict[str, dict], n_chunks: int,
             # Escape hatch. True berarti korpus gambar diterima TIDAK LENGKAP
             # secara sadar — keputusan itu terbawa bersama datanya.
             "ALLOW_INCOMPLETE_IMAGE_CORPUS": config.ALLOW_INCOMPLETE_IMAGE_CORPUS,
+            # True berarti seluruh flag divalidasi terhadap daftar beku
+            # CHANGES.md sebelum run dimulai.
+            "RESEARCH_MODE": config.RESEARCH_MODE,
         },
 
         # ── Konstanta hardcoded (E17), dibaca dari sumbernya ──
@@ -383,9 +386,23 @@ def build_manifest(run_id: str, reports: dict[str, dict], n_chunks: int,
                 # docker-compose, bukan nilai ini.
                 "authoritative": config.EMBED_PROVIDER != "tei",
             },
+            # Model vision TERPISAH dari model generation: keduanya bisa
+            # berbeda (VISION_MODEL default jatuh ke LLM_MODEL bila tidak
+            # diset). Deskripsi gambar adalah ISI CHUNK, jadi parameternya
+            # bagian dari reproduksibilitas dataset — bukan detail runtime.
             "vision": {
+                **image_describer.vision_provenance(),
+                "base_url": config.LLM_BASE_URL,
+                # False berarti digest tidak terbaca dari /api/tags saat run ini.
+                # Tanpa digest, bobot yang menghasilkan deskripsi tidak dapat
+                # dibuktikan setelahnya — tag Ollama bergerak, digest tidak.
+                "digest_resolved": image_describer.vision_provenance()
+                                   .get("vision_model_digest") is not None,
+            },
+            "generation": {
                 "provider": config.LLM_PROVIDER,
                 "model": config.LLM_MODEL,
+                "temperature": config.LLM_TEMPERATURE,
                 "base_url": config.LLM_BASE_URL,
             },
             "reranker": {
