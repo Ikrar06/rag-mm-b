@@ -130,12 +130,33 @@ INDEX_EXCLUDE_METADATA_FROM_EMBED = os.getenv(
     "INDEX_EXCLUDE_METADATA_FROM_EMBED", "false"
 ).lower() == "true"
 
-# Field yang dikecualikan saat INDEX_EXCLUDE_METADATA_FROM_EMBED aktif. Hanya
-# `section` yang tidak ada di daftar ini — judul bagian punya nilai semantik
-# dalam bahasa korpus, sisanya provenance, ordinal, atau konstanta.
+# Field yang dikecualikan dari teks yang di-embed saat
+# INDEX_EXCLUDE_METADATA_FROM_EMBED aktif. Daftarnya lengkap: TIDAK ADA metadata
+# yang divektorkan, sehingga `text_content` di chunks.jsonl sama persis dengan
+# string yang di-embed.
+#
+# Sebagian besar field di sini memang provenance (id sintetis, hash, koordinat).
+# `section` adalah pengecualian dan dikecualikan karena alasan berbeda: nilainya
+# SUDAH muncul di dalam text_content untuk chunk tabel dan deskripsi gambar
+# (prefix "## {section}"), sehingga menyertakannya lagi lewat metadata memberi
+# bobot ganda yang tidak merata antar tipe chunk.
+#
+# Terukur pada dokumen sintetis berstruktur realistis — porsi token `section`
+# terhadap teks yang di-embed:
+#     ImageDescription  46% (2x)  ->  27% (1x)
+#     Table             43% (2x)  ->  25% (1x)
+#     NarrativeText      7%        ->   1%
+# Bobot ganda jatuh persis pada dua strata yang diteliti, sehingga artefaknya
+# tidak dapat dipisahkan dari efek strategi indexing saat analisis.
+#
+# BIAYA YANG DITERIMA: chunk teks kedua dan seterusnya dalam satu section
+# kehilangan sinyal section di ruang vektor (hanya chunk pertama yang membawa
+# "# {title}" di teksnya). Peran NEIGHBOR_EXPANSION karenanya lebih besar
+# daripada konfigurasi lama.
+#
 # Ditaruh di config (bukan indexing.py) agar dapat diimpor tanpa menyeret
 # qdrant_client — scripts/probe_rechunk.py mengandalkan itu.
-NON_SEMANTIC_METADATA_KEYS = (
+EMBED_EXCLUDED_METADATA_KEYS = (
     "file_name",
     "file_hash",
     "page",
@@ -143,15 +164,20 @@ NON_SEMANTIC_METADATA_KEYS = (
     "element_type",
     "extraction_strategy",
     "source_type",
-    # Tahap 2 — identitas & metadata struktural. Semuanya provenance:
-    # id sintetis, hash, koordinat, dan representasi HTML mentah.
+    "section",
+    # Tahap 2 — identitas & metadata struktural.
     "document_id",
     "chunk_id",
     "text_sha",
     "raw_html",
     "table_format",
     "bbox",
+    # Tahap 4 — tautan ke images.jsonl.
+    "image_id",
 )
+
+# Nama lama, dipertahankan agar impor yang ada tidak patah.
+NON_SEMANTIC_METADATA_KEYS = EMBED_EXCLUDED_METADATA_KEYS
 
 # Batas token untuk setiap chunk yang dikeluarkan _chunk_elements.
 # 0 = mati (perilaku lama dipertahankan persis).
@@ -244,6 +270,25 @@ INDEX_STRUCTURAL_METADATA = os.getenv(
 INDEX_TABLES_AS_OWN_CHUNKS = os.getenv(
     "INDEX_TABLES_AS_OWN_CHUNKS", "false"
 ).lower() == "true"
+
+# Tulis gambar hasil ekstraksi PDF ke IMAGES_DIR. Default false (perilaku lama:
+# gambar hanya hidup di memori sebagai base64 lalu dibuang).
+#
+# Penulisan terjadi SEBELUM keputusan deskripsi, sehingga gambar yang dinilai
+# DEKORATIF atau gagal dideskripsikan TETAP tersimpan — peneliti fork lain
+# memvektorkan gambar aslinya, dan riset ini butuh kemampuan menilai ulang
+# tanpa mengulang ekstraksi PDF.
+#
+# TIDAK ADA penyaringan ukuran. Ukuran dicatat di metadata supaya penyaringan
+# dapat dilakukan di hilir. (Catatan: is_likely_informative di image_describer
+# adalah fungsi mati tanpa pemanggil, jadi PDF_MIN_IMAGE_SIZE_KB selama ini
+# tidak berefek pada apa pun — dan sengaja TIDAK dihidupkan di sini.)
+#
+# MEMBUTUHKAN document_id, jadi hanya berjalan saat INDEX_STRUCTURAL_METADATA
+# aktif dan berkas terdaftar di document_registry.json.
+#
+# Hanya jalur hi_res yang mengekstrak gambar; jalur fast tidak sama sekali.
+INDEX_PERSIST_IMAGES = os.getenv("INDEX_PERSIST_IMAGES", "false").lower() == "true"
 
 # Direktori dump chunk untuk ditinjau tim evaluasi. Kosong = tidak ada dump
 # (perilaku lama). Diisi = tiap run indexing menulis

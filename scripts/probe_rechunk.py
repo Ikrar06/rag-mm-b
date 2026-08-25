@@ -55,7 +55,7 @@ from backend.config import (
     INDEX_MIN_CHUNK_TOKENS,
     INDEX_STRUCTURAL_METADATA,
     INDEX_TABLES_AS_OWN_CHUNKS,
-    NON_SEMANTIC_METADATA_KEYS,
+    EMBED_EXCLUDED_METADATA_KEYS,
 )
 from backend.services.preprocessing import (
     _chunk_elements,
@@ -66,7 +66,7 @@ TOKENIZER = get_tokenizer()
 
 # Mirror indexing.py:262-266 — pengecualian hanya aktif saat flag menyala.
 EXCLUDED_KEYS = (
-    list(NON_SEMANTIC_METADATA_KEYS) if INDEX_EXCLUDE_METADATA_FROM_EMBED else []
+    list(EMBED_EXCLUDED_METADATA_KEYS) if INDEX_EXCLUDE_METADATA_FROM_EMBED else []
 )
 
 
