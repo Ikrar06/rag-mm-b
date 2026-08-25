@@ -136,11 +136,25 @@ python-dotenv==1.0.1
 PyYAML==6.0.2               # keyword_filter memuat blocked_keywords.yaml
 pydantic==2.11.7
 
-# PIN BARU. backend/metrics.py mengimpor prometheus_client, dan
-# rag_pipeline.py:43 mengimpor backend.metrics TANPA guard (berbeda dari
-# moderation.py:38-41 yang defensif). Karena scripts/index_documents.py:20
-# mengimpor _configure_settings dari rag_pipeline, paket ini WAJIB ada atau
-# indexing gagal saat impor.
+# PIN BARU. TIDAK ADA APA PUN DI HEAD YANG MEMAKAINYA.
+#
+# Diperiksa langsung: pada branch chunk-identity-and-dump seperti yang ter-push,
+# nol berkas mengimpor `backend.metrics`. Instrumentasi Prometheus (F-2) —
+# beserta backend/metrics.py sendiri — masih berupa perubahan working-tree milik
+# orang lain yang belum di-commit, dan SENGAJA tidak dibawa ke repo riset:
+# fitur setengah jadi berarti memikul perilaku yang belum diverifikasi.
+#
+# Paket ini ada MURNI untuk berjaga bila F-2 nanti mendarat. Saat itu terjadi,
+# rag_pipeline.py akan mengimpor backend.metrics tanpa guard, dan
+# scripts/index_documents.py mengimpor rag_pipeline — sehingga ketiadaannya
+# menggagalkan indexing saat impor. Pure-python, ~50 KB; biayanya nol.
+#
+# Aman dihapus bila kamu yakin F-2 tidak akan pernah masuk branch ini.
+#
+# Dipertahankan sebagai jaring pengaman: begitu F-2 di-commit,
+# rag_pipeline.py akan mengimpor backend.metrics, dan
+# scripts/index_documents.py mengimpor rag_pipeline — sehingga ketiadaannya
+# menggagalkan indexing saat impor. Paketnya kecil dan pure-python.
 #
 # requirements.txt menariknya transitif lewat prometheus-fastapi-instrumentator,
 # yang tidak dibutuhkan riset.
