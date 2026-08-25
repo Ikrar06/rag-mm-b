@@ -935,6 +935,11 @@ berapa proporsi gambar nyata yang dinilai `DEKORATIF`.
 ## Salin apa adanya ke `.env`
 
 ```bash
+# ── Gerbang konfigurasi ──
+# Memvalidasi seluruh flag di bawah terhadap daftar ini sebelum run dimulai,
+# dan mencetak nilai efektifnya ke stdout.
+RESEARCH_MODE=true
+
 # ── Tahap 1: identitas chunk & pemecahan ganda ──
 INDEX_EXCLUDE_METADATA_FROM_EMBED=true
 INDEX_MAX_CHUNK_TOKENS=350
@@ -948,6 +953,14 @@ INDEX_TABLES_AS_OWN_CHUNKS=true
 # ── Tahap 4: gambar ──
 INDEX_PERSIST_IMAGES=true
 PDF_EXTRACTION_STRATEGY=hi_res
+
+# ── Tahap 4B: deskripsi gambar — WAJIB IDENTIK antara varian (b) dan (c) ──
+LLM_SUPPORTS_VISION=true
+VISION_MODEL=qwen3-vl:8b
+VISION_TEMPERATURE=0
+VISION_MAX_TOKENS=300
+RESEARCH_VISION_SEED=1337
+VISION_NUM_CTX=8192
 
 # ── Nilai lama yang naik kepentingannya, jangan diubah ──
 CHUNK_SIZE=512
@@ -1011,3 +1024,181 @@ Bandingkan `run_manifest.json` dari kedua fork. **Harus identik** pada blok
    lalu isi `document_id` tiap berkas.
 3. Sepakati berkas registry itu dengan peneliti fork lain sebelum salah satu
    mulai meng-index.
+
+---
+---
+
+# TAHAP 4B — determinisme dan provenance deskripsi gambar
+
+## Kenapa ini bukan soal metadata
+
+Deskripsi gambar adalah **isi chunk yang diindeks**, bukan metadata.
+Nondeterminisme di sini mengubah teks yang divektorkan, dan lebih buruk mengubah
+**jumlah chunk**: verdict `DEKORATIF` membuat element dibuang di
+`_describe_image_elements`, sehingga seluruh penomoran sesudahnya bergeser —
+`chunk_index`, `chunk_id`, dan `text_sha` ikut berubah. Mekanismenya tercatat di
+`INSPECTION_REPORT_2.md` G10 konsekuensi 2.
+
+## Gerbang baru: `RESEARCH_MODE`
+
+`load_dotenv()` mencari `.env` dari lokasi `backend/config.py` **ke atas**, bukan
+dari direktori kerja — terverifikasi dengan tiga skenario. `.env` yang ditaruh di
+direktori kerja lain **diabaikan tanpa peringatan**, seluruh flag riset jatuh ke
+default, dan indexing tetap berjalan menghasilkan chunk yang salah.
+
+`RESEARCH_MODE=true` memvalidasi seluruh flag terhadap `RESEARCH_EXPECTED_FLAGS`
+di `config.py` — satu sumber kebenaran yang mencerminkan daftar beku di atas —
+dan **mencetak nilai efektif tiap flag ke stdout** saat start. `print()`, bukan
+`logger`: harus terlihat apa pun konfigurasi logging, dan harus muncul sebelum
+indexing berjalan berjam-jam.
+
+## Gerbang baru: `_check_vision_reachable`
+
+`LLM_SUPPORTS_VISION` default `false`. Dikombinasikan dengan
+`PDF_DESCRIBE_IMAGES=auto` (juga default), `should_describe` bernilai false dan
+**setiap** element Image dibuang tanpa satu pun error — `narrative_summary` null
+di seluruh `images.jsonl`, dan varian (b) tidak dapat direplikasi.
+
+Ditolak saat `INDEX_PERSIST_IMAGES` aktif. Escape hatch sama:
+`ALLOW_INCOMPLETE_IMAGE_CORPUS`.
+
+## Env var baru
+
+| Nama | Default | Efek |
+|---|---|---|
+| `RESEARCH_MODE` | `false` | Validasi flag terhadap daftar beku + cetak nilai efektif |
+| `VISION_MODEL` | jatuh ke `LLM_MODEL` | Model deskripsi gambar, terpisah dari model generation |
+| `VISION_TEMPERATURE` | `0` | Dikirim ke **kedua** provider |
+| `VISION_MAX_TOKENS` | `300` | Dikirim ke kedua provider |
+| `RESEARCH_VISION_SEED` | `1337` | `options.seed` (Ollama) / `seed` (vLLM). Negatif = tidak dikirim |
+| `VISION_NUM_CTX` | `8192` | `options.num_ctx` Ollama |
+
+## Determinisme — sejauh mana dijamin
+
+**Yang dijamin suhu 0 + seed tetap:** sampling greedy menghilangkan variasi dari
+pengambilan acak token. Dengan model, bobot, prompt, dan gambar yang sama pada
+mesin dan build runtime yang sama, keluarannya konsisten antar-panggilan.
+
+**Yang TETAP bisa bervariasi:**
+
+- **Non-determinisme numerik GPU.** Reduksi floating-point pada kernel batch
+  tidak asosiatif; urutan penjumlahan bisa berbeda antar-panggilan tergantung
+  ukuran batch dan penjadwalan. Selisih sekecil itu jarang mengubah token
+  terpilih, tapi **bisa** saat dua kandidat teratas nyaris seri — dan pada
+  keputusan `DEKORATIF` vs bukan, satu token yang berubah mengubah jumlah chunk.
+- **Perubahan bobot di balik tag yang sama.** `ollama pull qwen3-vl:8b` dapat
+  mengganti bobot tanpa mengubah nama tag. Karena itu `vision_model_digest`
+  dicatat per gambar.
+- **Versi runtime.** Upgrade Ollama dapat mengubah kernel, kuantisasi, atau
+  penanganan `num_ctx`.
+- **Ukuran batch dan panjang konteks.** Isi `num_ctx` yang berbeda mengubah jalur
+  komputasi walau prompt sama.
+
+Ringkasnya: suhu 0 menghilangkan sumber variasi **terbesar** dan **satu-satunya
+yang dapat dikendalikan dari sisi klien**. Ia tidak menjadikan pipeline
+deterministik bit-per-bit. Karena itu `text_sha` dan `sha256` gambar tetap
+diperlukan sebagai jaring pengaman, dan cache persisten (di bawah) menjadi satu-
+satunya cara menghilangkan variasi lintas-run sepenuhnya.
+
+## Paritas jalur vLLM dan Ollama
+
+| Aspek | Sebelum | Sesudah |
+|---|---|---|
+| `temperature` | vLLM 0.1; Ollama **tidak dikirim** | Keduanya `VISION_TEMPERATURE` |
+| batas token | vLLM 300; Ollama **tidak dikirim** | Keduanya `VISION_MAX_TOKENS` |
+| `seed` | tidak ada | Keduanya, bila ≥ 0 |
+| `num_ctx` | tidak ada → Ollama potong ke 4096 senyap | `VISION_NUM_CTX` eksplisit |
+| respons tak terduga | vLLM melempar (tertangkap, tercatat); Ollama `.get()` → **None senyap** | Keduanya mencatat `ERROR image_describer_bad_response` |
+| respons kosong | senyap | `WARNING image_describer_empty` |
+| provider lain | `logger.debug` lalu buang semua | `ValueError` keras |
+| MIME | di-hardcode `image/png` | `PIL_FORMAT_MAP` — satu peta untuk ekstensi disk dan MIME payload |
+
+Terverifikasi dengan stub untuk sembilan bentuk respons: **nol kegagalan tanpa
+baris log**.
+
+## Provenance per gambar
+
+Tiap baris `images.jsonl` kini membawa:
+
+```json
+{"vision_provider": "ollama", "vision_model": "qwen3-vl:8b",
+ "vision_model_digest": "sha256:901cae7321...",
+ "vision_temperature": 0.0, "vision_max_tokens": 300,
+ "vision_seed": 1337, "vision_num_ctx": 8192,
+ "prompt_sha256": "a2502e28e1739f63..."}
+```
+
+`vision_model_digest` diambil dari `GET /api/tags` — **digest sha256 penuh**,
+bukan ID pendek yang tampil di `ollama list`. Tag bergerak setelah `ollama pull`;
+digest tidak. Bila endpoint tidak terjangkau, digest `null` dan
+`models.vision.digest_resolved` di manifest bernilai `false` — bukan diam.
+
+## Cache persisten — usulan, BELUM dikerjakan
+
+`_description_cache` proses-lokal dan hilang antar proses, sehingga re-index
+memanggil model lagi dan membuka peluang verdict berbeda. Suhu 0 menurunkan
+risikonya tapi tidak menolkannya (lihat bagian determinisme).
+
+**Kunci yang diusulkan** — semua komponennya sudah tersedia:
+
+```
+sha256(bytes gambar ASLI) + varian + prompt_sha256 + vision_model_digest
+```
+
+`sha256` gambar sudah dihitung di Tahap 4 sebelum resize, jadi tidak ada
+pekerjaan baru untuk itu.
+
+**Tiga opsi lokasi:**
+
+| Opsi | Konsekuensi |
+|---|---|
+| **A. SQLite** `data/vision_cache.db` | Satu berkas, transaksional, aman untuk akses berulang. Perlu skema kecil. Mudah di-share antar fork lewat salinan berkas |
+| **B. JSONL append-only** `data/vision_cache.jsonl` | Paling sederhana, dapat dibaca manusia, mudah di-diff. Perlu dimuat seluruhnya ke memori saat start; tidak aman bila dua proses menulis bersamaan |
+| **C. Satu berkas per kunci** `data/vision_cache/<sha>.json` | Aman untuk konkurensi tanpa penguncian. Menghasilkan puluhan ribu berkas kecil; berat untuk `rsync` dan kuota inode |
+
+Saya condong ke **A**: mesin dipakai bersama, dan dua proses indexing bersamaan
+adalah skenario nyata yang B tangani buruk.
+
+**Interaksi dengan pemisahan varian (b) dan (c)** — ini bagian yang menentukan:
+
+Varian **berbagi** cache, tidak dipisah. Alasannya: `narrative_summary` yang
+sama harus dipakai kedua varian agar perbedaan skor berasal dari strategi
+indexing, bukan dari dua panggilan model yang kebetulan berbeda. Komponen
+`varian` di kunci hanya membedakan **jenis ringkasan** (naratif vs terstruktur),
+bukan run.
+
+Konsekuensinya:
+
+- Varian (c) memakai `narrative_summary` dari cache yang sama dengan (b), plus
+  `structured_summary` miliknya sendiri.
+- Cache **wajib dibagikan** antar peneliti fork, sama seperti
+  `document_registry.json`. Cache berbeda berarti deskripsi berbeda berarti
+  membandingkan model, bukan strategi.
+- Mengganti `VISION_MODEL` atau prompt **membatalkan seluruh cache** secara
+  otomatis, karena keduanya ada di kunci. Itu perilaku yang benar: hasil dari
+  model lama tidak boleh bercampur dengan model baru.
+- Cache **tidak boleh** dihapus di tengah eksperimen. Menghapusnya berarti
+  memanggil model ulang, dan verdict yang berbeda menggeser seluruh penomoran
+  chunk pada dokumen itu.
+
+Menunggu keputusanmu sebelum dikerjakan.
+
+## Tambahan untuk peneliti fork lain
+
+Seluruh blok VISION di `.env.research` **wajib identik**:
+
+```
+LLM_SUPPORTS_VISION=true
+VISION_MODEL=qwen3-vl:8b
+VISION_TEMPERATURE=0
+VISION_MAX_TOKENS=300
+RESEARCH_VISION_SEED=1337
+VISION_NUM_CTX=8192
+```
+
+Plus `RESEARCH_MODE=true` supaya penyimpangan tertangkap sebelum indexing, bukan
+sesudah.
+
+Bandingkan `models.vision` di `run_manifest.json` kedua fork — termasuk
+`vision_model_digest`. Digest yang berbeda berarti bobot berbeda, walau nama
+tag-nya sama.
