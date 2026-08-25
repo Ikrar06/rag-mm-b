@@ -1001,7 +1001,7 @@ MAX_EXPANDED_CHUNKS=30
 
 | Item | Kenapa |
 |---|---|
-| `data/document_registry.json` | `document_id` menentukan `chunk_id`, `image_id`, **dan** nama direktori gambar di disk. Registry berbeda → `gold_chunk_ids` dan `gold_image_ids` tidak cocok. **Bagikan berkasnya, jangan buat ulang.** |
+| **`document_registry.json`** | `document_id` menentukan `chunk_id`, `image_id`, **dan** nama direktori gambar di disk. `document_id` kini di-generate otomatis dari nama berkas, tapi konsistensi tetap datang dari **berkas yang sama** — bukan dari dua eksekusi scaffolder. Satu berkas di `~/rag_mm_b_shared/`, tidak dikirim-kirim. **Jangan generate ulang dari nol setelah anotasi dimulai** |
 | **Cache deskripsi gambar** (`vision_cache.db`) | Menyusul `document_registry.json` sebagai artefak yang **harus dibagikan berkasnya**. Isinya adalah sumber `narrative_summary`, yang merupakan isi chunk. Cache berbeda → deskripsi berbeda → membandingkan model, bukan strategi. **Tidak boleh dihapus di tengah eksperimen** — lihat konsekuensinya di bawah |
 | `RERANKER_PROVIDER` | `SentenceTransformerRerank` membaca `MetadataMode.EMBED`, jalur TEI tidak — keduanya melihat teks berbeda |
 | Versi paket | `llama-index-core`, `tiktoken`, `unstructured`, `pymupdf` — perilaku splitter dan ekstraksi bergantung padanya |
@@ -1327,3 +1327,158 @@ overlap-nya — tidak dapat dipulihkan otomatis.
 Cadangkan sebelum perubahan konfigurasi apa pun, dan cocokkan
 `vision_cache.content_sha256` di `run_manifest.json` antar fork sebelum
 membandingkan skor.
+
+---
+---
+
+# REGISTRY DOKUMEN — dari isian manual ke generate otomatis
+
+`document_id` sekarang diisi otomatis dari nama berkas. Yang berubah bukan
+sekadar cara mengisinya: **registry naik status menjadi artefak bersama**,
+sejajar `vision_cache.db`. Konsistensi antar fork datang dari berkas yang sama,
+bukan dari dua eksekusi scaffolder yang kebetulan menghasilkan keluaran sama.
+
+Satu berkas di `~/rag_mm_b_shared/document_registry.json` — di luar clone mana
+pun, tidak dikirim-kirim.
+
+## Aturan slug
+
+| # | Langkah | Contoh |
+|---|---|---|
+| 1 | Buang ekstensi | `Panduan KKN.pdf` → `Panduan KKN` |
+| 2 | Buang prefix penomoran `^\(?\d{1,2}\)?\s*[.)_-]+\s*` | `1.-SOP Izin` → `SOP Izin` |
+| 3 | NFKD + buang non-ASCII | `Sürat Edaran Dékan` → `Surat Edaran Dekan` |
+| 4 | Lowercase | → `surat edaran dekan` |
+| 5 | Non-alfanumerik → `-` | `sop.izin.ujian` → `sop-izin-ujian` |
+| 6 | Rapatkan `-`, strip ujung | `--a--b--` → `a-b` |
+
+Hasil terukur:
+
+| Nama berkas | `document_id` |
+|---|---|
+| `sop_pengurusan_izin_ujian_akhir_online_2.pdf` | `sop-pengurusan-izin-ujian-akhir-online-2` |
+| `1.-SOP Pengurusan Izin Ujian.pdf` | `sop-pengurusan-izin-ujian` |
+| `01_Pedoman Akademik 2025.pdf` | `pedoman-akademik-2025` |
+| `2024_Kalender_Akademik.pdf` | `2024-kalender-akademik` |
+| `Sürat Edaran Dékan.pdf` | `surat-edaran-dekan` |
+
+### Tiga keputusan dan alasannya
+
+**Prefix dibatasi dua digit, bukan tiga.** Asimetri kerugiannya: prefix bermakna
+yang terpangkas menghasilkan slug yang **terlihat normal** — kesalahannya
+senyap. Nomor urut tiga digit yang gagal terpangkas menghasilkan slug jelek tapi
+**jelas** dan bisa diedit. Untuk artefak yang menentukan `chunk_id` dan
+`image_id` sekaligus, kesalahan yang terlihat lebih baik daripada yang tidak.
+
+Batas ini juga melindungi tahun empat digit: `2024_Kalender.pdf` tetap
+`2024-kalender`, tidak tergerus jadi `kalender` yang akan bertabrakan dengan
+berkas tahun lain.
+
+**Penanda versi TIDAK ditebak.** `..._online_2.pdf` menjadi `...-online-2`,
+bukan `-v2`. Angka di akhir nama ambigu antara urutan dan versi; menerjemahkannya
+berarti mengklaim dua dokumen adalah revisi satu sama lain. Versi sebenarnya
+menyusul bersama metadata temporal di lapis 4, yang memang sudah ditunda.
+
+**Slug tidak dipotong panjangnya.** Dokumen akademik sering berbeda hanya di
+ujung nama — "Program Sarjana" versus "Program Magister". Memotong di batas
+panjang akan menabrakkan keduanya, dan tabrakan adalah hal yang justru harus
+dihindari.
+
+## Jaminan: entri lama tidak pernah ditimpa
+
+Slug **hanya dihitung** untuk nama berkas yang belum punya `document_id`. Entri
+yang sudah terisi disalin apa adanya — termasuk saat aturan slug berubah, dan
+termasuk hasil suntingan manual untuk menyelesaikan tabrakan.
+
+Terverifikasi dengan mensimulasikan aturan slug v2 yang jauh berbeda
+(`\d{1,9}` alih-alih `\d{1,2}`) pada registry berisi 7 entri v1:
+
+```
+entri baru (document_id di-generate)   : 0
+entri lama (TIDAK ditimpa)             : 7
+beda dari slug aturan sekarang         : 2
+[WARN ] Registry sebelumnya dibuat dengan aturan slug versi 1, sekarang 2.
+        Entri lama tetap dipertahankan apa adanya.
+
+entri berubah: TIDAK ADA — jaminan terpenuhi
+```
+
+Yang membuat jaminan itu **terlihat**, bukan sekadar dijanjikan: tiap entri auto
+membawa `slug_rule_version` yang berlaku saat ia dibuat, dan
+`document_registry_notes.md` melaporkan entri yang `document_id`-nya tidak lagi
+sama dengan slug aturan sekarang — lengkap dengan kedua nilainya berdampingan.
+
+## Tabrakan gagal keras
+
+Dua berkas dengan slug sama menghentikan proses dan **registry tidak ditulis
+sama sekali** (kode keluar 1):
+
+```
+[ERROR] 1 document_id dipakai lebih dari satu berkas:
+
+          'sop-pengurusan-izin-ujian'
+            - 1.-SOP Pengurusan Izin Ujian.pdf
+            - SOP Pengurusan Izin Ujian.pdf
+
+        TIDAK ada sufiks otomatis: sufiks berbasis urutan tidak stabil,
+        dan document_id yang bergeser membatalkan seluruh anotasi gold.
+        Registry TIDAK ditulis.
+```
+
+Penyelesaiannya manual — edit `document_id` salah satu berkas, jalankan ulang.
+**Itu satu-satunya bagian yang manual.** Slug kosong (nama berkas tanpa karakter
+alfanumerik) juga gagal keras.
+
+## Format registry
+
+```json
+{
+  "_meta": {
+    "generated_at": "2026-08-25T09:00:00+00:00",
+    "slug_rule_version": 1,
+    "tool": "scripts/scaffold_document_registry.py",
+    "n_documents": 42
+  },
+  "documents": {
+    "sop_pengurusan_izin_ujian_akhir_online_2.pdf": {
+      "document_id": "sop-pengurusan-izin-ujian-akhir-online-2",
+      "sha256": "9f2b1c...",
+      "slug_rule_version": 1,
+      "source": "auto"
+    }
+  }
+}
+```
+
+Bentuk datar lama (tanpa `_meta`/`documents`) tetap dibaca — terverifikasi.
+
+## `document_registry_notes.md`
+
+Ditulis bersama registry, di direktori yang sama. **Berkas inilah yang dibaca
+peneliti lain sebelum mulai menganotasi**, jadi peringatan tidak cukup di stdout.
+
+Isinya: header generate (waktu, versi aturan, jumlah), `document_id` yang hanya
+berisi angka, entri yang tidak lagi sama dengan slug aturan sekarang, berkas yang
+`sha256`-nya berubah, entri tanpa berkas di folder, dan protokol regenerate.
+
+## Siapa yang boleh menjalankan generate ulang
+
+Karena registry satu berkas di lokasi bersama, yang perlu disepakati bukan cara
+mengirimnya — tapi siapa yang menjalankan ulang dan kapan.
+
+**Aman kapan saja.** Menambah entri untuk PDF baru tanpa menyentuh yang lama.
+Dua kali berturut-turut tanpa PDF baru tidak mengubah apa pun kecuali stempel
+waktu.
+
+**Butuh kesepakatan lebih dulu:**
+
+- Setelah anotasi gold dimulai. Entri lama memang tidak ditimpa, tapi PDF baru
+  menambah dokumen ke korpus dan mengubah komposisi strata.
+- Bila ada tabrakan slug. Suntingan itu menentukan `document_id` permanen.
+- Bila `sha256` sebuah berkas berubah. Perlu diputuskan apakah itu revisi yang
+  butuh `document_id` baru.
+
+**Jangan pernah:** menghapus registry lalu generate ulang dari nol setelah
+indexing berjalan. Slug memang deterministik terhadap nama berkas, tapi entri
+hasil suntingan manual akan hilang — `document_id` berubah, dan seluruh
+`gold_chunk_ids` serta `gold_image_ids` yang menunjuknya jadi tidak valid.
