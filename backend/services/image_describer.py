@@ -33,6 +33,13 @@ Fokus pada:
 JANGAN tafsirkan atau menambah informasi yang tidak terlihat. Jika gambar tidak jelas, tulis "TIDAK JELAS".
 """
 
+# Parameter generasi deskripsi gambar. Diberi nama supaya run_manifest.json
+# dapat membacanya langsung dari sumbernya, bukan menyalin angka yang bisa
+# melenceng diam-diam. Hanya jalur vLLM yang mengirimkannya; jalur Ollama
+# memakai default model (lihat _describe_via_ollama).
+DESCRIPTION_MAX_TOKENS = 300
+DESCRIPTION_TEMPERATURE = 0.1
+
 # Cache hasil deskripsi by image hash supaya tidak panggil LLM 2× untuk gambar yang sama
 _description_cache: dict[str, str] = {}
 
@@ -147,8 +154,8 @@ def _describe_via_vllm(image_bytes: bytes) -> Optional[str]:
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
             ],
         }],
-        "max_tokens": 300,
-        "temperature": 0.1,
+        "max_tokens": DESCRIPTION_MAX_TOKENS,
+        "temperature": DESCRIPTION_TEMPERATURE,
     }
 
     with httpx.Client(timeout=60.0) as client:

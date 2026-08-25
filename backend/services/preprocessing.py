@@ -17,6 +17,7 @@ import os
 import re
 import tempfile
 import unicodedata
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
@@ -130,7 +131,42 @@ def text_sha(text: str) -> str:
     return hashlib.sha256(normalize_for_hash(text).encode("utf-8")).hexdigest()[:16]
 
 
+# ─── Laporan degradasi per dokumen ────────────────────────────────────────────
+
+@dataclass
+class ExtractionReport:
+    """Catatan apa yang TIDAK berjalan sebagaimana mestinya saat ekstraksi.
+
+    Dibutuhkan riset: dokumen yang jatuh dari hi_res ke fast tidak punya tabel
+    terstruktur maupun koordinat, dan halaman yang gagal OCR tidak punya teks
+    sama sekali. Keduanya sebelumnya hanya muncul sebagai baris log yang mudah
+    terlewat, padahal menentukan apakah sebuah dokumen layak masuk analisis.
+    """
+    strategy_requested: str = ""
+    strategy_used: str = ""
+    hi_res_fallback_reason: str | None = None
+    ocr_failed_pages: list[dict] = field(default_factory=list)
+
+    def as_dict(self) -> dict:
+        return {
+            "strategy_requested": self.strategy_requested,
+            "strategy_used": self.strategy_used,
+            "hi_res_fallback_reason": self.hi_res_fallback_reason,
+            "ocr_failed_pages": list(self.ocr_failed_pages),
+        }
+
+    @property
+    def degraded(self) -> bool:
+        return bool(self.hi_res_fallback_reason or self.ocr_failed_pages)
+
+
 # ─── Strategy detection ───────────────────────────────────────────────────────
+
+# Rata-rata gambar per halaman di atas ambang ini -> hi_res.
+STRATEGY_IMAGE_THRESHOLD = 1.0
+# Jumlah halaman pertama yang disampel detect_strategy.
+STRATEGY_SAMPLE_PAGES = 5
+
 
 def detect_strategy(pdf_path: Path) -> str:
     """Pilih strategy otomatis berdasarkan karakteristik PDF.
@@ -142,7 +178,7 @@ def detect_strategy(pdf_path: Path) -> str:
         doc = fitz.open(str(pdf_path))
         total_images = 0
         total_pages = len(doc)
-        sample_pages = min(5, total_pages)
+        sample_pages = min(STRATEGY_SAMPLE_PAGES, total_pages)
 
         for i in range(sample_pages):
             page = doc[i]
@@ -152,7 +188,7 @@ def detect_strategy(pdf_path: Path) -> str:
 
         avg_images_per_page = total_images / max(sample_pages, 1)
         # Heuristic: > 1 image per page → kemungkinan rich content
-        return "hi_res" if avg_images_per_page > 1.0 else "fast"
+        return "hi_res" if avg_images_per_page > STRATEGY_IMAGE_THRESHOLD else "fast"
     except Exception as e:
         logger.debug(f"detect_strategy_failed file={pdf_path.name} error={e}")
         return "fast"
@@ -160,14 +196,31 @@ def detect_strategy(pdf_path: Path) -> str:
 
 # ─── FAST PATH — PyMuPDF + OCR fallback ──────────────────────────────────────
 
-def _extract_text_from_page_fast(page: fitz.Page) -> str:
-    """Extract text via PyMuPDF, fallback ke PaddleOCR jika scan."""
+# Ambang teks di bawahnya halaman dianggap hasil scan dan dilempar ke OCR.
+OCR_TEXT_THRESHOLD_CHARS = 50
+# Resolusi render halaman sebelum dikirim ke OCR.
+OCR_RENDER_DPI = 300
+
+
+def _extract_text_from_page_fast(page: fitz.Page) -> tuple[str, str | None]:
+    """Extract text via PyMuPDF, fallback ke PaddleOCR jika scan.
+
+    Returns (text, ocr_error). `ocr_error` berisi ringkasan kegagalan bila OCR
+    tidak dapat dijalankan; teks yang dikembalikan lalu apa adanya dari PyMuPDF
+    (bisa kosong).
+
+    Sebelumnya blok try di sini hanya punya `finally`, sehingga ImportError
+    paddleocr atau kegagalan predict merambat naik lewat _extract_fast dan
+    extract_from_pdf sampai ditangkap indexing.py — yang lalu MELEWATI SELURUH
+    PDF. Satu halaman scan di halaman 40 membuang 99 halaman lain. Sekarang
+    degradasinya per halaman.
+    """
     text = page.get_text().strip()
-    if len(text) > 50:
-        return text
+    if len(text) > OCR_TEXT_THRESHOLD_CHARS:
+        return text, None
 
     logger.info(f"page_ocr_fallback page={page.number + 1}")
-    pix = page.get_pixmap(dpi=300)
+    pix = page.get_pixmap(dpi=OCR_RENDER_DPI)
     img_bytes = pix.tobytes("png")
 
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
@@ -179,20 +232,33 @@ def _extract_text_from_page_fast(page: fitz.Page) -> str:
         # PaddleOCR 3.x: .predict() ganti .ocr(). Return list[OCRResult].
         result = ocr.predict(tmp_path)
         if not result:
-            return text
+            return text, None
         texts = _extract_texts_from_ocr_result(result)
-        return "\n".join(texts) if texts else text
+        return ("\n".join(texts) if texts else text), None
+    except Exception as e:
+        logger.error(
+            "page_ocr_failed page=%d error=%s: %s — halaman didegradasi ke teks "
+            "PyMuPDF apa adanya (%d karakter)",
+            page.number + 1, type(e).__name__, e, len(text),
+        )
+        return text, f"{type(e).__name__}: {e}"
     finally:
         os.unlink(tmp_path)
 
 
-def _extract_fast(pdf_path: Path) -> list[dict]:
+def _extract_fast(pdf_path: Path, report: "ExtractionReport | None" = None) -> list[dict]:
     """Fast path: pure text extraction. Return list of elements per page."""
     doc = fitz.open(str(pdf_path))
     elements = []
 
     for page in doc:
-        text = _extract_text_from_page_fast(page)
+        text, ocr_error = _extract_text_from_page_fast(page)
+        if ocr_error and report is not None:
+            report.ocr_failed_pages.append({
+                "page": page.number + 1,
+                "error": ocr_error,
+                "fallback_chars": len(text.strip()),
+            })
         if not text.strip():
             continue
         elements.append({
@@ -267,10 +333,17 @@ def _element_bbox(el) -> list[float] | None:
     ]
 
 
-def _extract_hi_res(pdf_path: Path) -> list[dict]:
+def _extract_hi_res(
+    pdf_path: Path, report: "ExtractionReport | None" = None
+) -> list[dict]:
     """Hi-res path: layout-aware extraction via Unstructured.io.
 
     Mengeluarkan element terstruktur: Title, NarrativeText, Table, Image, dll.
+
+    Bila partition_pdf gagal, fungsi ini jatuh ke jalur fast — dan itu DICATAT
+    di `report`. Dokumen yang jatuh tidak punya tabel terstruktur, tidak punya
+    raw_html, dan tidak punya koordinat; tanpa catatan, kegagalan itu hanya
+    tampak sebagai satu baris log yang mudah terlewat.
     """
     from unstructured.partition.pdf import partition_pdf
 
@@ -289,7 +362,10 @@ def _extract_hi_res(pdf_path: Path) -> list[dict]:
         )
     except Exception as e:
         logger.warning(f"hi_res_failed_fallback_fast file={pdf_path.name} error={e}")
-        return _extract_fast(pdf_path)
+        if report is not None:
+            report.hi_res_fallback_reason = f"{type(e).__name__}: {e}"
+            report.strategy_used = "fast"
+        return _extract_fast(pdf_path, report=report)
 
     elements = []
     for el in raw_elements:
@@ -830,8 +906,12 @@ def extract_from_pdf(pdf_path: str | Path) -> dict:
             "elements": [...],   # raw elements (text/table/image)
             "file_name": "...",
             "file_hash": "...",
-            "strategy": "fast" | "hi_res",
+            "strategy": "fast" | "hi_res",   # strategi yang DIMINTA
+            "report": ExtractionReport,      # termasuk strategi yang TERPAKAI
         }
+
+    Catatan: `strategy` adalah strategi yang diminta. Bila hi_res gagal dan
+    jatuh ke fast, `report.strategy_used` yang mencerminkan kenyataannya.
     """
     pdf_path = Path(pdf_path)
     file_hash = file_sha256(pdf_path)
@@ -840,19 +920,30 @@ def extract_from_pdf(pdf_path: str | Path) -> dict:
     if strategy == "auto":
         strategy = detect_strategy(pdf_path)
 
+    report = ExtractionReport(strategy_requested=strategy, strategy_used=strategy)
+
     logger.info(f"pdf_extract file={pdf_path.name} strategy={strategy} hash={file_hash[:8]}")
 
     if strategy == "hi_res":
-        elements = _extract_hi_res(pdf_path)
+        elements = _extract_hi_res(pdf_path, report=report)
         elements = _describe_image_elements(elements)
     else:
-        elements = _extract_fast(pdf_path)
+        elements = _extract_fast(pdf_path, report=report)
+
+    if report.degraded:
+        logger.warning(
+            "pdf_degraded file=%s hi_res_fallback=%s ocr_failed_pages=%d",
+            pdf_path.name,
+            bool(report.hi_res_fallback_reason),
+            len(report.ocr_failed_pages),
+        )
 
     return {
         "elements": elements,
         "file_name": pdf_path.name,
         "file_hash": file_hash,
         "strategy": strategy,
+        "report": report,
     }
 
 
