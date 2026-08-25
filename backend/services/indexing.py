@@ -32,7 +32,7 @@ from backend.config import (
     PDF_EXTRACTION_STRATEGY,
     EMBED_EXCLUDED_METADATA_KEYS,
 )
-from backend.services import chunk_dump, document_registry
+from backend.services import chunk_dump, document_registry, image_describer, vision_cache
 from backend.services.preprocessing import (
     extract_from_pdf, chunk_documents, file_sha256,
 )
@@ -136,6 +136,56 @@ def _check_research_mode() -> None:
         f"  Perbaiki: cp .env.research <root-repo>/.env\n"
         f"  Atau matikan gerbang ini bila memang menjalankan konfigurasi lain: "
         f"RESEARCH_MODE=false"
+    )
+
+
+def _check_vision_cache() -> None:
+    """Tolak run bila cache memuat deskripsi dari konfigurasi vision LAIN.
+
+    Kunci cache sudah memuat digest model dan hash prompt, jadi entri dari
+    konfigurasi lain tidak akan pernah dikembalikan sebagai hit — tidak ada
+    risiko salah-pakai. Yang ditolak di sini masalah berbeda: cache yang memuat
+    lebih dari satu konfigurasi berarti korpus dideskripsikan oleh model atau
+    prompt yang berbeda-beda, sehingga sebagian chunk berasal dari model A dan
+    sebagian dari model B. Perbandingan varian (b) vs (c) tidak lagi mengukur
+    strategi indexing.
+
+    Hanya aktif saat RESEARCH_MODE — di luar riset, cache campuran tidak
+    bermasalah.
+    """
+    if not config.RESEARCH_MODE or not vision_cache.enabled():
+        return
+
+    prov = image_describer.vision_provenance()
+    digest_kini = prov["vision_model_digest"]
+    prompt_kini = prov["prompt_sha256"]
+
+    asing = [
+        c for c in vision_cache.configurations()
+        if c["vision_model_digest"] != digest_kini or c["prompt_sha256"] != prompt_kini
+    ]
+    if not asing:
+        return
+
+    rincian = "\n".join(
+        f"    {c['entries']:>6} entri  model={c['vision_model']!r} "
+        f"digest={(c['vision_model_digest'] or '<tidak ada>')[:24]} "
+        f"prompt={c['prompt_sha256'][:16]} terakhir={c['last_written']}"
+        for c in asing
+    )
+    raise ValueError(
+        f"Cache deskripsi gambar memuat {len(asing)} konfigurasi vision yang "
+        f"BERBEDA dari yang sedang dipakai:\n{rincian}\n"
+        f"  sedang dipakai: model={prov['vision_model']!r} "
+        f"digest={(digest_kini or '<tidak ada>')[:24]} prompt={prompt_kini[:16]}\n"
+        f"  Artinya korpus dideskripsikan oleh model atau prompt yang "
+        f"berbeda-beda — sebagian chunk dari konfigurasi lama, sebagian dari "
+        f"yang baru. Perbandingan varian tidak lagi mengukur strategi indexing.\n"
+        f"  Perbaiki: kembalikan VISION_MODEL/prompt ke konfigurasi yang sudah "
+        f"ada di cache, atau mulai cache baru di VISION_CACHE_PATH lain — "
+        f"TAPI ingat itu membatalkan seluruh anotasi gold yang menempel pada "
+        f"chunk_id.\n"
+        f"  Periksa isinya: python scripts/inspect_vision_cache.py"
     )
 
 
@@ -432,6 +482,7 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
     _check_flag_consistency()
     _check_image_strategy()
     _check_vision_reachable()
+    _check_vision_cache()
 
     target_dir = Path(data_dir or DATA_DIR)
 

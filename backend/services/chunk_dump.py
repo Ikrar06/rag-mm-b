@@ -40,7 +40,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from backend import config
-from backend.services import image_describer, preprocessing
+from backend.services import image_describer, preprocessing, vision_cache
 
 logger = logging.getLogger(__name__)
 
@@ -435,6 +435,11 @@ def build_manifest(run_id: str, reports: dict[str, dict], n_chunks: int,
         },
 
         # ── Degradasi per dokumen ──
+        # Cache deskripsi gambar: SUMBER ISI CHUNK, bukan penghemat waktu. Tanpa
+        # blok ini, dua run yang menghasilkan chunk sama tidak dapat dibuktikan
+        # berasal dari deskripsi yang sama.
+        "vision_cache": vision_cache.provenance(),
+
         "extraction_reports": reports,
         "degraded_documents": sorted(degraded),
         "n_degraded_documents": len(degraded),
