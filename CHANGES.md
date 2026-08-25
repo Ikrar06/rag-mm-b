@@ -669,3 +669,212 @@ terdegradasi (satu fallback hi_res→fast, satu halaman gagal OCR).
 **Belum diverifikasi tanpa korpus:** apakah `partition_pdf` benar-benar mengisi
 `coordinates` sehingga `bbox` tidak selalu null, dan berapa proporsi dokumen
 nyata yang jatuh ke fallback.
+
+---
+---
+
+# TAHAP 4 — simpan gambar dan images.jsonl
+
+## Keputusan sadar: `section` ikut dikecualikan dari embedding
+
+Pengukuran pada dokumen sintetis berstruktur realistis — berapa persen chunk yang
+nilai `section`-nya sudah muncul di dalam `text_content`:
+
+| element_type | chunk | section ada di text | share token | ganda? |
+|---|---:|---:|---:|---|
+| ImageDescription | 4 | **100%** | 46% | ya, 2× |
+| Table | 3 | **100%** | 43% | ya, 2× |
+| NarrativeText | 19 | 21% | 7% | sebagian |
+
+100% pada tabel dan gambar bersifat **struktural**, bukan kebetulan: prefix
+`## {section}` dipasang tanpa syarat pada keduanya. Chunk teks hanya membawanya
+pada chunk pertama tiap section (lewat `# {title}`).
+
+Sesudah `section` dikecualikan:
+
+| element_type | share sebelum | share sesudah |
+|---|---:|---:|
+| ImageDescription | 46% (2×) | **27% (1×)** |
+| Table | 43% (2×) | **25% (1×)** |
+| NarrativeText | 7% | **1%** |
+
+**Alasan utama bukan angka di atas.** Di bawah konfigurasi lama, `text_content`
+di `chunks.jsonl` **bukan** string yang divektorkan — yang divektorkan adalah
+`"section: <nilai>\n\n<text>"`. Dataset lapis 2 yang dipublikasikan karenanya
+tidak cukup untuk mereproduksi index, dan itu bertentangan langsung dengan fungsi
+lapis 2 menurut deck: *"menghindarkan pihak lain dari harus mereplikasi pipeline
+ekstraksi"*. Sekarang `embedded_text_shape` = `<text_content>`.
+
+Alasan kedua: bobot ganda jatuh persis pada `Table` dan `ImageDescription` — dua
+strata yang justru diteliti — sehingga artefaknya tidak dapat dipisahkan dari
+efek strategi indexing saat analisis.
+
+**BIAYA YANG DITERIMA.** Chunk teks kedua dan seterusnya dalam satu section
+kehilangan sinyal `section` di ruang vektor. **Peran `NEIGHBOR_EXPANSION` menjadi
+lebih besar daripada konfigurasi lama** — `NEIGHBOR_EXPANSION_ENABLED`,
+`NEIGHBOR_EXPANSION_RADIUS`, dan `MAX_EXPANDED_CHUNKS` naik kepentingannya dan
+wajib identik antar fork.
+
+Konstanta `NON_SEMANTIC_METADATA_KEYS` diganti nama menjadi
+`EMBED_EXCLUDED_METADATA_KEYS`: nama lama menjadi kontradiktif karena `section`
+justru semantik dan dikecualikan atas alasan berbeda. Alias lama dipertahankan.
+
+## Env var baru
+
+| Nama | Default | Efek |
+|---|---|---|
+| `INDEX_PERSIST_IMAGES` | `false` | Tulis gambar hasil ekstraksi ke `IMAGES_DIR` |
+
+## Penulisan gambar
+
+`IMAGES_DIR` (`config.py:12`) sudah ada sejak awal dan diimpor `preprocessing`
+tapi tidak pernah dipakai. Sekarang dipakai.
+
+**Urutan yang diwajibkan:** `_persist_image_elements` berjalan **sebelum**
+`_describe_image_elements`. Gambar yang nanti dinilai `DEKORATIF` atau gagal
+dideskripsikan **tetap tersimpan** — strategi pembanding memvektorkan gambar
+aslinya, dan riset ini harus bisa menilai ulang tanpa mengulang ekstraksi PDF.
+
+**Tidak ada penyaringan ukuran.** Ukuran, dimensi, dan MIME dicatat supaya
+penyaringan dilakukan di hilir. `is_likely_informative` tetap fungsi mati tanpa
+pemanggil, dan `PDF_MIN_IMAGE_SIZE_KB` tetap tidak berefek — sengaja tidak
+dihidupkan.
+
+`sha256` dihitung atas bytes **asli, sebelum resize apa pun**: resize adalah
+re-encode lossy yang keluarannya bergantung versi Pillow, sehingga hash setelah
+resize tidak stabil antar lingkungan.
+
+### Tiga bug yang diperbaiki sekalian
+
+| Bug | Perbaikan |
+|---|---|
+| MIME di-hardcode `image/png` di jalur vLLM | `_detect_mime` membaca format sebenarnya; ekstensi berkas mengikutinya |
+| Cabang JPEG di `_resize_image_if_needed` tidak terjangkau (`img.resize()` tidak membawa `.format`) | Format dibaca **sebelum** resize; ditambah konversi RGB karena JPEG tidak mendukung alpha |
+| Respons kosong tidak menulis cache | Kini ditulis, sehingga gambar itu tidak dipanggilkan model berulang kali dalam satu proses |
+
+## Contoh hasil
+
+### Struktur direktori
+
+```
+data/images/sop-izin-ujian-online-v2/p2_img00.png    2787 bytes   800x600
+data/images/sop-izin-ujian-online-v2/p2_img01.jpg     757 bytes   120x60   <- logo kecil, TIDAK disaring
+data/images/sop-izin-ujian-online-v2/pNA_img00.png   1388 bytes   400x400  <- halaman tidak diketahui
+```
+
+Ekstensi mengikuti format asli — bukti perbaikan bug MIME.
+
+### `images.jsonl`
+
+```json
+{"image_id": "sop-izin-ujian-online-v2_p2_img00",
+ "document_id": "sop-izin-ujian-online-v2",
+ "page_number": 2,
+ "file_path": "images/sop-izin-ujian-online-v2/p2_img00.png",
+ "visual_type": null,
+ "structured_summary": null,
+ "narrative_summary": "Diagram alir pengajuan izin dengan simpul keputusan TOEFL…",
+ "sha256": "f34bd453947b77be…", "mime_type": "image/png",
+ "size_bytes": 2787, "width": 800, "height": 600,
+ "source_file": "sop_izin_ujian_2.pdf"}
+```
+
+Tujuh field pertama adalah skema lapis 2. Gambar yang tidak dideskripsikan tetap
+punya baris, dengan `narrative_summary: null`.
+
+### `images_review.csv` — 15 kolom
+
+```
+image_id, document_id, page_number, file_path, mime_type, size_kb, width, height,
+sha256, has_narrative, narrative_preview, source_file,
+visual_type, verdict, catatan_reviewer
+```
+
+`file_path` **relatif terhadap `images_root`** yang dicatat di
+`run_manifest.json`. `visual_type` diisi dengan salah satu dari empat enum:
+`flowchart` / `tabel_sebagai_gambar` / `formulir` / `figur_deskriptif`.
+
+`has_narrative` kosong menandai gambar yang **tidak** dideskripsikan — bisa
+karena `DEKORATIF`, vision mati, atau panggilan gagal. Gambarnya tetap ada dan
+tetap layak dianotasi.
+
+### Tautan chunk → gambar
+
+```
+sop-izin-ujian-online-v2_p2_c01 -> sop-izin-ujian-online-v2_p2_img00
+                                -> images/sop-izin-ujian-online-v2/p2_img00.png
+```
+
+`image_id` kini ada di `chunks.jsonl` dan `chunks_review.csv`, sehingga
+`chunks.jsonl` dapat di-join ke `images.jsonl` untuk stratifikasi lapis 1.
+
+## Implikasi jalur `fast` — tidak dikerjakan
+
+`_extract_fast` **tidak mengekstrak gambar sama sekali**: ia hanya memanggil
+`page.get_text()` per halaman dan menghasilkan satu element `NarrativeText`.
+Konsekuensinya, dokumen yang diproses lewat jalur `fast` **tidak akan punya satu
+baris pun di `images.jsonl`**, bahkan bila halamannya penuh diagram.
+
+Ini bertemu dengan dua hal yang sudah tercatat sebelumnya:
+- `detect_strategy` merutekan PDF hasil scan ke `fast` (ambang `> 1.0` strict,
+  halaman scan = tepat 1 gambar/halaman).
+- Fallback diam `hi_res` → `fast` membuat dokumen kehilangan gambar tanpa
+  peringatan — kini tercatat di `run_manifest.json`.
+
+**Keputusan riset sudah memaksa `hi_res`**, jadi ini tidak dikerjakan. Tetapi
+`PDF_EXTRACTION_STRATEGY=hi_res` menjadi wajib, bukan opsional: dengan `auto`,
+sebagian dokumen akan senyap kehilangan seluruh gambarnya. Periksa
+`degraded_documents` di manifest sebelum memakai hasil run mana pun.
+
+## Yang TIDAK dikerjakan di tahap ini
+
+Kontrak `describe_image` bervarian untuk `structured_summary` — butuh
+perancangan prompt tersendiri. Sampai itu ada, `structured_summary` tetap `null`
+di seluruh baris `images.jsonl`, dan hanya varian naratif (b) yang dapat
+direplikasi dari dataset.
+
+## Tambahan untuk peneliti fork lain
+
+```
+INDEX_PERSIST_IMAGES=true
+PDF_EXTRACTION_STRATEGY=hi_res
+```
+
+Ditambah konsekuensi keputusan `section`:
+
+```
+NEIGHBOR_EXPANSION_ENABLED=true
+NEIGHBOR_EXPANSION_RADIUS=<nilai yang sama>
+MAX_EXPANDED_CHUNKS=<nilai yang sama>
+```
+
+Ketiganya naik kepentingannya karena chunk teks tengah-section kini tanpa sinyal
+`section` di ruang vektor.
+
+**`document_registry.json` yang sama menjadi lebih kritis lagi**: `document_id`
+kini menentukan bukan hanya `chunk_id` tetapi juga `image_id` dan nama direktori
+gambar di disk. Fork dengan registry berbeda menghasilkan struktur direktori
+berbeda, dan `gold_image_ids` tidak akan cocok.
+
+## Verifikasi (Tahap 4)
+
+Diuji dengan gambar sintetis nyata (PNG 800×600, JPEG 120×60, satu berhalaman
+tidak diketahui) yang melewati `_persist_image_elements` dan `_chunk_elements`
+yang sama:
+
+```bash
+CHUNK_DUMP_DIR=/tmp/dump INDEX_PERSIST_IMAGES=true \
+INDEX_EXCLUDE_METADATA_FROM_EMBED=true INDEX_MAX_CHUNK_TOKENS=350 \
+INDEX_MIN_CHUNK_TOKENS=8 INDEX_DISABLE_NODE_PARSER=true \
+INDEX_STRUCTURAL_METADATA=true INDEX_TABLES_AS_OWN_CHUNKS=true \
+PDF_EXTRACTION_STRATEGY=hi_res \
+python -m scripts.index_documents
+```
+
+Hasil: 3 gambar tersimpan (termasuk logo 757 byte yang tidak disaring), ekstensi
+mengikuti format asli, 1 dari 3 punya `narrative_summary`, tautan chunk→gambar
+dapat di-join. Regresi probe tetap 5/9 (default mati) dan 0/9 (flag riset penuh).
+
+**Belum diverifikasi tanpa korpus:** apakah `partition_pdf` benar-benar
+menghasilkan element `Image` dengan `image_base64` terisi pada korpus ini, dan
+berapa proporsi gambar nyata yang dinilai `DEKORATIF`.
