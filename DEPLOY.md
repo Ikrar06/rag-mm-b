@@ -210,6 +210,23 @@ for k in ('INDEX_EXCLUDE_METADATA_FROM_EMBED','INDEX_MAX_CHUNK_TOKENS','INDEX_MI
 
 Harus persis: `True 350 8 True True True True 'hi_res'`.
 
+Lebih baik lagi, `RESEARCH_MODE=true` di `.env.research` membuat indexing
+**mencetak nilai efektif tiap flag ke stdout saat start** dan **menolak run**
+bila ada yang tidak sesuai daftar beku di `CHANGES.md`. Uji tanpa korpus:
+
+```bash
+python -c "
+import backend.services.indexing as ix
+ix.print_effective_flags()
+ix._check_research_mode(); ix._check_flag_consistency()
+ix._check_image_strategy(); ix._check_vision_reachable()
+print('SEMUA GERBANG LOLOS')"
+```
+
+Kalau `.env` salah lokasi, blok yang tercetak akan menunjukkan nilai default
+dengan penanda `<-- BEDA`, dan `_check_research_mode` menolak sebelum satu PDF
+pun disentuh.
+
 ### `QDRANT_COLLECTION` tidak ada di `.env` — disengaja
 
 Kirim eksplisit setiap run:
@@ -424,6 +441,36 @@ env -u INDEX_EXCLUDE_METADATA_FROM_EMBED -u INDEX_MAX_CHUNK_TOKENS \
 
 ---
 
+## Langkah 8b — model vision di Ollama
+
+Deskripsi gambar memakai Ollama (vLLM butuh Docker). Kondisi server yang
+terverifikasi: `ollama` di `/usr/local/bin/ollama`, server hidup di
+`localhost:11434`, model `qwen3-vl:8b` sudah ditarik.
+
+```bash
+curl -s http://127.0.0.1:11434/api/tags | python -m json.tool | grep -E '"(name|digest)"'
+```
+
+Harus memuat `qwen3-vl:8b` beserta digest `sha256:...` penuh.
+
+> **`qwen2.5:7b` milik pengguna lain.** Jangan `ollama rm`, jangan `ollama pull`
+> ulang. `ollama pull` pada tag yang sama dapat mengganti bobot tanpa mengubah
+> nama tag — itu akan mengubah deskripsi gambar di tengah eksperimen.
+
+Deskripsi gambar adalah **isi chunk**, jadi seluruh parameternya wajib identik
+antara run varian (b) dan (c). `.env.research` sudah menyetelnya:
+`VISION_MODEL=qwen3-vl:8b`, `VISION_TEMPERATURE=0`, `VISION_MAX_TOKENS=300`,
+`RESEARCH_VISION_SEED=1337`, `VISION_NUM_CTX=8192`.
+
+`VISION_NUM_CTX` wajib eksplisit: tanpa itu Ollama memotong konteks ke 4096
+token secara senyap, dan satu gambar saja bisa menghabiskannya.
+
+Setelah indexing, periksa `models.vision.digest_resolved` di
+`run_manifest.json`. `false` berarti digest tidak terbaca dari `/api/tags` saat
+run itu — bobot yang menghasilkan deskripsi tidak dapat dibuktikan setelahnya.
+
+---
+
 ## Langkah 9 — unduh model
 
 ```bash
@@ -507,6 +554,9 @@ Setelah selesai, periksa `run_manifest.json` di `data/dumps/<run_id>/`:
 | `provenance.qdrant_url` | port yang benar |
 | `provenance.qdrant_server_version_detected` | sama dengan `_declared` |
 | `provenance.document_registry_sha256` | sama dengan peneliti fork lain |
+| `research_flags.RESEARCH_MODE` | `true` |
+| `models.vision.digest_resolved` | `true` |
+| `models.vision.vision_model_digest` | sama dengan peneliti fork lain |
 
 Bandingkan blok `chunking`, `research_flags`, `hardcoded_constants`, dan
 `models` dengan manifest peneliti fork lain — semuanya harus identik. Daftar
