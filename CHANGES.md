@@ -954,6 +954,10 @@ INDEX_TABLES_AS_OWN_CHUNKS=true
 INDEX_PERSIST_IMAGES=true
 PDF_EXTRACTION_STRATEGY=hi_res
 
+# ── Cache deskripsi gambar: ARTEFAK, bagikan berkasnya, jangan dihapus ──
+VISION_CACHE_ENABLED=true
+VISION_CACHE_PATH=~/rag_mm_b_shared/vision_cache.db
+
 # ── Tahap 4B: deskripsi gambar — WAJIB IDENTIK antara varian (b) dan (c) ──
 LLM_SUPPORTS_VISION=true
 VISION_MODEL=qwen3-vl:8b
@@ -998,6 +1002,7 @@ MAX_EXPANDED_CHUNKS=30
 | Item | Kenapa |
 |---|---|
 | `data/document_registry.json` | `document_id` menentukan `chunk_id`, `image_id`, **dan** nama direktori gambar di disk. Registry berbeda → `gold_chunk_ids` dan `gold_image_ids` tidak cocok. **Bagikan berkasnya, jangan buat ulang.** |
+| **Cache deskripsi gambar** (`vision_cache.db`) | Menyusul `document_registry.json` sebagai artefak yang **harus dibagikan berkasnya**. Isinya adalah sumber `narrative_summary`, yang merupakan isi chunk. Cache berbeda → deskripsi berbeda → membandingkan model, bukan strategi. **Tidak boleh dihapus di tengah eksperimen** — lihat konsekuensinya di bawah |
 | `RERANKER_PROVIDER` | `SentenceTransformerRerank` membaca `MetadataMode.EMBED`, jalur TEI tidak — keduanya melihat teks berbeda |
 | Versi paket | `llama-index-core`, `tiktoken`, `unstructured`, `pymupdf` — perilaku splitter dan ekstraksi bergantung padanya |
 | Prompt deskripsi gambar | `image_description_prompt_sha256` di manifest harus sama |
@@ -1133,55 +1138,106 @@ bukan ID pendek yang tampil di `ollama list`. Tag bergerak setelah `ollama pull`
 digest tidak. Bila endpoint tidak terjangkau, digest `null` dan
 `models.vision.digest_resolved` di manifest bernilai `false` — bukan diam.
 
-## Cache persisten — usulan, BELUM dikerjakan
+## Cache persisten — DIKERJAKAN
 
-`_description_cache` proses-lokal dan hilang antar proses, sehingga re-index
-memanggil model lagi dan membuka peluang verdict berbeda. Suhu 0 menurunkan
-risikonya tapi tidak menolkannya (lihat bagian determinisme).
-
-**Kunci yang diusulkan** — semua komponennya sudah tersedia:
+SQLite di lokasi yang dapat dibagikan. Kunci:
 
 ```
-sha256(bytes gambar ASLI) + varian + prompt_sha256 + vision_model_digest
+sha256( sha256(bytes gambar ASLI) | variant | prompt_sha256 | vision_model_digest )
 ```
 
-`sha256` gambar sudah dihitung di Tahap 4 sebelum resize, jadi tidak ada
-pekerjaan baru untuk itu.
+Hash gambar dihitung **sebelum resize**, jadi tidak bergantung versi Pillow.
 
-**Tiga opsi lokasi:**
+**Varian (b) dan (c) berbagi cache.** `narrative_summary` yang sama wajib dipakai
+keduanya supaya perbedaan skor berasal dari strategi indexing, bukan dari dua
+panggilan model yang kebetulan berbeda. Komponen `variant` membedakan **jenis
+ringkasan**, bukan run.
 
-| Opsi | Konsekuensi |
+### Yang di-cache dan yang tidak
+
+| Verdict | Di-cache? | Alasan |
+|---|---|---|
+| `described` | ya | Keputusan model |
+| `decorative` | ya | Keputusan model — `DEKORATIF` |
+| `unclear` | ya | Keputusan model — `TIDAK JELAS` |
+| timeout / HTTP error | **tidak** | Transient |
+| respons kosong | **tidak** | Transient |
+| bentuk respons tak terduga | **tidak** | Transient |
+
+`image_describer` sebelumnya menulis string kosong untuk `DEKORATIF` sementara
+respons kosong tidak menulis sama sekali — dua hal berbeda dengan representasi
+yang sama. `_classify` memisahkannya eksplisit; cache persisten **tidak
+mewarisi** ambiguitas itu.
+
+Kalau kegagalan transient ikut masuk, satu timeout menjadi permanen: gambar itu
+hilang dari seluruh eksperimen dan hanya bisa dipulihkan dengan menghapus cache
+— yang sendirinya membatalkan anotasi gold.
+
+Terverifikasi dengan stub enam kasus:
+
+| | run 1 | run 2 |
+|---|---|---|
+| 3 verdict model | disimpan | **HIT**, model tidak dipanggil |
+| 3 kegagalan transient | ditolak | **MISS**, model dicoba ulang |
+
+### Provenance di manifest
+
+```json
+"vision_cache": {
+  "enabled": true, "path": "~/rag_mm_b_shared/vision_cache.db",
+  "readonly": false, "entries_total": 1284,
+  "content_sha256": "eec704e85deca0ac...",
+  "verdicts": {"described": 1100, "decorative": 150, "unclear": 34},
+  "hit": 1200, "miss": 84, "stored": 84, "skipped_failure": 3
+}
+```
+
+`content_sha256` meng-hash **baris terurut**, bukan byte berkas — bebas dari
+halaman bebas SQLite dan jurnal WAL, dan tidak berubah saat proses lain menulis
+entri yang tidak relevan. Dua cache dengan hash sama memuat deskripsi yang sama
+persis.
+
+### Gerbang
+
+`RESEARCH_MODE=true` menolak run bila cache memuat konfigurasi vision yang
+berbeda dari yang sedang dipakai. Kunci sudah memuat digest dan hash prompt, jadi
+entri asing tidak akan pernah dikembalikan sebagai hit — yang ditolak masalah
+lain: cache dengan lebih dari satu konfigurasi berarti sebagian chunk berasal
+dari model A dan sebagian dari model B.
+
+| Kondisi | Hasil |
 |---|---|
-| **A. SQLite** `data/vision_cache.db` | Satu berkas, transaksional, aman untuk akses berulang. Perlu skema kecil. Mudah di-share antar fork lewat salinan berkas |
-| **B. JSONL append-only** `data/vision_cache.jsonl` | Paling sederhana, dapat dibaca manusia, mudah di-diff. Perlu dimuat seluruhnya ke memori saat start; tidak aman bila dua proses menulis bersamaan |
-| **C. Satu berkas per kunci** `data/vision_cache/<sha>.json` | Aman untuk konkurensi tanpa penguncian. Menghasilkan puluhan ribu berkas kecil; berat untuk `rsync` dan kuota inode |
+| `RESEARCH_MODE=false` | lolos |
+| `VISION_CACHE_ENABLED=false` | lolos |
+| Cache satu konfigurasi, cocok | lolos |
+| Cache memuat konfigurasi lain | **ditolak** |
 
-Saya condong ke **A**: mesin dipakai bersama, dan dua proses indexing bersamaan
-adalah skenario nyata yang B tangani buruk.
+### Lokasi dan akses bersama
 
-**Interaksi dengan pemisahan varian (b) dan (c)** — ini bagian yang menentukan:
+Default `~/rag_mm_b_shared/vision_cache.db` — di **luar clone mana pun** supaya
+dapat dibagikan. Tiga opsi berbagi, dengan konsekuensi izinnya:
 
-Varian **berbagi** cache, tidak dipisah. Alasannya: `narrative_summary` yang
-sama harus dipakai kedua varian agar perbedaan skor berasal dari strategi
-indexing, bukan dari dua panggilan model yang kebetulan berbeda. Komponen
-`varian` di kunci hanya membedakan **jenis ringkasan** (naratif vs terstruktur),
-bukan run.
+| Opsi | Cara | Konsekuensi |
+|---|---|---|
+| **A. Satu pemilik menulis, pihak kedua read-only** | Pemilik menjalankan indexing gambar lebih dulu; pihak kedua menunjuk `VISION_CACHE_PATH` ke berkas yang sama, yang bagi dia tidak dapat ditulis | **Paling sederhana tanpa sudo.** Sudah didukung: modul mendeteksi berkas tak-dapat-ditulis, membuka read-only, dan mencatat WARNING. Hit tetap dipakai; gambar yang belum ada di cache dipanggilkan model tiap run oleh pihak kedua |
+| **B. Direktori group-writable** | `chmod 2775` pada direktori bersama, kedua user di grup yang sama, `umask 002` | Butuh grup bersama yang sudah ada (`users` tersedia) dan disiplin `umask`. SQLite WAL membuat berkas `-wal` dan `-shm` yang juga perlu izin tulis. Tanpa sudo, membuat grup baru tidak mungkin |
+| **C. Salin berkas** | Pemilik menjalankan indexing, lalu `cp` cache ke home pihak kedua | Tidak butuh izin bersama sama sekali. Tapi kedua salinan bisa melenceng; `content_sha256` di manifest yang membuktikan keduanya sama |
 
-Konsekuensinya:
+**Rekomendasi: A**, dengan **C sebagai cadangan** bila izin read pun bermasalah.
+B menuntut koordinasi `umask` yang mudah terlewat, dan kegagalannya senyap —
+berkas tertulis dengan izin salah baru ketahuan saat pihak kedua gagal membaca.
 
-- Varian (c) memakai `narrative_summary` dari cache yang sama dengan (b), plus
-  `structured_summary` miliknya sendiri.
-- Cache **wajib dibagikan** antar peneliti fork, sama seperti
-  `document_registry.json`. Cache berbeda berarti deskripsi berbeda berarti
-  membandingkan model, bukan strategi.
-- Mengganti `VISION_MODEL` atau prompt **membatalkan seluruh cache** secara
-  otomatis, karena keduanya ada di kunci. Itu perilaku yang benar: hasil dari
-  model lama tidak boleh bercampur dengan model baru.
-- Cache **tidak boleh** dihapus di tengah eksperimen. Menghapusnya berarti
-  memanggil model ulang, dan verdict yang berbeda menggeser seluruh penomoran
-  chunk pada dokumen itu.
+### Cara memeriksa isinya
 
-Menunggu keputusanmu sebelum dikerjakan.
+```bash
+python scripts/inspect_vision_cache.py                    # ringkasan
+python scripts/inspect_vision_cache.py --sample 5         # contoh deskripsi
+python scripts/inspect_vision_cache.py --image-sha <sha>  # telusuri satu gambar
+```
+
+Read-only, tidak memanggil model. Menampilkan jumlah entri, sebaran verdict,
+kombinasi (model, digest, prompt) beserta rentang waktu penulisannya, dan hash
+isi untuk dicocokkan dengan manifest.
 
 ## Tambahan untuk peneliti fork lain
 
@@ -1202,3 +1258,72 @@ sesudah.
 Bandingkan `models.vision` di `run_manifest.json` kedua fork — termasuk
 `vision_model_digest`. Digest yang berbeda berarti bobot berbeda, walau nama
 tag-nya sama.
+
+---
+---
+
+# CATATAN METODOLOGIS UNTUK PAPER
+
+Dua hal yang perlu dinyatakan eksplisit di bagian metode, karena keduanya
+membatasi klaim reproduksibilitas yang dapat dibuat.
+
+## 1. Batas determinisme deskripsi gambar
+
+Deskripsi gambar dihasilkan LLM multimodal dan menjadi **isi chunk yang
+diindeks** — bukan metadata. Nondeterminisme di sana mengubah teks yang
+divektorkan, dan lebih jauh mengubah **jumlah chunk**: verdict `DEKORATIF`
+membuat element dibuang, sehingga `chunk_index`, `chunk_id`, dan `text_sha`
+seluruh dokumen sesudahnya bergeser.
+
+**Yang dikendalikan.** `temperature=0` dengan `seed` tetap menghilangkan variasi
+dari **sampling** — pengambilan token menjadi greedy, bukan acak. Dengan model,
+bobot, prompt, gambar, mesin, dan build runtime yang sama, keluarannya konsisten
+antar-panggilan.
+
+**Yang tetap bisa bervariasi:**
+
+- **Non-determinisme numerik GPU.** Reduksi floating-point pada kernel batch
+  tidak asosiatif; urutan penjumlahan dapat berbeda antar-panggilan tergantung
+  ukuran batch dan penjadwalan. Selisih sekecil itu jarang mengubah token
+  terpilih — tapi **bisa** saat dua kandidat teratas nyaris seri. Pada keputusan
+  `DEKORATIF` vs bukan, satu token yang berubah mengubah jumlah chunk.
+- **Bobot berganti di balik tag yang sama.** `ollama pull` pada tag yang sama
+  dapat mengganti bobot tanpa mengubah namanya. Karena itu `vision_model_digest`
+  (sha256 penuh dari `/api/tags`, bukan ID pendek) dicatat per gambar.
+- **Versi runtime.** Upgrade Ollama dapat mengubah kernel, kuantisasi, atau
+  penanganan `num_ctx`.
+- **Panjang konteks efektif.** `num_ctx` yang berbeda mengubah jalur komputasi
+  walau prompt sama. Karena itu ia disetel eksplisit, bukan dibiarkan default.
+
+**Klaim yang dapat dipertahankan:** suhu 0 menghilangkan sumber variasi terbesar
+dan satu-satunya yang dapat dikendalikan dari sisi klien. Pipeline **tidak**
+deterministik bit-per-bit.
+
+**Yang menutup sisanya:** cache persisten. Setelah sebuah gambar dideskripsikan
+sekali, seluruh run berikutnya memakai teks yang sama tanpa memanggil model —
+menghilangkan variasi lintas-run sepenuhnya untuk gambar yang sudah ada di
+cache. Itulah sebabnya cache berstatus artefak eksperimen, bukan optimasi.
+
+## 2. Konsekuensi menghapus cache
+
+Cache **tidak boleh dihapus di tengah eksperimen**. Rantai akibatnya:
+
+1. Gambar yang entrinya hilang **dipanggilkan model ulang**.
+2. Verdict dapat berbeda karena non-determinisme di atas — terutama pada gambar
+   yang ambigu antara `DEKORATIF` dan deskripsi nyata.
+3. Verdict yang berubah mengubah **jumlah element**, karena element `Image`
+   tanpa deskripsi dibuang.
+4. Jumlah element yang berubah **menggeser `chunk_index`** seluruh dokumen itu,
+   dan karenanya `chunk_id`.
+5. **Seluruh anotasi gold yang menempel pada `chunk_id` menjadi tidak valid**
+   untuk dokumen tersebut — `gold_chunk_ids` menunjuk chunk yang berbeda isinya.
+
+`text_sha` menyediakan jalur pemulihan parsial: anotasi dapat dipetakan ulang ke
+chunk dengan hash isi yang sama. Tapi chunk yang isinya memang berubah — yaitu
+chunk deskripsi gambar itu sendiri, dan chunk sesudahnya yang bergeser
+overlap-nya — tidak dapat dipulihkan otomatis.
+
+**Karena itu:** perlakukan `vision_cache.db` seperti korpus PDF-nya sendiri.
+Cadangkan sebelum perubahan konfigurasi apa pun, dan cocokkan
+`vision_cache.content_sha256` di `run_manifest.json` antar fork sebelum
+membandingkan skor.
