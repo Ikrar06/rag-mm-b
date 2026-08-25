@@ -826,6 +826,50 @@ Ini bertemu dengan dua hal yang sudah tercatat sebelumnya:
 sebagian dokumen akan senyap kehilangan seluruh gambarnya. Periksa
 `degraded_documents` di manifest sebelum memakai hasil run mana pun.
 
+## Penegakan: korpus gambar tidak boleh diam-diam tidak lengkap
+
+Dua lapis, karena menolak `auto` saja tidak cukup.
+
+**Lapis 1 — `_check_image_strategy`, sebelum run dimulai.** Menolak
+`PDF_EXTRACTION_STRATEGY` selain `hi_res` saat `INDEX_PERSIST_IMAGES` aktif.
+
+`fast` ikut ditolak: mode kegagalannya identik dan lebih parah (seluruh korpus,
+bukan sebagian), jadi membiarkannya lolos sementara `auto` ditolak akan tidak
+koheren.
+
+**Lapis 2 — `_check_no_silent_fallback`, di akhir run.** Fallback `hi_res` →
+`fast` terjadi saat runtime, setelah pemeriksaan konfigurasi lewat. Run
+digagalkan dengan daftar dokumennya, bukan sekadar dicatat di
+`degraded_documents` — catatan yang harus diperiksa manual pasti suatu saat
+tidak diperiksa.
+
+**Urutan gerbang disengaja:**
+
+```
+konstruksi Document -> tulis dump -> GERBANG -> _embed_and_store
+                        (bukti          (gagal)    (tidak tercapai)
+                       tersimpan)
+```
+
+Dump ditulis lebih dulu supaya `run_manifest.json` dan `images.jsonl` ada untuk
+diperiksa, dan gerbang berjalan sebelum embedding supaya tidak ada yang masuk
+Qdrant.
+
+**Tabel kebenaran, terverifikasi:**
+
+| Konfigurasi | Lapis 1 | Lapis 2 |
+|---|---|---|
+| `PERSIST_IMAGES=false`, strategy apa pun | lolos | lolos |
+| `PERSIST_IMAGES=true`, `strategy=auto` | **ditolak** | — |
+| `PERSIST_IMAGES=true`, `strategy=fast` | **ditolak** | — |
+| `PERSIST_IMAGES=true`, `strategy=hi_res`, tanpa fallback | lolos | lolos |
+| `PERSIST_IMAGES=true`, `strategy=hi_res`, ada fallback | lolos | **ditolak** |
+| ditambah `ALLOW_INCOMPLETE_IMAGE_CORPUS=true` | lolos | lolos |
+
+Escape hatch `ALLOW_INCOMPLETE_IMAGE_CORPUS` default `false` dan harus disetel
+sadar. Nilainya tercatat di `run_manifest.json`, sehingga keputusan menerima
+korpus tidak lengkap terbawa bersama datanya.
+
 ## Yang TIDAK dikerjakan di tahap ini
 
 Kontrak `describe_image` bervarian untuk `structured_summary` — butuh
@@ -878,3 +922,92 @@ dapat di-join. Regresi probe tetap 5/9 (default mati) dan 0/9 (flag riset penuh)
 **Belum diverifikasi tanpa korpus:** apakah `partition_pdf` benar-benar
 menghasilkan element `Image` dengan `image_base64` terisi pada korpus ini, dan
 berapa proporsi gambar nyata yang dinilai `DEKORATIF`.
+
+---
+---
+
+# DAFTAR FINAL FLAG RISET — BEKU
+
+> Daftar ini yang dikirim ke peneliti fork lain. **Tidak diubah lagi setelah
+> eksperimen dimulai.** Mengubah salah satunya menuntut re-index penuh dan
+> membatalkan seluruh anotasi gold yang menunjuk `chunk_id` atau `image_id`.
+
+## Salin apa adanya ke `.env`
+
+```bash
+# ── Tahap 1: identitas chunk & pemecahan ganda ──
+INDEX_EXCLUDE_METADATA_FROM_EMBED=true
+INDEX_MAX_CHUNK_TOKENS=350
+INDEX_MIN_CHUNK_TOKENS=8
+INDEX_DISABLE_NODE_PARSER=true
+
+# ── Tahap 2: identitas berlapis tiga & metadata struktural ──
+INDEX_STRUCTURAL_METADATA=true
+INDEX_TABLES_AS_OWN_CHUNKS=true
+
+# ── Tahap 4: gambar ──
+INDEX_PERSIST_IMAGES=true
+PDF_EXTRACTION_STRATEGY=hi_res
+
+# ── Nilai lama yang naik kepentingannya, jangan diubah ──
+CHUNK_SIZE=512
+CHUNK_OVERLAP=128
+PDF_TABLE_MAX_CHARS=2000
+NEIGHBOR_EXPANSION_ENABLED=true
+NEIGHBOR_EXPANSION_RADIUS=2
+MAX_EXPANDED_CHUNKS=30
+
+# ── JANGAN disetel kecuali sadar menerima korpus tidak lengkap ──
+# ALLOW_INCOMPLETE_IMAGE_CORPUS=false
+
+# ── Observasi saja, boleh berbeda antar fork ──
+# CHUNK_DUMP_DIR=data/dumps
+```
+
+## Alasan tiap nilai
+
+| Flag | Nilai | Kenapa nilai itu | Kalau berbeda antar fork |
+|---|---|---|---|
+| `INDEX_EXCLUDE_METADATA_FROM_EMBED` | `true` | Nol metadata divektorkan; `text_content` = string yang di-embed, sehingga dataset lapis 2 cukup untuk mereproduksi index | Teks yang divektorkan berbeda → seluruh skor tidak sebanding |
+| `INDEX_MAX_CHUNK_TOKENS` | `350` | `512 − 132` (metadata terburuk terencana) `= 380`; 350 memberi sisa aman 30 token | Pembagian chunk berbeda |
+| `INDEX_MIN_CHUNK_TOKENS` | `8` | Kalimat asli terpendek yang terukur = 8 token; judul berkisar 6–18 | Jumlah chunk berbeda → `chunk_index` bergeser |
+| `INDEX_DISABLE_NODE_PARSER` | `true` | `1 Document = 1 node`; tanpa ini `chunk_id` bukan kunci unik, dan dump tidak setia | `chunk_id` bertabrakan |
+| `INDEX_STRUCTURAL_METADATA` | `true` | Menghidupkan `chunk_id`, `document_id`, `text_sha`, `raw_html`, `bbox`, `image_id` | Tidak ada identitas untuk `gold_chunk_ids` |
+| `INDEX_TABLES_AS_OWN_CHUNKS` | `true` | Tiap tabel 1:1 dengan satu chunk beserta `raw_html`-nya | **Menggeser batas chunk teks di seluruh dokumen**, bukan hanya di sekitar tabel |
+| `INDEX_PERSIST_IMAGES` | `true` | `images.jsonl` dan `gold_image_ids` mustahil tanpanya | Tidak ada gambar untuk dianotasi |
+| `PDF_EXTRACTION_STRATEGY` | `hi_res` | Jalur `fast` tidak mengekstrak gambar sama sekali; **ditegakkan di kode** | Ditolak sebelum run dimulai |
+| `CHUNK_SIZE` / `CHUNK_OVERLAP` | `512` / `128` | Ambang flush dan panjang overlap di `_chunk_elements` | Pembagian chunk berbeda |
+| `PDF_TABLE_MAX_CHARS` | `2000` | Karena tabel tidak pernah dipecah, ini **satu-satunya batas atas ukuran chunk** | Ukuran chunk tabel berbeda |
+| `NEIGHBOR_EXPANSION_*`, `MAX_EXPANDED_CHUNKS` | `true` / `2` / `30` | Naik kepentingannya sejak `section` dikecualikan: chunk teks tengah-section kini tanpa sinyal `section` di ruang vektor | Konteks yang sampai ke LLM berbeda |
+
+## Yang WAJIB sama tapi bukan env var
+
+| Item | Kenapa |
+|---|---|
+| `data/document_registry.json` | `document_id` menentukan `chunk_id`, `image_id`, **dan** nama direktori gambar di disk. Registry berbeda → `gold_chunk_ids` dan `gold_image_ids` tidak cocok. **Bagikan berkasnya, jangan buat ulang.** |
+| `RERANKER_PROVIDER` | `SentenceTransformerRerank` membaca `MetadataMode.EMBED`, jalur TEI tidak — keduanya melihat teks berbeda |
+| Versi paket | `llama-index-core`, `tiktoken`, `unstructured`, `pymupdf` — perilaku splitter dan ekstraksi bergantung padanya |
+| Prompt deskripsi gambar | `image_description_prompt_sha256` di manifest harus sama |
+
+## Cara memverifikasi kesesuaian antar fork
+
+Bandingkan `run_manifest.json` dari kedua fork. **Harus identik** pada blok
+`chunking`, `research_flags`, `hardcoded_constants`, `models`, dan
+`provenance.document_registry_sha256`.
+
+**Boleh berbeda:** `run_id`, `created_at`, `n_chunks`, `n_images`,
+`provenance.git_commit`, `provenance.qdrant_collection` (harus berbeda),
+`environment.platform`.
+
+**Harus `false`:** `research_flags.ALLOW_INCOMPLETE_IMAGE_CORPUS`.
+**Harus `true`:** `dump_faithful`.
+**Harus kosong:** `degraded_documents`.
+
+## Prasyarat sebelum indexing pertama
+
+1. Jalankan ulang `scripts/probe_rechunk.py` di venv target **Python 3.12** dan
+   bandingkan angkanya (lihat peringatan di awal dokumen ini).
+2. Isi `data/document_registry.json` — `python scripts/scaffold_document_registry.py`
+   lalu isi `document_id` tiap berkas.
+3. Sepakati berkas registry itu dengan peneliti fork lain sebelum salah satu
+   mulai meng-index.
