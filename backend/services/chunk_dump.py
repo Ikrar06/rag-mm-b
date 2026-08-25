@@ -264,6 +264,21 @@ def _git_commit() -> str | None:
         return None
 
 
+def _qdrant_detected_version() -> str | None:
+    """Versi server Qdrant yang benar-benar berjalan, ditanya langsung.
+
+    Nilai yang dideklarasikan lewat QDRANT_SERVER_VERSION bisa melenceng dari
+    yang sungguh berjalan; keduanya dicatat supaya selisihnya terlihat.
+    """
+    try:
+        import httpx
+        r = httpx.get(config.QDRANT_URL.rstrip("/") + "/", timeout=5)
+        r.raise_for_status()
+        return r.json().get("version")
+    except Exception:
+        return None
+
+
 def _registry_sha() -> str | None:
     try:
         path = Path(config.DOCUMENT_REGISTRY_PATH)
@@ -394,7 +409,10 @@ def build_manifest(run_id: str, reports: dict[str, dict], n_chunks: int,
         # ── Provenance ──
         "provenance": {
             "git_commit": _git_commit(),
+            "qdrant_url": config.QDRANT_URL,          # port ikut terbawa di sini
             "qdrant_collection": config.QDRANT_COLLECTION,
+            "qdrant_server_version_declared": config.QDRANT_SERVER_VERSION or None,
+            "qdrant_server_version_detected": _qdrant_detected_version(),
             "document_registry_path": str(config.DOCUMENT_REGISTRY_PATH),
             "document_registry_sha256": _registry_sha(),
         },

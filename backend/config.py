@@ -72,6 +72,14 @@ RERANKER_MODEL_NAME = RERANKER_MODEL
 # =============================================================================
 
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
+
+# Versi server Qdrant yang DIHARAPKAN. Kosong = tidak diperiksa.
+#
+# Dicatat di run_manifest.json bersama versi yang benar-benar terdeteksi dari
+# server, supaya selisihnya terlihat. Port ikut terbawa lewat QDRANT_URL.
+# Tanpa ini, run yang dijalankan sebelum dan sesudah Qdrant dipindah port atau
+# di-upgrade tidak dapat dibedakan dari artefaknya.
+QDRANT_SERVER_VERSION = os.getenv("QDRANT_SERVER_VERSION", "")
 QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", os.getenv("QDRANT_COLLECTION_NAME", "unhas_docs"))
 QDRANT_COLLECTION_NAME = QDRANT_COLLECTION  # backward-compat
 
