@@ -1,28 +1,41 @@
 """Registry pemetaan nama berkas PDF -> document_id.
 
-Skema dataset riset menuntut `document_id` berupa slug yang memuat penanda versi
-(contoh: "sop-izin-ujian-online-v2"). Nama berkas tidak cukup: sufiks angka pada
-nama berkas tidak dapat dibedakan antara nomor urut dan nomor versi, dan menebak
-versi dari nama berkas akan menghasilkan identitas yang salah secara diam-diam.
+`document_id` menentukan `chunk_id`, `image_id`, DAN nama direktori gambar di
+disk sekaligus. Karena itu registry diperlakukan sebagai ARTEFAK BERSAMA:
+di-generate sekali, disimpan di lokasi bersama, dan dipakai apa adanya oleh
+kedua fork. Konsistensi datang dari berkas yang sama, bukan dari dua algoritma
+yang kebetulan menghasilkan keluaran sama.
 
-Karena itu pemetaan dikurasi manual di berkas JSON. Registry ini juga menjadi
-titik tumbuh untuk 13 field lain yang dibutuhkan corpus_metadata.jsonl (title,
-source_unit, effective_start, superseded_by, dan seterusnya) — semuanya hanya
-bisa datang dari kurasi manusia.
+`document_id` diisi otomatis oleh scaffolder lewat `slugify()`. Satu-satunya
+bagian yang manual adalah penyelesaian tabrakan slug — dan itu memang gagal
+keras, bukan diselesaikan dengan sufiks otomatis.
 
-Bentuk berkas (data/document_registry.json):
+Registry juga menjadi titik tumbuh untuk 13 field lain yang dibutuhkan
+corpus_metadata.jsonl (title, source_unit, effective_start, superseded_by, dan
+seterusnya). Field-field itu tetap butuh kurasi manusia dan menyusul bersama
+metadata temporal di lapis 4.
+
+Bentuk berkas:
 
     {
-      "sop_pengurusan_izin_ujian_akhir_online_2.pdf": {
-        "document_id": "sop-izin-ujian-online-v2",
-        "sha256": "9f2b1c..."
+      "_meta": {
+        "generated_at": "2026-08-25T09:00:00+00:00",
+        "slug_rule_version": 1,
+        "tool": "scripts/scaffold_document_registry.py"
+      },
+      "documents": {
+        "sop_pengurusan_izin_ujian_akhir_online_2.pdf": {
+          "document_id": "sop-pengurusan-izin-ujian-akhir-online-2",
+          "sha256": "9f2b1c...",
+          "slug_rule_version": 1,
+          "source": "auto"
+        }
       }
     }
 
-`document_id` wajib. `sha256` opsional — bila diisi, dipakai untuk mendeteksi
-nama berkas yang dipakai ulang untuk isi berbeda.
+Bentuk datar lama (tanpa `_meta`/`documents`) tetap dibaca.
 
-Buat kerangkanya dengan:
+Generate atau perbarui dengan:
     python scripts/scaffold_document_registry.py
 """
 
@@ -31,6 +44,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import unicodedata
 from pathlib import Path
 
 from backend.config import DOCUMENT_REGISTRY_PATH
@@ -40,11 +54,68 @@ logger = logging.getLogger(__name__)
 # Slug: huruf kecil, angka, dan tanda hubung. Tidak boleh diawali/diakhiri hubung.
 _SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
+# Versi aturan slug. Dicatat per entri saat di-generate, sehingga registry yang
+# memuat entri dari beberapa versi aturan tetap dapat ditelusuri — entri lama
+# TIDAK PERNAH ditimpa walau aturannya berubah.
+SLUG_RULE_VERSION = 1
+
+# Prefix penomoran di AWAL nama: "1.-", "01_", "12)", "(3) ".
+#
+# Dibatasi DUA digit, bukan tiga. Asimetri kerugiannya: prefix bermakna yang
+# terpangkas menghasilkan slug yang terlihat normal — kesalahannya senyap —
+# sedangkan nomor urut tiga digit yang gagal terpangkas menghasilkan slug jelek
+# tapi jelas dan bisa diedit. Untuk registry yang menentukan chunk_id dan
+# image_id sekaligus, kesalahan yang terlihat lebih baik daripada yang tidak.
+#
+# Batas ini juga melindungi tahun empat digit: "2024_Kalender.pdf" tetap
+# menjadi "2024-kalender", tidak tergerus jadi "kalender" yang akan bertabrakan
+# dengan berkas tahun lain.
+_NUMBER_PREFIX_RE = re.compile(r"^\s*\(?\d{1,2}\)?\s*[.)_-]+\s*")
+
+
+def slugify(file_name: str) -> str:
+    """Nama berkas -> slug document_id.
+
+    Enam langkah berurutan: buang ekstensi, buang prefix penomoran, normalisasi
+    NFKD + buang non-ASCII, lowercase, non-alfanumerik jadi tanda hubung,
+    rapatkan tanda hubung berulang.
+
+    TIDAK menebak penanda versi. Angka di akhir nama seperti "..._online_2"
+    ambigu antara urutan dan versi; menerjemahkannya jadi "-v2" berarti
+    mengklaim dua dokumen adalah revisi satu sama lain. Angka itu dipertahankan
+    apa adanya sebagai bagian nama. Versi sebenarnya menyusul bersama metadata
+    temporal di lapis 4.
+
+    TIDAK dipotong panjangnya. Dokumen akademik sering berbeda hanya di ujung
+    nama ("Program Sarjana" vs "Program Magister"); memotong akan menabrakkan
+    keduanya, dan tabrakan adalah hal yang justru harus dihindari.
+
+    Mengembalikan string kosong bila tidak ada karakter yang tersisa — pemanggil
+    memperlakukan itu sebagai kegagalan.
+    """
+    s = Path(file_name).stem
+    s = _NUMBER_PREFIX_RE.sub("", s)
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+    s = re.sub(r"[^a-z0-9]+", "-", s.lower())
+    return re.sub(r"-{2,}", "-", s).strip("-")
+
 _registry_cache: dict[str, dict] | None = None
 
 
 class RegistryError(Exception):
     """Registry tidak dapat dimuat atau isinya tidak valid."""
+
+
+def split_document_block(raw: object) -> tuple[dict, dict]:
+    """Pisahkan header dari blok dokumen.
+
+    Mendukung dua bentuk:
+      {"_meta": {...}, "documents": {...}}   <- bentuk sekarang
+      {"nama.pdf": {...}, ...}               <- bentuk datar lama
+    """
+    if isinstance(raw, dict) and isinstance(raw.get("documents"), dict):
+        return raw.get("_meta") or {}, raw["documents"]
+    return {}, raw if isinstance(raw, dict) else {}
 
 
 def _validate(raw: object, path: Path) -> dict[str, dict]:
@@ -56,6 +127,8 @@ def _validate(raw: object, path: Path) -> dict[str, dict]:
     """
     if not isinstance(raw, dict):
         raise RegistryError(f"{path}: akar JSON harus object, bukan {type(raw).__name__}")
+
+    _, raw = split_document_block(raw)
 
     seen_ids: dict[str, str] = {}
     entries: dict[str, dict] = {}

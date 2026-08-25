@@ -401,12 +401,23 @@ ALLOW_INCOMPLETE_IMAGE_CORPUS = os.getenv(
 # `dump_faithful`.
 CHUNK_DUMP_DIR = os.getenv("CHUNK_DUMP_DIR", "")
 
-# Lokasi registry pemetaan nama berkas PDF -> document_id.
-# Buat kerangkanya dengan: python scripts/scaffold_document_registry.py
-DOCUMENT_REGISTRY_PATH = os.getenv(
+# Registry pemetaan nama berkas PDF -> document_id.
+#
+# ARTEFAK BERSAMA, setara vision_cache.db. document_id menentukan chunk_id,
+# image_id, DAN nama direktori gambar sekaligus — jadi konsistensi antar fork
+# datang dari BERKAS YANG SAMA, bukan dari dua eksekusi scaffolder yang
+# kebetulan sepakat.
+#
+# Default berada di LUAR clone mana pun supaya cukup satu berkas untuk kedua
+# fork, tanpa perlu dikirim-kirim. Yang perlu disepakati bukan cara mengirimnya,
+# tapi siapa yang boleh menjalankan generate ulang dan kapan — lihat
+# document_registry_notes.md yang ditulis bersama registry-nya.
+#
+# Generate/perbarui: python scripts/scaffold_document_registry.py
+DOCUMENT_REGISTRY_PATH = os.path.expanduser(os.getenv(
     "DOCUMENT_REGISTRY_PATH",
-    os.path.join(_PROJECT_ROOT, "data", "document_registry.json"),
-)
+    "~/rag_mm_b_shared/document_registry.json",
+))
 
 # =============================================================================
 # RAG Pipeline
