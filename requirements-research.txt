@@ -1,0 +1,147 @@
+# =============================================================================
+# requirements-research.txt — harness eksperimen retrieval multimodal
+# Target: Ubuntu 24.04 aarch64 | NVIDIA GB10 sm_121 | CUDA 13.2 | Python 3.12.3
+#         tanpa sudo, tanpa Docker
+# =============================================================================
+#
+# HANYA jalur indexing + retrieval. requirements.txt asli TIDAK diganti dan
+# tetap berlaku untuk deployment POC x86 dengan Docker.
+#
+# Tiga hal yang SENGAJA TIDAK ADA di sini:
+#
+#   torch, torchvision
+#       Dipasang lewat Dockerfile di stack asli sebagai build cu126, yang TIDAK
+#       memuat kernel sm_121. Venv dibuat dengan --system-site-packages supaya
+#       memakai torch bawaan DGX OS. Lihat PERINGATAN TORCH di bawah.
+#
+#   paddlepaddle-gpu, paddleocr, paddlex
+#       Indeks paddlepaddle.org.cn/packages/stable/cu126/ mendistribusikan wheel
+#       x86_64. Strategi riset memaksa PDF_EXTRACTION_STRATEGY=hi_res, yang
+#       memakai tesseract lewat Unstructured — bukan Paddle. Perbaikan except
+#       per halaman di preprocessing._extract_text_from_page_fast membuat
+#       ketiadaan Paddle terdegradasi jadi teks kosong per halaman, bukan fatal.
+#
+#   fastapi, uvicorn, slowapi, python-jose, bcrypt, passlib, psycopg2, redis,
+#   minio, structlog, prometheus-fastapi-instrumentator
+#       Layanan chatbot. Riset hanya memakai indexing + retrieval in-process.
+#       (redis tetap tidak perlu: cache.py mengimpornya lazy dan
+#       CACHE_ENABLED=false di .env.research.)
+#
+# -----------------------------------------------------------------------------
+# VERIFIKASI KETERSEDIAAN WHEEL
+# -----------------------------------------------------------------------------
+# Seluruh pin di bawah diperiksa terhadap PyPI JSON API pada 2026-08-25:
+# requires_python mencakup 3.12, dan tiap paket berekstensi native punya wheel
+# aarch64 cp312. Yang pure-python tidak butuh wheel spesifik arsitektur.
+#
+# Verifikasi ulang sebelum memasang:
+#   pip download --no-deps --only-binary=:all: \
+#       --platform manylinux2014_aarch64 --python-version 312 \
+#       -d /tmp/whlcheck -r requirements-research.txt
+# Paket yang gagal di situ berarti tidak punya wheel aarch64 dan akan mencoba
+# compile dari sdist — tanpa sudo, itu kemungkinan besar gagal.
+#
+# -----------------------------------------------------------------------------
+# PERINGATAN TORCH — baca sebelum menjalankan pip install
+# -----------------------------------------------------------------------------
+# `unstructured[pdf]` menarik `effdet` dan `unstructured-inference`, yang
+# keduanya meminta `torch`, `torchvision`, dan `timm`. Versi yang di-pin meminta
+# torch TANPA batas bawah tinggi (effdet: torch>=1.12.1; unstructured-inference
+# 0.8.1: torch tanpa versi), jadi torch bawaan sistem MEMENUHI dan pip tidak
+# akan menggantinya — SELAMA venv dibuat dengan --system-site-packages.
+#
+# Yang berisiko: `torchvision` dan `timm`. Bila DGX OS tidak menyediakan
+# torchvision, pip akan mengambilnya dari PyPI, dan wheel itu bisa menarik torch
+# versinya sendiri yang MEMBAYANGI torch sistem — hilang kernel sm_121, senyap.
+#
+# Karena itu DEPLOY.md memasang bertahap dan menjalankan verify_env.py setelah
+# TIAP tahap. Bila get_device_capability() berubah setelah suatu tahap, torch
+# sudah terbayangi.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# TAHAP 1 — Inti LlamaIndex (semua pure-python)
+# -----------------------------------------------------------------------------
+# Pin identik requirements.txt. llms-ollama mengunci core>=0.14.5, jadi seluruh
+# blok harus konsisten di seri 0.14.x.
+llama-index-core==0.14.13
+llama-index-vector-stores-qdrant==0.10.1
+llama-index-embeddings-huggingface==0.6.1
+
+# _configure_settings() memanggil get_llm() tanpa syarat (rag_pipeline.py:623),
+# jadi satu paket LLM HARUS ada walau tidak pernah dipanggil.
+# Dengan LLM_PROVIDER=ollama (default) yang diimpor adalah paket ini.
+llama-index-llms-ollama==0.10.1
+
+# Hanya perlu bila LLM_PROVIDER=vllm — yaitu bila deskripsi gambar dijalankan
+# terhadap endpoint vLLM. Di server tanpa Docker, vLLM kemungkinan tidak ada.
+# Aktifkan baris ini bila kamu menunjuk LLM_BASE_URL ke vLLM eksternal.
+# llama-index-llms-openai-like==0.7.2
+
+# -----------------------------------------------------------------------------
+# TAHAP 2 — Vector store
+# -----------------------------------------------------------------------------
+qdrant-client==1.17.1
+
+# -----------------------------------------------------------------------------
+# TAHAP 3 — Embedding & reranker in-process
+# -----------------------------------------------------------------------------
+# EMBED_PROVIDER=huggingface dan RERANKER_PROVIDER=sentence_transformers, karena
+# TEI berjalan sebagai container dan Docker tidak tersedia.
+# Tag TEI `89-latest` juga mengunci compute capability 8.9 — tidak cocok sm_121.
+sentence-transformers==3.3.1
+transformers==4.47.1
+tokenizers==0.21.0          # transformers 4.47.1 butuh >=0.21,<0.22
+huggingface-hub==0.27.1     # transformers 4.47.1 butuh >=0.24.0
+
+# PIN BARU (requirements.txt hanya menariknya transitif lewat llama-index-core).
+# Dipin di sini karena _split_for_budget menghitung batas chunk dalam TOKEN
+# memakai tokenizer ini — versinya ikut menentukan batas chunk, jadi ia bagian
+# dari reproduksibilitas dataset, bukan detail implementasi.
+tiktoken==0.14.0
+
+# -----------------------------------------------------------------------------
+# TAHAP 4 — Ekstraksi PDF
+# -----------------------------------------------------------------------------
+# unstructured[pdf] menarik: unstructured-inference==0.8.1, unstructured.pytesseract,
+# onnx, effdet, pdf2image, pdfminer.six, pi-heif, pikepdf, pypdf,
+# google-cloud-vision. Semuanya pure-python atau punya wheel aarch64 cp312.
+#
+# CATATAN: google-cloud-vision ikut terpasang walau tidak dipakai (ia hanya untuk
+# agen OCR Google). Tidak dapat dihindari tanpa melepas extra [pdf].
+#
+# unstructured 0.16.11 butuh Python <3.13 — cocok dengan 3.12.3, TIDAK cocok
+# dengan 3.13+. Jangan naikkan Python.
+#
+# BUTUH BINARI SISTEM: tesseract-ocr dan poppler-utils. Tanpa sudo keduanya
+# harus datang dari conda. Lihat DEPLOY.md.
+unstructured[pdf]==0.16.11
+
+# numpy<2 dituntut unstructured 0.16.11 SENDIRI (terverifikasi di metadata-nya),
+# bukan hanya oleh Paddle seperti tertulis di requirements.txt:48-49.
+# Jadi pin ini tetap berlaku walau Paddle dilepas.
+numpy==1.26.4
+
+pymupdf==1.24.14
+pdfplumber==0.11.4
+markdownify==0.13.1
+pillow==11.0.0
+
+# -----------------------------------------------------------------------------
+# TAHAP 5 — Utilitas
+# -----------------------------------------------------------------------------
+httpx==0.28.1
+python-dotenv==1.0.1
+PyYAML==6.0.2               # keyword_filter memuat blocked_keywords.yaml
+pydantic==2.11.7
+
+# PIN BARU. backend/metrics.py mengimpor prometheus_client, dan
+# rag_pipeline.py:43 mengimpor backend.metrics TANPA guard (berbeda dari
+# moderation.py:38-41 yang defensif). Karena scripts/index_documents.py:20
+# mengimpor _configure_settings dari rag_pipeline, paket ini WAJIB ada atau
+# indexing gagal saat impor.
+#
+# requirements.txt menariknya transitif lewat prometheus-fastapi-instrumentator,
+# yang tidak dibutuhkan riset.
+prometheus-client==0.23.1
