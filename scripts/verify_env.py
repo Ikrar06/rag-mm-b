@@ -63,6 +63,22 @@ def cek_python() -> None:
     info("venv", "aktif" if sys.prefix != sys.base_prefix else "TIDAK aktif (base interpreter)")
 
 
+def _parse_sm(arch: str) -> tuple[int, int] | None:
+    """'sm_120' -> (12, 0). None kalau bukan entri sm_ berangka.
+
+    Digit terakhir adalah minor, sisanya mayor — sm_86 adalah (8, 6) sedangkan
+    sm_120 adalah (12, 0). Memperlakukan tiap digit sebagai satu komponen akan
+    membaca sm_120 sebagai (1, 2, 0) dan mengurutkannya di bawah sm_86.
+    `get_arch_list()` juga memuat entri 'compute_120' yang di sini dilewati.
+    """
+    if not arch.startswith("sm_"):
+        return None
+    d = arch[3:]
+    if not d.isdigit() or len(d) < 2:
+        return None
+    return int(d[:-1]), int(d[-1])
+
+
 def cek_torch() -> None:
     bagian("torch / GPU")
     try:
@@ -105,10 +121,30 @@ def cek_torch() -> None:
     elif sm in arsitektur:
         ok("get_device_capability()", f"{sm} ({nama}) — didukung build torch ini")
     else:
-        gagal("get_device_capability()",
-              f"{sm} ({nama}) TIDAK ada di build torch: {' '.join(arsitektur)}")
-        info("", "torch kemungkinan terbayangi wheel PyPI; lihat PERINGATAN TORCH "
-                 "di requirements-research.txt")
+        # PERINGATAN, bukan KEGAGALAN. GPU yang lebih baru daripada arsitektur
+        # tertinggi di build tetap berjalan lewat PTX forward compatibility:
+        # wheel resmi menyertakan PTX untuk arsitektur tertinggi yang
+        # dikompilasinya, dan driver meng-JIT ulang PTX itu untuk GPU yang lebih
+        # baru. Ongkosnya kompilasi JIT sekali di awal proses, bukan kegagalan.
+        #
+        # Kasus nyata: GB10 melaporkan sm_121 sedangkan wheel cu130 resmi hanya
+        # dikompilasi sampai sm_120. Terverifikasi bekerja — matmul 4096x4096
+        # fp16 selesai dalam 75 ms.
+        tertinggi = max(
+            (p for p in (_parse_sm(a) for a in arsitektur) if p), default=(0, 0)
+        )
+        lebih_baru = tuple(cap) > tertinggi
+        warn("get_device_capability()",
+             f"{sm} ({nama}) tidak ada di build torch: {' '.join(arsitektur)}")
+        if lebih_baru:
+            info("", "GPU lebih baru daripada arsitektur tertinggi di build — "
+                     "dijalankan lewat PTX forward compatibility (JIT sekali di "
+                     "awal proses). Verifikasi dengan matmul besar; kalau selesai "
+                     "wajar, ini bukan masalah.")
+        else:
+            info("", "GPU lebih LAMA daripada build torch — PTX forward "
+                     "compatibility TIDAK menolong ke arah ini. Pasang build "
+                     "torch yang menyertakan arsitektur GPU ini.")
 
     try:
         info("torch.version.cuda", str(torch.version.cuda))
@@ -256,12 +292,22 @@ def cek_prasyarat_riset() -> None:
         return
     try:
         import json
-        entri = json.loads(reg.read_text(encoding="utf-8"))
-        terisi = sum(1 for e in entri.values() if (e.get("document_id") or "").strip())
-        info("document_registry.json", f"{terisi}/{len(entri)} entri punya document_id"
-                                       + ("" if terisi == len(entri) else "  <-- sisanya akan DILEWATI"))
+        from backend.services.document_registry import split_document_block
+
+        # Registry berbentuk {"_meta": {...}, "documents": {...}}. Membaca akar
+        # JSON langsung akan menghitung "_meta" dan "documents" sebagai dua entri
+        # dokumen — laporannya jadi "0/2 entri punya document_id" padahal isinya
+        # ratusan. split_document_block menangani bentuk ini DAN bentuk datar lama.
+        meta, entri = split_document_block(json.loads(reg.read_text(encoding="utf-8")))
+        terisi = sum(1 for e in entri.values()
+                     if isinstance(e, dict) and (e.get("document_id") or "").strip())
+        versi = meta.get("slug_rule_version")
+        info("document_registry.json",
+             f"{terisi}/{len(entri)} entri punya document_id"
+             + (f", aturan slug v{versi}" if versi is not None else "")
+             + ("" if terisi == len(entri) else "  <-- sisanya akan DILEWATI"))
     except Exception as e:
-        warn("document_registry.json", f"tidak terbaca: {type(e).__name__}")
+        warn("document_registry.json", f"tidak terbaca: {type(e).__name__}: {e}")
 
 
 def main() -> int:

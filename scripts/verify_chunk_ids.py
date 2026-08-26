@@ -65,9 +65,10 @@ def main() -> int:
 
     print(f"\nchunk_id bertabrakan"
           f"{'' if args.all else ' (10 teratas; --all untuk semua)'}:")
+    lebar = max((len(c["chunk_id"]) for c in h["contoh"]), default=40)
     for c in h["contoh"]:
         berkas = ", ".join(c["file_name"]) if c["file_name"] else "<file_name tidak ada>"
-        print(f"  {c['titik']:>4} titik   {c['chunk_id']:<52}{berkas}")
+        print(f"  {c['titik']:>4} titik   {c['chunk_id']:<{lebar}}   {berkas}")
 
     print("\nGAGAL — satu gold_chunk_id akan menunjuk ke lebih dari satu titik")
     print("dengan teks berbeda. Lihat backend/services/node_passthrough.py.")
