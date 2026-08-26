@@ -32,7 +32,10 @@ from backend.config import (
     PDF_EXTRACTION_STRATEGY,
     EMBED_EXCLUDED_METADATA_KEYS,
 )
-from backend.services import chunk_dump, document_registry, image_describer, vision_cache
+from backend.services import (
+    chunk_dump, document_registry, image_describer, index_verify, vision_cache,
+)
+from backend.services.node_passthrough import build_transformations
 from backend.services.preprocessing import (
     extract_from_pdf, chunk_documents, file_sha256,
 )
@@ -433,31 +436,16 @@ def _embed_and_store(documents: list[Document]):
     )
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
 
-    if INDEX_DISABLE_NODE_PARSER:
-        # transformations=[] SENGAJA kosong: satu Document -> satu node, tanpa
-        # pemecahan ulang. _chunk_elements sudah menjamin ukuran chunk lewat
-        # INDEX_MAX_CHUNK_TOKENS, jadi parser kedua hanya memecah tabel besar
-        # yang memang harus utuh.
-        #
-        # Efeknya juga menyeragamkan dua entry point: tanpa argumen ini,
-        # POST /api/index memakai Settings default (1024/200) sedangkan CLI
-        # memakai 512/128 lewat _configure_settings.
-        #
-        # PERHATIAN: daftar kosong ini akan MENGHALANGI transformasi lain
-        # (mis. ekstraktor metadata) kalau suatu saat dibutuhkan — tambahkan
-        # ke daftar ini, jangan hapus argumennya.
-        VectorStoreIndex.from_documents(
-            documents,
-            storage_context=storage_context,
-            transformations=[],
-            show_progress=True,
-        )
-    else:
-        VectorStoreIndex.from_documents(
-            documents,
-            storage_context=storage_context,
-            show_progress=True,
-        )
+    # build_transformations() mengembalikan [PassthroughNodeParser()] saat
+    # INDEX_DISABLE_NODE_PARSER aktif, dan None saat tidak — bukan daftar kosong.
+    # Daftar kosong bersifat falsy dan JATUH KEMBALI ke SentenceSplitter default
+    # (llama_index/core/indices/base.py:109). Lihat node_passthrough.py.
+    VectorStoreIndex.from_documents(
+        documents,
+        storage_context=storage_context,
+        transformations=build_transformations(),
+        show_progress=True,
+    )
 
 
 def index_documents(data_dir: str | None = None, force: bool = False) -> int:
@@ -632,6 +620,16 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
     # Step 2: Embed + store batch
     logger.info(f"embedding_start total_chunks={len(all_documents)}")
     _embed_and_store(all_documents)
+
+    # Step 3: Verifikasi HASIL, bukan niat. Gerbang di atas memeriksa daftar
+    # Document sebelum dikirim; yang ini membaca kembali titik yang benar-benar
+    # tersimpan. chunk_id duplikat lahir DI DALAM LlamaIndex, setelah gerbang
+    # terakhir, jadi tidak ada pemeriksaan sebelum-kirim yang bisa melihatnya.
+    if INDEX_STRUCTURAL_METADATA:
+        index_verify.check_unique_chunk_ids(
+            get_qdrant_client(), QDRANT_COLLECTION_NAME, strict=config.RESEARCH_MODE
+        )
+
     logger.info(f"indexing_complete total_chunks={len(all_documents)} files={len(files_to_process)}")
 
     return len(all_documents)

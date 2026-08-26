@@ -252,11 +252,10 @@ INDEX_MAX_CHUNK_TOKENS = int(os.getenv("INDEX_MAX_CHUNK_TOKENS", "0"))
 
 # Matikan node parser LlamaIndex saat indexing. Default false (perilaku lama).
 #
-# indexing.py memanggil VectorStoreIndex.from_documents() tanpa argumen
-# transformations=, sehingga LlamaIndex memakai Settings.node_parser dan
-# memecah ulang Document yang melewati Settings.chunk_size. Node anak mewarisi
-# metadata induk, termasuk chunk_index — jadi beberapa titik Qdrant berbagi
-# satu chunk_index.
+# Tanpa flag ini, from_documents() memakai Settings.node_parser dan memecah ulang
+# Document yang melewati Settings.chunk_size. Node anak mewarisi metadata induk
+# APA ADANYA — chunk_index, chunk_id, dan text_sha ikut tersalin — jadi beberapa
+# titik Qdrant berbagi satu identitas dengan teks berbeda.
 #
 # Flag terpisah dari INDEX_MAX_CHUNK_TOKENS secara sengaja: keduanya perlu bisa
 # dinyalakan sendiri-sendiri agar run_manifest.json mencatat dua keputusan yang
@@ -264,8 +263,12 @@ INDEX_MAX_CHUNK_TOKENS = int(os.getenv("INDEX_MAX_CHUNK_TOKENS", "0"))
 #
 # Menutup juga perbedaan dua entry point: POST /api/index tidak pernah memanggil
 # _configure_settings sehingga memakai default LlamaIndex (1024/200), sedangkan
-# CLI memakai 512/128. Dengan transformations=[] keduanya tidak lagi bergantung
+# CLI memakai 512/128. Dengan PassthroughNodeParser keduanya tidak lagi bergantung
 # pada Settings sama sekali.
+#
+# CARA mematikannya ada di backend/services/node_passthrough.py, dan itu BUKAN
+# transformations=[] — daftar kosong bersifat falsy dan justru memulihkan
+# SentenceSplitter default tanpa peringatan apa pun.
 INDEX_DISABLE_NODE_PARSER = os.getenv(
     "INDEX_DISABLE_NODE_PARSER", "false"
 ).lower() == "true"
