@@ -2,16 +2,25 @@
 
 Konteks
 -------
-`indexing.py:160` memanggil `VectorStoreIndex.from_documents(...)` TANPA argumen
-`transformations=` maupun `node_parser=`. LlamaIndex karenanya menerapkan node
+Semula `_embed_and_store` memanggil `VectorStoreIndex.from_documents(...)` tanpa
+`transformations=` maupun `node_parser=`, sehingga LlamaIndex menerapkan node
 parser default (SentenceSplitter) yang dikonfigurasi dari `Settings.chunk_size`
 dan `Settings.chunk_overlap` — dua nilai yang disetel di `rag_pipeline.py:624-625`.
-Node anak mewarisi metadata induk, termasuk `chunk_index`.
+Node anak mewarisi metadata induk apa adanya, termasuk `chunk_index`, `chunk_id`,
+dan `text_sha`.
 
 Mekanismenya sudah pasti dari dokumentasi. Yang diukur di sini adalah SEBERAPA
 SERING itu terpicu pada bentuk data yang benar-benar diproduksi repo ini, plus
 dua pertanyaan turunan: kalibrasi satuan (token vs karakter) dan sisa anggaran
 metadata.
+
+Bagian B kini menjalankan `build_transformations()` — daftar transformasi
+PRODUKSI yang sama — bukan simulasinya. Itu perubahan penting: versi sebelumnya
+menirukan efek `INDEX_DISABLE_NODE_PARSER` dengan mengasumsikan "1 Document =
+1 node", sehingga tidak pernah melihat bahwa `transformations=[]` yang dipakai
+saat itu TIDAK berefek sama sekali (daftar kosong bersifat falsy dan jatuh
+kembali ke `Settings.transformations`; lihat `backend/services/node_passthrough.py`).
+Probe yang menguji asumsinya sendiri akan selalu lulus.
 
 Probe ini TIDAK menyentuh Qdrant dan TIDAK memuat model embedding.
 
@@ -42,6 +51,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from llama_index.core import Document, Settings
+from llama_index.core.ingestion import run_transformations
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.utils import get_tokenizer
 
@@ -57,6 +67,7 @@ from backend.config import (
     INDEX_TABLES_AS_OWN_CHUNKS,
     EMBED_EXCLUDED_METADATA_KEYS,
 )
+from backend.services.node_passthrough import build_transformations
 from backend.services.preprocessing import (
     _chunk_elements,
     _html_table_to_markdown,
@@ -271,7 +282,7 @@ def bagian_a() -> float:
 # ─── B. Probe pemecahan ulang ────────────────────────────────────────────────
 
 def bagian_b(splitter: SentenceSplitter) -> list[tuple]:
-    rule("B. PEMECAHAN ULANG — SentenceSplitter.get_nodes_from_documents([doc])")
+    rule("B. PEMECAHAN ULANG — _chunk_elements lalu transformasi produksi")
 
     kasus = [
         ("teks pendek (1 element)", teks_naratif(200)),
@@ -289,14 +300,27 @@ def bagian_b(splitter: SentenceSplitter) -> list[tuple]:
         # satu chunk utuh. Halaman A4 teks Indonesia lazimnya 2.000-3.500 karakter.
         ("fast path: 1 halaman A4 penuh (:161-170)", teks_naratif(2500)),
         ("fast path: 1 halaman padat (:161-170)", teks_naratif(3500)),
+        # REGRESI — tabel yang benar-benar PECAH di parser kedua.
+        #
+        # Kasus "tabel besar" di atas (~811 token) tidak pernah memicu apa pun:
+        # ia lolos cabang kept_whole DAN muat di satu node. Kasus ini dibuat jauh
+        # melewati anggaran, meniru tabel 4.091 token yang ditemukan di korpus
+        # nyata 214 dokumen. PDF_TABLE_MAX_CHARS adalah AMBANG "jadikan chunk
+        # sendiri", bukan BATAS ATAS ukuran chunk — chunk tabel tidak terbatas.
+        #
+        # Sebelum PassthroughNodeParser, kasus ini memecah 1 chunk menjadi ~10
+        # node yang mewarisi chunk_id, chunk_index, dan text_sha induk apa adanya.
+        ("tabel sangat besar (jauh > anggaran, REGRESI)",
+         tabel_markdown_mendekati(10_000)),
     ]
 
     print("Tiap kasus dilewatkan _chunk_elements (jalur nyata indexing),")
-    print("lalu SETIAP chunk dijalankan melalui SentenceSplitter.")
-    print("Kolom 'chunk' = keluaran _chunk_elements; 'node' = total setelah splitter.")
+    print("lalu SETIAP chunk dijalankan melalui transformasi produksi yang SAMA")
+    print("(indexing.build_transformations) — bukan simulasinya.")
+    print("Kolom 'chunk' = keluaran _chunk_elements; 'node' = total setelah transformasi.")
     print()
-    print(f"{'kasus':<42}{'token':>7}{'chunk':>6}{'node':>6}  {'chunk_index':<12}{'chunk_id':<10}")
-    print("-" * 78)
+    print(f"{'kasus':<46}{'token':>7}{'chunk':>6}{'node':>6}  {'chunk_index':<12}{'chunk_id':<10}")
+    print("-" * 88)
 
     hasil = []
     for nama, teks in kasus:
@@ -315,20 +339,22 @@ def bagian_b(splitter: SentenceSplitter) -> list[tuple]:
         }
         chunks = _chunk_elements([element], "probe.pdf", document_id="probe-doc")
 
-        total_nodes, idxs = 0, []
-        for c in chunks:
-            if INDEX_DISABLE_NODE_PARSER:
-                # transformations=[] di indexing.py: 1 Document -> 1 node.
-                total_nodes += 1
-                idxs.append(c["chunk_index"])
-            else:
-                d = doc(c["text"], element_type=c["element_type"],
-                        chunk_index=c["chunk_index"])
-                nodes = splitter.get_nodes_from_documents([d])
-                total_nodes += len(nodes)
-                idxs.extend(n.metadata.get("chunk_index") for n in nodes)
+        # Bangun Document persis seperti indexing.py:608-613, lalu jalankan
+        # transformasi PRODUKSI. Tidak disimulasikan: kalau daftar transformasi
+        # di indexing.py salah, probe ini ikut salah dan kolomnya menyala.
+        docs = [
+            doc(c["text"], element_type=c["element_type"],
+                chunk_index=c["chunk_index"],
+                **{k: c[k] for k in ("chunk_id", "document_id", "text_sha") if k in c})
+            for c in chunks
+        ]
+        nodes = run_transformations(docs, build_transformations() or Settings.transformations)
 
-        ids = [c.get("chunk_id") for c in chunks if c.get("chunk_id")]
+        # chunk_index dan chunk_id diambil dari NODE, bukan dari chunk. Titik
+        # Qdrant dibuat per node; duplikat yang lolos ke anotasi lahir di sini.
+        idxs = [n.metadata.get("chunk_index") for n in nodes]
+        ids = [n.metadata.get("chunk_id") for n in nodes if n.metadata.get("chunk_id")]
+
         if not ids:
             status_id = "-"
         elif len(set(ids)) == len(ids):
@@ -336,9 +362,10 @@ def bagian_b(splitter: SentenceSplitter) -> list[tuple]:
         else:
             status_id = "TABRAKAN"
 
+        total_nodes = len(nodes)
         tanda = "  <-- MASIH DIPECAH" if total_nodes > len(chunks) else ""
         unik = "unik" if len(set(idxs)) == len(idxs) else "TABRAKAN"
-        print(f"{nama:<42}{ntok(teks):>7}{len(chunks):>6}{total_nodes:>6}"
+        print(f"{nama:<46}{ntok(teks):>7}{len(chunks):>6}{total_nodes:>6}"
               f"  {unik:<12}{status_id:<10}{tanda}")
         hasil.append((nama, teks, total_nodes, idxs, len(chunks), ids))
     return hasil
@@ -349,8 +376,8 @@ def bagian_b(splitter: SentenceSplitter) -> list[tuple]:
 def bagian_c() -> None:
     rule("C. JALUR PRODUKSI — apa yang di-resolve VectorStoreIndex.from_documents")
 
-    print("indexing.py:160 tidak mengirim transformations= / node_parser=,")
-    print("jadi LlamaIndex memakai Settings.node_parser. Dua entry point, dua nilai:")
+    print("Tanpa INDEX_DISABLE_NODE_PARSER, from_documents memakai Settings.node_parser.")
+    print("Dua entry point, dua nilai:")
     print()
 
     # Entry point HTTP: POST /api/index (main.py:265) TIDAK memanggil _configure_settings.
@@ -374,7 +401,23 @@ def bagian_c() -> None:
     transforms = Settings.transformations
     print()
     print(f"  Settings.transformations = {[type(t).__name__ for t in transforms]}")
-    print("  → inilah yang dijalankan from_documents atas setiap Document.")
+
+    # Jebakan daftar kosong. base.py:109 menulis
+    #     transformations = transformations or Settings.transformations
+    # sehingga [] — yang falsy — justru MEMULIHKAN splitter default.
+    diminta: list = []
+    efektif = diminta or Settings.transformations
+    print()
+    print("  JEBAKAN — kenapa transformations=[] tidak mematikan apa pun:")
+    print("    base.py:109  transformations = transformations or Settings.transformations")
+    print(f"    diminta []  ->  efektif {[type(t).__name__ for t in efektif]}"
+          f"   {'(daftar kosong DIABAIKAN)' if efektif else ''}")
+
+    aktual = build_transformations()
+    print()
+    print(f"  build_transformations() = "
+          f"{[type(t).__name__ for t in aktual] if aktual else 'None (pakai Settings)'}")
+    print("  → inilah yang benar-benar dijalankan from_documents atas setiap Document.")
 
 
 # ─── D. Anggaran metadata ────────────────────────────────────────────────────
@@ -498,8 +541,8 @@ def bagian_e(r_naratif: float) -> None:
     print("Bandingkan dengan batas yang dipakai preprocessing.py:")
     print(f"  :393  flush chunk teks pada  {CHUNK_SIZE} KARAKTER "
           f"(~{int(CHUNK_SIZE / r_naratif)} token) — jauh di bawah ambang, aman")
-    print(f"  :357  tabel jadi chunk sendiri sampai {PDF_TABLE_MAX_CHARS} KARAKTER "
-          f"— di ATAS ambang, pecah")
+    print(f"  :357  tabel di ATAS {PDF_TABLE_MAX_CHARS} KARAKTER jadi chunk sendiri "
+          f"— TANPA batas ukuran")
     print("  Element tunggal yang lolos :393 utuh (karena cek terjadi SEBELUM append)")
     print("  tidak punya batas atas sama sekali — inilah sumber pecahan pada teks biasa.")
 
@@ -521,7 +564,7 @@ def main() -> None:
     print(f"  INDEX_STRUCTURAL_METADATA         = {INDEX_STRUCTURAL_METADATA}")
     print(f"  INDEX_TABLES_AS_OWN_CHUNKS        = {INDEX_TABLES_AS_OWN_CHUNKS}")
     print(f"  INDEX_DISABLE_NODE_PARSER         = {INDEX_DISABLE_NODE_PARSER}"
-          f"{'  (transformations=[], 1 Document = 1 node)' if INDEX_DISABLE_NODE_PARSER else ''}")
+          f"{'  (PassthroughNodeParser, 1 Document = 1 node)' if INDEX_DISABLE_NODE_PARSER else ''}")
     if EXCLUDED_KEYS:
         print(f"    dikecualikan: {', '.join(EXCLUDED_KEYS)}")
         tersisa = [k for k in META_SEKARANG if k not in EXCLUDED_KEYS]
