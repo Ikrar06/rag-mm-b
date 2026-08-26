@@ -139,8 +139,7 @@ sedang dibandingkan. Alasan yang sama berlaku untuk `structured_summary` tabel d
 
 **Konsekuensi yang harus diterima.** Chunk tabel **jauh lebih panjang** daripada
 chunk teks. Chunk teks dibatasi `INDEX_MAX_CHUNK_TOKENS` (350 token pada
-verifikasi); chunk tabel dibatasi `PDF_TABLE_MAX_CHARS` (2.000 karakter ≈ 811
-token pada rasio terukur 2,44 char/token). Jadi:
+verifikasi); **chunk tabel tidak dibatasi apa pun.** Jadi:
 
 - Distribusi panjang chunk menjadi bimodal. Statistik "rata-rata panjang chunk"
   akan menyesatkan bila dilaporkan tanpa dipisah per `element_type`.
@@ -151,10 +150,18 @@ token pada rasio terukur 2,44 char/token). Jadi:
   tanpa 1C menyisakan tabel besar tetap dipecah — inilah alasan 1C wajib, bukan
   sekadar jaring pengaman.
 
-**`PDF_TABLE_MAX_CHARS` kini menentukan batas atas ukuran chunk.** Sebelumnya ia
-hanya memutuskan tabel jadi chunk sendiri atau digabung ke buffer. Sekarang, karena
-tabel tidak pernah dipecah lebih lanjut, nilainya adalah satu-satunya yang membatasi
-seberapa besar sebuah chunk bisa jadi. **Wajib masuk `run_manifest.json`.**
+> **KOREKSI (lihat "Perbaikan wajib" di akhir berkas).** Versi sebelumnya dokumen
+> ini menyatakan *"`PDF_TABLE_MAX_CHARS` kini menentukan batas atas ukuran chunk"*.
+> **Itu salah.** `PDF_TABLE_MAX_CHARS` adalah **AMBANG**, bukan **BATAS ATAS**:
+> `preprocessing.py` memakainya sebagai `len(text) > PDF_TABLE_MAX_CHARS` untuk
+> memutuskan apakah tabel jadi chunk sendiri atau digabung ke buffer. Tabel yang
+> melewati ambang menjadi chunk sendiri **berapa pun besarnya** — tidak ada yang
+> memangkasnya. Di korpus nyata 214 dokumen, chunk tabel terbesar mencapai **4.091
+> token**, lebih dari lima kali "811 token" yang dikira jadi plafon.
+>
+> Nilainya **tetap wajib masuk `run_manifest.json`** — bukan karena membatasi
+> ukuran chunk, tapi karena menentukan tabel mana yang jadi chunk sendiri dan mana
+> yang menyatu ke buffer teks, dan itu menggeser batas chunk di seluruh dokumen.
 
 Deskripsi gambar juga tidak dipecah, dengan alasan sejalan: satu deskripsi = satu
 gambar, dan memecahnya merusak relasi `narrative_summary` ↔ `image_id`. Praktisnya
@@ -187,7 +194,7 @@ Di luar daftar "Kelompok 1" di `INSPECTION_REPORT.md` bagian E17, tambahkan:
 | `INDEX_EXCLUDE_METADATA_FROM_EMBED` | Menentukan teks yang divektorkan |
 | `INDEX_MAX_CHUNK_TOKENS` | Batas atas chunk teks |
 | `INDEX_DISABLE_NODE_PARSER` | Menentukan ada tidaknya pemecahan kedua |
-| **`PDF_TABLE_MAX_CHARS`** | **Kini batas atas ukuran chunk tabel** — lihat keputusan di atas |
+| **`PDF_TABLE_MAX_CHARS`** | **Ambang** "tabel jadi chunk sendiri" — menggeser batas chunk di seluruh dokumen. BUKAN batas atas ukuran chunk; lihat koreksi di atas |
 | `CHUNK_SIZE`, `CHUNK_OVERLAP` | Sudah wajib sebelumnya; `CHUNK_OVERLAP` kini juga dipakai `_apply_overlap` |
 
 ### 3. Re-index penuh diperlukan
@@ -994,7 +1001,7 @@ MAX_EXPANDED_CHUNKS=30
 | `INDEX_PERSIST_IMAGES` | `true` | `images.jsonl` dan `gold_image_ids` mustahil tanpanya | Tidak ada gambar untuk dianotasi |
 | `PDF_EXTRACTION_STRATEGY` | `hi_res` | Jalur `fast` tidak mengekstrak gambar sama sekali; **ditegakkan di kode** | Ditolak sebelum run dimulai |
 | `CHUNK_SIZE` / `CHUNK_OVERLAP` | `512` / `128` | Ambang flush dan panjang overlap di `_chunk_elements` | Pembagian chunk berbeda |
-| `PDF_TABLE_MAX_CHARS` | `2000` | Karena tabel tidak pernah dipecah, ini **satu-satunya batas atas ukuran chunk** | Ukuran chunk tabel berbeda |
+| `PDF_TABLE_MAX_CHARS` | `2000` | **Ambang** tabel-jadi-chunk-sendiri. Tabel di atas ambang menjadi chunk sendiri **tanpa batas ukuran** — terukur sampai 4.091 token | Komposisi dan ukuran chunk tabel berbeda |
 | `NEIGHBOR_EXPANSION_*`, `MAX_EXPANDED_CHUNKS` | `true` / `2` / `30` | Naik kepentingannya sejak `section` dikecualikan: chunk teks tengah-section kini tanpa sinyal `section` di ruang vektor | Konteks yang sampai ke LLM berbeda |
 
 ## Yang WAJIB sama tapi bukan env var
@@ -1482,3 +1489,230 @@ waktu.
 indexing berjalan. Slug memang deterministik terhadap nama berkas, tapi entri
 hasil suntingan manual akan hilang — `document_id` berubah, dan seluruh
 `gold_chunk_ids` serta `gold_image_ids` yang menunjuknya jadi tidak valid.
+
+---
+
+# PERBAIKAN WAJIB — `chunk_id` duplikat di Qdrant
+
+**Peneliti fork lain wajib menerapkan perbaikan ini.** Ia bukan penyempurnaan:
+tanpanya, `chunk_id` tidak unik dan anotasi gold kehilangan arti tunggalnya.
+
+## Gejala di korpus nyata
+
+Indexing 214 dokumen menghasilkan:
+
+| | |
+|---|---|
+| Titik di Qdrant | 26.087 |
+| `chunk_id` unik | 25.475 |
+| Titik berlebih | **388**, tersebar di 30 dokumen |
+| Peringatan `chunk_over_budget_kept_whole` | 486, terbesar 4.091 token |
+
+Empat titik yang bertabrakan memiliki `chunk_id`, `chunk_index`, **dan** `text_sha`
+identik, tetapi panjang teks berbeda: 739, 1041, 523, 1055 karakter.
+
+## Penyebab — bukan yang diduga pertama
+
+Dugaan awal: `_split_for_budget` (Tahap 1B) memecah chunk tapi tidak menaikkan
+pencacah per-halaman. **Dugaan itu salah.** `emit()` di `preprocessing.py` sudah
+benar — pencacah dinaikkan di dalam loop per pecahan, dan `text_sha` dihitung dari
+`hash_basis = core`, yaitu isi pecahan itu sendiri:
+
+```python
+for position, (core, final_text) in enumerate(zip(pieces, final_texts)):
+    ordinal = page_counters.get(segment, 0)
+    page_counters[segment] = ordinal + 1          # <- naik per pecahan
+    chunk["chunk_id"] = f"{document_id}_{segment}_c{ordinal:02d}"
+    chunk["text_sha"] = text_sha(hash_basis)      # <- per pecahan
+```
+
+Yang menentukan justru **`text_sha` yang ikut identik**. Kalau `_chunk_elements`
+menghasilkan pecahan berbeda dengan id sama, `text_sha`-nya akan berbeda karena
+dihitung dari teks masing-masing. Tiga field identik dengan teks berbeda hanya bisa
+berarti satu hal: metadata **disalin apa adanya** ke beberapa node — tanda tangan
+node parser LlamaIndex.
+
+### Sebab sebenarnya: `transformations=[]` tidak mematikan apa pun
+
+`VectorStoreIndex.from_documents` menulis (llama_index/core/indices/base.py:109):
+
+```python
+transformations = transformations or Settings.transformations
+```
+
+Daftar kosong bersifat **falsy** di Python. `[] or Settings.transformations`
+menghasilkan `Settings.transformations` — `SentenceSplitter` default. Argumen
+`transformations=[]` yang dipakai Tahap 1C karenanya **tidak pernah berefek**.
+Tidak ada peringatan, tidak ada galat, tidak ada jejak di log.
+
+Terbukti langsung, satu tabel 3.949 token:
+
+```
+transformations=[]         -> 11 node, 1 chunk_id unik, 10 duplikat
+[PassthroughNodeParser()]  ->  1 node, 1 chunk_id unik,  0 duplikat
+```
+
+Chunk tabel adalah korban utamanya karena `PDF_TABLE_MAX_CHARS` **ambang**, bukan
+plafon (lihat koreksi di Tahap 1): tabel besar keluar dari `_chunk_elements` utuh
+dengan `splittable=False` — sengaja, demi RCAA — lalu dipecah ulang oleh parser
+kedua. Itu juga menjelaskan 486 peringatan `chunk_over_budget_kept_whole`: chunk
+itu memang melewati anggaran, dan justru chunk itulah yang dipecah diam-diam.
+
+### Kenapa probe Tahap 0 tidak menangkapnya
+
+Probe **menirukan** efek flag alih-alih menjalankannya:
+
+```python
+if INDEX_DISABLE_NODE_PARSER:
+    total_nodes += 1        # asumsi: 1 Document = 1 node
+```
+
+Probe yang menguji asumsinya sendiri akan selalu lulus. Sembilan kasus lama tetap
+0 tabrakan bahkan di kode yang rusak.
+
+## Perbaikan
+
+### Berkas baru: `backend/services/node_passthrough.py`
+
+`PassthroughNodeParser` — satu Document menjadi tepat satu node, teks utuh.
+
+Memakai `build_nodes_from_splits` (helper yang sama dengan `SentenceSplitter`),
+bukan sekadar mengembalikan `nodes` apa adanya. Alasannya: transformasi no-op
+meneruskan objek `Document`, dan Qdrant menyimpan tipe itu di payload
+(`_node_type`) — bentuk titik berubah dari yang dipakai jalur query. Dengan
+helper tersebut, node yang dihasilkan **identik bentuknya** dengan sebelumnya:
+`TextNode`, relasi SOURCE, metadata dan daftar kunci terkecuali terwarisi. Satu-
+satunya perbedaan adalah teksnya tidak dipotong. Terverifikasi berdampingan.
+
+`MetadataMode.NONE` wajib: `BaseNode.get_content()` default-nya `MetadataMode.ALL`,
+yang akan menyisipkan metadata ke dalam teks node.
+
+Berkas ini juga memuat `build_transformations()` — **satu sumber kebenaran** yang
+dipakai `indexing.py` **dan** `probe_rechunk.py`. Ditempatkan di sini, bukan di
+`indexing.py`, supaya probe dapat mengujinya tanpa menarik klien Qdrant.
+
+### `backend/services/indexing.py`
+
+`_embed_and_store` kini satu jalur, `transformations=build_transformations()`.
+Cabang `if/else` lama dihapus: `None` sudah berarti "pakai `Settings`".
+
+### Berkas baru: `backend/services/index_verify.py`
+
+Memeriksa **hasil**, bukan niat. Gerbang lain memeriksa flag dan laporan ekstraksi
+sebelum apa pun dikirim; ini membaca kembali titik yang benar-benar tersimpan.
+Perlu, karena `chunk_id` duplikat lahir **di dalam** LlamaIndex — setelah gerbang
+terakhir. Tidak ada pemeriksaan sebelum-kirim yang bisa melihatnya.
+
+- Dipanggil di akhir `index_documents` saat `INDEX_STRUCTURAL_METADATA` aktif.
+- **Menolak** (`ValueError`) saat `RESEARCH_MODE=true`; **memperingatkan** di luar itu.
+- Gagal membaca Qdrant **tidak** menjatuhkan run — data sudah tersimpan, dan
+  pemeriksaan yang tidak bisa berjalan bukan alasan membuang pekerjaan berjam-jam.
+  Ia melaporkan dirinya gagal (`status="gagal_dibaca"`), dan itu terlihat di log.
+- Titik **tanpa** `chunk_id` diperingatkan terpisah: tidak dapat dirujuk
+  `gold_chunk_ids` sama sekali.
+- Membaca `chunk_id` dari akar payload, dengan cadangan `_node_content` — supaya
+  tidak diam-diam melaporkan "0 duplikat" hanya karena tidak menemukan field-nya.
+
+### `backend/services/chunk_dump.py` — field manifest baru
+
+`chunking.node_transformations` mencatat **nama kelas transformasi yang
+benar-benar dijalankan**, diselesaikan dengan aturan yang sama seperti
+`from_documents`:
+
+```json
+"node_transformations": ["PassthroughNodeParser"]
+```
+
+Dicatat terpisah dari `research_flags.INDEX_DISABLE_NODE_PARSER` karena bug ini
+persis kasus **flag benar, perilaku salah**. Manifest run yang bermasalah akan
+menunjukkan `INDEX_DISABLE_NODE_PARSER: true` berdampingan dengan
+`["SentenceSplitter"]` — satu baris yang cukup untuk menyatakan run itu tidak
+sahih. Manifest yang hanya mencatat flag tidak menunjukkan apa pun.
+
+### Berkas baru: `scripts/verify_chunk_ids.py`
+
+Pemeriksaan yang sama, read-only, untuk koleksi yang **sudah** ada — tanpa perlu
+mengindeks ulang lebih dulu. Keluar dengan kode 1 bila ada duplikat.
+
+```bash
+python scripts/verify_chunk_ids.py --collection rag_mm_b_varian_c
+python scripts/verify_chunk_ids.py --all      # semua contoh, tanpa dipotong
+```
+
+### `scripts/probe_rechunk.py`
+
+Dua perubahan; yang pertama lebih penting daripada yang kedua.
+
+**1. Bagian B menjalankan transformasi produksi, bukan simulasinya.** Chunk
+dibungkus jadi Document persis seperti `indexing.py:608-613`, lalu dilewatkan
+`run_transformations(docs, build_transformations() or Settings.transformations)`.
+`chunk_index` dan `chunk_id` kini dibaca dari **node**, bukan dari chunk — titik
+Qdrant dibuat per node, dan di situlah duplikat lahir.
+
+**2. Kasus regresi baru: tabel 4.024 token.** Kasus tabel lama (811 token) tidak
+pernah memicu apa pun — lolos cabang `kept_whole` DAN muat di satu node. Kasus
+baru meniru tabel 4.091 token dari korpus nyata.
+
+Bagian C kini juga mendemonstrasikan jebakannya secara langsung:
+
+```
+JEBAKAN — kenapa transformations=[] tidak mematikan apa pun:
+  base.py:109  transformations = transformations or Settings.transformations
+  diminta []  ->  efektif ['SentenceSplitter']   (daftar kosong DIABAIKAN)
+```
+
+## Verifikasi
+
+```bash
+INDEX_DISABLE_NODE_PARSER=true INDEX_STRUCTURAL_METADATA=true \
+INDEX_MAX_CHUNK_TOKENS=350 INDEX_MIN_CHUNK_TOKENS=8 \
+INDEX_TABLES_AS_OWN_CHUNKS=true INDEX_EXCLUDE_METADATA_FROM_EMBED=true \
+python scripts/probe_rechunk.py
+```
+
+Sepuluh kasus, termasuk yang baru — semuanya `chunk` = `node`, `chunk_id` unik:
+
+```
+tabel sangat besar (jauh > anggaran, REGRESI)    4024     1     1  unik   unik
+```
+
+Bukti kasus baru benar-benar menangkap bug lama — `build_transformations()`
+dikembalikan sementara ke `[]`:
+
+```
+tabel sangat besar (jauh > anggaran, REGRESI)    4024     1     5  TABRAKAN  TABRAKAN  <-- MASIH DIPECAH
+```
+
+Sembilan kasus lain tetap lolos di kode rusak itu. Hanya kasus baru yang menyala.
+
+Dengan flag riset **mati**, perilaku produksi semula tidak berubah:
+`build_transformations()` mengembalikan `None`, `SentenceSplitter` tetap berjalan.
+
+`index_verify` diuji dengan klien palsu — tujuh kasus, semua lolos: paginasi lewat
+`offset`, `strict=True` menolak, `strict=False` memperingatkan, cadangan
+`_node_content`, `_node_content` rusak, payload tanpa `chunk_id`, dan `scroll` yang
+melempar galat (tidak menjatuhkan run).
+
+## Yang harus dilakukan peneliti fork lain
+
+1. Ambil `node_passthrough.py`, `index_verify.py`, dan perubahan `indexing.py`.
+2. **Periksa koleksi yang sudah ada** dengan `scripts/verify_chunk_ids.py`.
+3. **Re-index penuh.** `chunk_id` yang sudah tersimpan tidak dapat diperbaiki di
+   tempat — tabel yang terlanjur pecah tersimpan sebagai beberapa titik dengan
+   teks yang tidak lagi utuh.
+4. **Jangan memulai anotasi gold sebelum langkah 2 lolos.** `gold_chunk_ids` yang
+   menunjuk `chunk_id` duplikat tidak dapat diselamatkan setelah anotasi berjalan.
+
+## Pelajaran yang berlaku di luar bug ini
+
+**Daftar kosong bukan cara mematikan sesuatu di Python.** `[]`, `{}`, `0`, dan `""`
+semuanya falsy; API yang menulis `x = x or default` akan mengabaikannya. Pola
+`or default` ada di banyak tempat di LlamaIndex.
+
+**Probe harus memanggil kode produksi, bukan menirukan perilakunya.** Simulasi
+menguji apa yang kita kira benar. Itu sebabnya `build_transformations()` kini hidup
+di modul yang dapat diimpor probe.
+
+**Verifikasi niat tidak menggantikan verifikasi hasil.** Seluruh gerbang sebelum
+ini memeriksa konfigurasi dan data sebelum dikirim, dan semuanya lolos. Yang salah
+terjadi di dalam pustaka pihak ketiga.
