@@ -14,7 +14,18 @@ _PATTERNS = [
     (r'\b(claude|gpt-?[1-9]?o?|gemini|llama|qwen|mistral|indobert|grok|kimi|deepseek|ernie|palm|bert)\b',
      "[AI system]", "ai_name"),
     # Nama vendor / company AI (parent perusahaan)
-    (r'\b(anthropic|openai|alibaba\s*cloud|alibaba|meta\s*ai|meta|google\s*deepmind|deepmind|microsoft|xai|moonshot|mistral\s*ai|baidu|huggingface|hugging\s*face)\b',
+    #
+    # `meta` memakai penjaga tanda hubung, bukan \b polos. Tanda hubung memenuhi
+    # batas kata, sehingga \bmeta\b mencocoki "meta" di dalam "meta-analisis" dan
+    # menghasilkan "[AI vendor]-analisis". Kata berimbuhan tanda hubung seperti
+    # "meta-analisis", "meta-data", dan "meta-kognitif" lazim di teks akademik
+    # Indonesia — justru korpus yang dilayani sistem ini.
+    #
+    # (?<![\w-]) dan (?![\w-]) menolak tanda hubung di kedua sisi sekaligus
+    # menolak karakter kata, jadi "meta" berdiri sendiri tetap ter-redact
+    # sementara "meta-analisis" dan "pra-meta" dibiarkan utuh.
+    (r'\b(anthropic|openai|alibaba\s*cloud|alibaba|meta\s*ai|google\s*deepmind|deepmind|microsoft|xai|moonshot|mistral\s*ai|baidu|huggingface|hugging\s*face)\b'
+     r'|(?<![\w-])meta(?![\w-])',
      "[AI vendor]", "ai_vendor"),
     # Tech stack internal
     (r'\b(qdrant|fastapi|ollama|vllm|llama[\s_]?index|langchain|redis|uvicorn|sqlalchemy|pytorch|tensorflow|transformers)\b',
