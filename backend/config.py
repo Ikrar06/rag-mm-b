@@ -545,3 +545,76 @@ UNHAS_API_BASE_URL = os.getenv("UNHAS_API_BASE_URL", "")
 # MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "")
 # MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "")
 # MINIO_BUCKET = os.getenv("MINIO_BUCKET", "ragchat-images")
+
+# =============================================================================
+# Instrumentasi riset Tahap 5 — jalur QUERY
+# =============================================================================
+#
+# Berbeda dari flag INDEX_* yang membentuk korpus, flag di bawah ini hanya
+# memengaruhi jalur query dan TIDAK memicu re-index. Semuanya default mati:
+# dengan seluruhnya false, perilaku pipeline identik dengan sebelum Tahap 5.
+#
+# Tidak satu pun menghapus layer. Yang dilakukan adalah MELEWATI titik keluar
+# supaya query sampai ke retrieval penuh, sehingga item test set berlabel
+# expected_behavior="abstain_or_flag_conflict" benar-benar diukur di retrieval
+# dan bukan ditolak lebih awal oleh L1/L3.
+
+# Lewati lima titik keluar yang tidak punya saklar sendiri (C9 #1, #3, #5, #6, #8):
+# L1 keyword hard-block, identity override, L3 chitchat, L3 out_of_scope, dan
+# condensation <ACK>. Setiap penyelamatan dicatat ke log dengan penanda titiknya
+# supaya jumlah item test set yang terpengaruh dapat dihitung.
+#
+# TIDAK melewati L2 moderation: itu punya saklar sendiri
+# (MODERATION_BACKEND=passthrough) dan melewatinya diam-diam berarti mengubah
+# perilaku keamanan tanpa jejak di konfigurasi moderation.
+RESEARCH_BYPASS_ROUTING = os.getenv("RESEARCH_BYPASS_ROUTING", "false").lower() == "true"
+
+# Matikan query condensation (C11). Pemicunya `if history:`, bukan flag, jadi
+# satu-satunya jalan lewat konfigurasi sebelumnya adalah tidak mengirim history
+# sama sekali — yang mustahil untuk /api/chat (history diambil dari PostgreSQL)
+# dan menghapus jalur multi-turn dari perbandingan.
+RESEARCH_DISABLE_CONDENSATION = os.getenv(
+    "RESEARCH_DISABLE_CONDENSATION", "false"
+).lower() == "true"
+
+# Matikan output filter (Layer 6). Jawaban yang dinilai metrik lapis 2 (RAGAS)
+# harus keluaran model apa adanya: pola di output_filter.py mencocoki kosakata
+# akademik yang sah — `transformers`, `bert`, dan `meta` semuanya muncul di
+# teks akademik Indonesia.
+#
+# filter_token() pada jalur streaming ikut dimatikan; kalau tidak, token yang
+# di-stream tersaring sedangkan jawaban akhir tidak, dan keduanya jadi berbeda.
+RESEARCH_DISABLE_OUTPUT_FILTER = os.getenv(
+    "RESEARCH_DISABLE_OUTPUT_FILTER", "false"
+).lower() == "true"
+
+# Sertakan hasil ketiga tahap retrieval (dense, ekspansi tetangga, rerank) di
+# debug.retrieval_stages pada response. Default mati supaya payload produksi
+# tidak membengkak — tiga tahap x SIMILARITY_TOP_K node, masing-masing dengan
+# teks pratinjau.
+#
+# Saat aktif, text_preview pada sources dikembalikan ke teks chunk apa adanya:
+# SourceLabelPostprocessor menyisipkan "[nama_file]\n" ke node.text sebelum
+# _build_sources dipanggil, sehingga pratinjau produksi bukan teks chunk.
+# Konteks yang dilihat LLM TIDAK diubah — labelnya tetap ada di sana.
+RESEARCH_VERBOSE_RETRIEVAL = os.getenv(
+    "RESEARCH_VERBOSE_RETRIEVAL", "false"
+).lower() == "true"
+
+
+def research_query_flags() -> dict[str, bool]:
+    """Snapshot flag riset jalur query, untuk dicatat di keluaran eksperimen.
+
+    Sebagian mengubah angka yang dilaporkan, jadi tiap berkas hasil harus
+    membawa nilainya. Dipakai scripts/retrieval_dump.py.
+
+    CATATAN: fungsi ini BELUM dipanggil chunk_dump.write_run() — berkas itu
+    dibekukan pada Tahap 5. Lihat CHANGES.md, bagian "Menyatukan ke
+    run_manifest.json", untuk baris persis yang perlu ditambahkan nanti.
+    """
+    return {
+        "RESEARCH_BYPASS_ROUTING": RESEARCH_BYPASS_ROUTING,
+        "RESEARCH_DISABLE_CONDENSATION": RESEARCH_DISABLE_CONDENSATION,
+        "RESEARCH_DISABLE_OUTPUT_FILTER": RESEARCH_DISABLE_OUTPUT_FILTER,
+        "RESEARCH_VERBOSE_RETRIEVAL": RESEARCH_VERBOSE_RETRIEVAL,
+    }
