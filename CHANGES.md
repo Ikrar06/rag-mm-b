@@ -1716,3 +1716,264 @@ di modul yang dapat diimpor probe.
 **Verifikasi niat tidak menggantikan verifikasi hasil.** Seluruh gerbang sebelum
 ini memeriksa konfigurasi dan data sebelum dikirim, dan semuanya lolos. Yang salah
 terjadi di dalam pustaka pihak ketiga.
+
+---
+
+# TAHAP 5 — instrumentasi jalur retrieval untuk evaluasi
+
+Berbeda dari Tahap 1–4 yang membentuk korpus, tahap ini hanya menyentuh jalur
+**query**. Tidak ada perubahan yang memicu re-index: `preprocessing.py`,
+`indexing.py`, `chunk_dump.py`, `image_describer.py`, `node_passthrough.py`, dan
+seluruh flag `INDEX_*` tidak disentuh.
+
+**Prinsip: tidak ada layer yang dihapus.** Yang dilakukan hanya MELEWATI titik
+keluar dan MEREKAM apa yang sudah dihitung pipeline. Dengan seluruh flag
+`RESEARCH_*` mati, jalur eksekusi identik dengan sebelum tahap ini.
+
+## Empat flag baru — semuanya default mati
+
+| Flag | Efek |
+|---|---|
+| `RESEARCH_BYPASS_ROUTING` | Lewati lima titik keluar tanpa saklar (C9 #1, #3, #5, #6, #8) |
+| `RESEARCH_DISABLE_CONDENSATION` | Matikan query condensation (C11) |
+| `RESEARCH_DISABLE_OUTPUT_FILTER` | Matikan Layer 6, termasuk `filter_token` pada streaming |
+| `RESEARCH_VERBOSE_RETRIEVAL` | Sertakan hasil tiga tahap retrieval di `debug.retrieval_stages` |
+
+### 5A — titik keluar tanpa saklar
+
+Lima titik yang sebelumnya tidak punya env var kini dapat dilewati:
+`l1_hard_block`, `identity_override`, `l3_chitchat`, `l3_out_of_scope`,
+`condense_ack`, plus `l1_hard_block_condensed` (re-check L1 atas pertanyaan
+terkondensasi, C9 #9 — turunan dari #1).
+
+Setiap penyelamatan dicatat dua kali: ke log
+(`research_bypass_routing point=<titik>`) dan ke `debug.routing_bypassed`,
+sehingga jumlah item test set yang terpengaruh dapat dihitung **per titik**.
+
+**L2 moderation sengaja TIDAK dilewati.** Ia sudah punya saklar sendiri
+(`MODERATION_BACKEND=passthrough`); melewatinya diam-diam berarti mengubah
+perilaku keamanan tanpa jejak di konfigurasi moderation. Terverifikasi: dengan
+`RESEARCH_BYPASS_ROUTING=true`, query yang ditolak L2 tetap `blocked_moderation`.
+
+### 5B — condensation
+
+Pemicunya `if history:`, bukan flag. Kini `if history and not
+RESEARCH_DISABLE_CONDENSATION:`.
+
+### 5C — output filter
+
+`filter_output` dan `filter_token` dibungkus `_filter_output`/`_filter_token`.
+Keduanya dimatikan bersama — kalau hanya salah satu, token yang di-stream
+tersaring sementara jawaban akhir tidak, dan keduanya jadi berbeda.
+
+### 5D — instrumentasi retrieval
+
+`_retrieve_and_rerank` mendapat parameter **keluaran** `stages`, pola yang sama
+dengan `timings` milik F-2. Diisi tiga tahap: `dense`, `expansion`, `rerank`.
+
+Tiap node membawa `chunk_id`, `document_id`, `image_id`, `element_type`, `page`,
+`file_name`, `chunk_index`, `text_sha`, `rank`, `score`, dan `is_neighbor`.
+
+**Tetangga terbedakan.** `_expand_with_neighbors` memberi `score=0.0`; pembedaan
+itu terbawa sebagai `is_neighbor` sehingga tidak tertukar dengan node dense yang
+kebetulan berskor rendah.
+
+**Dua kontaminasi ditangani:**
+
+*`text_preview` bukan teks chunk.* `SourceLabelPostprocessor` menulis ulang
+`node.node.text` menjadi `"[nama_file]\n" + teks` **sebelum** `_build_sources`
+dipanggil. Tahap direkam SEBELUM labeler berjalan, dan `_build_sources` menerima
+`clean_texts` saat `RESEARCH_VERBOSE_RETRIEVAL` aktif. **Konteks yang dilihat LLM
+tidak diubah** — labelnya tetap ada di node, karena menghapusnya akan mengubah
+generasi, bukan hanya pelaporan.
+
+*Skor berubah makna diam-diam saat rerank gagal.* Lihat bagian bug produksi.
+
+**Cache.** `retrieval_stages` dan `routing_bypassed` dibuang sebelum `cache_set`.
+Tanpa itu, cache hit akan menyajikan hasil retrieval **pertanyaan lain** sebagai
+milik pertanyaan ini — mencemari data evaluasi secara senyap.
+
+### 5E — `scripts/retrieval_dump.py`
+
+Retrieval tanpa generation, tanpa endpoint HTTP. Memakai `_retrieve_and_rerank`
+yang SAMA dengan produksi, bukan salinannya — menulis ulang logikanya akan
+mengukur pipeline yang berbeda dari yang dilayani ke pengguna.
+
+Masukan: teks polos (satu pertanyaan per baris) **atau** JSONL dengan field
+`question`. Deteksi berdasarkan isi, bukan ekstensi. Field lain (`gold_chunk_ids`,
+`expected_behavior`, ...) dibawa apa adanya ke `retrieval_runs.jsonl`.
+`question_id` duplikat ditolak keras — tanpa id unik, baris keluaran tidak dapat
+dipetakan balik ke test set.
+
+Keluaran:
+
+| Berkas | Isi |
+|---|---|
+| `retrieval_nodes.jsonl` | satu baris per (pertanyaan, tahap, peringkat) — tabel datar untuk metrik |
+| `retrieval_runs.jsonl` | satu baris per pertanyaan — ringkasan, timing, galat |
+| `retrieval_manifest.json` | konfigurasi retrieval, koleksi, model, flag `RESEARCH_*` |
+
+Pemisahan lapis 1 per modalitas, seperti diminta deck:
+
+```
+teks     : image_id is null AND element_type != "ImageDescription"
+gambar   : image_id is not null
+gabungan : seluruh baris
+```
+
+```bash
+python scripts/retrieval_dump.py --questions qa_pairs.jsonl \
+    --collection rag_mm_b_varian_b_v2 --out hasil_varian_b/
+```
+
+## Tiga perbaikan BUG PRODUKSI — di luar flag, laporkan ke tim UniAI
+
+Ketiganya berlaku terlepas dari riset dan aktif tanpa env var apa pun.
+
+### 1. `\bmeta\b` mencocoki kata berimbuhan tanda hubung
+
+`output_filter.py:17` memuat `meta` sebagai alternatif ber-`\b`. Tanda hubung
+memenuhi batas kata, sehingga **"meta-analisis" menjadi "[AI vendor]-analisis"**.
+Kata seperti `meta-analisis`, `meta-data`, dan `meta-kognitif` lazim di teks
+akademik Indonesia — justru korpus yang dilayani sistem ini.
+
+Diganti penjaga eksplisit `(?<![\w-])meta(?![\w-])`. Terverifikasi 9/9: lima
+bentuk berimbuhan dibiarkan utuh, tiga penyebutan vendor tetap ter-redact, dan
+`metadata` (tanpa hubung) tidak terpengaruh.
+
+Pola `transformers` dan `bert` di `:14` dan `:20` **sengaja tidak diubah** —
+keduanya memang nama model/pustaka, dan memperbaikinya butuh keputusan produk,
+bukan perbaikan regex. Untuk riset, matikan filternya.
+
+### 2. `HISTORY_TURNS=0` memakai riwayat PENUH
+
+Lima tempat menulis `history[-(HISTORY_TURNS * 2):]`. Di Python `-0 == 0`,
+sehingga `HISTORY_TURNS=0` menghasilkan `history[0:]` — **seluruh riwayat**,
+kebalikan dari yang dimaksud.
+
+Diganti `_recent_history()` yang mengembalikan `[]` saat `HISTORY_TURNS <= 0`.
+Terverifikasi: `HISTORY_TURNS=0` → 0 pesan; `=2` → 4 pesan.
+
+### 3. Fallback rerank tidak punya penanda
+
+Saat rerank gagal (`:684`, `:690`, `:696`), `_TEIRerankPostprocessor`
+mengembalikan `nodes[:top_n]` **tanpa** menulis ulang `node.score`. Skor yang
+tersisa adalah skor kemiripan dense, bukan skor reranker — lalu dibandingkan
+dengan `SCORE_THRESHOLD` yang dikalibrasi untuk skala reranker. Dua skala
+berbeda, satu ambang. Sebelumnya hanya terlihat di log dan counter Prometheus.
+
+Kini `debug.rerank_fallback` **selalu** ada: `None` = rerank tidak dijalankan,
+`False` = normal, `True` = jatuh ke urutan dense. Disertai log warning yang
+menyebut konsekuensinya.
+
+Penandanya `contextvars.ContextVar`, bukan variabel modul: endpoint streaming
+mengembalikan generator **sinkron** yang dijalankan Starlette di threadpool, jadi
+beberapa query bisa berjalan bersamaan dan penanda satu query tidak boleh terbaca
+oleh query lain.
+
+## Perbaikan kecil
+
+- `scripts/verify_env.py` membaca `document_registry.json` lewat
+  `split_document_block`. Sebelumnya akar JSON dibaca langsung, sehingga `_meta`
+  dan `documents` terhitung sebagai dua entri dokumen — **"0/2 entri punya
+  document_id" padahal isinya 214**. Terverifikasi: bentuk baru 214/214, bentuk
+  datar lama tetap terbaca. Versi aturan slug ikut dilaporkan.
+- `verify_env.py` menurunkan ketidakcocokan arsitektur GPU dari **GAGAL** menjadi
+  **PERINGATAN** bila GPU lebih baru daripada arsitektur tertinggi di build
+  torch. Keterangan lama ("torch kemungkinan terbayangi wheel PyPI") salah: wheel
+  resmi cu130 memang hanya dikompilasi sampai `sm_120`, dan GB10 (`sm_121`)
+  berjalan lewat **PTX forward compatibility** — driver meng-JIT ulang PTX
+  arsitektur tertinggi. Terbukti bekerja: matmul 4096×4096 fp16 selesai 75 ms.
+  GPU yang lebih LAMA daripada build tetap mendapat keterangan berbeda, karena
+  PTX forward compatibility tidak menolong ke arah itu.
+  Perbandingannya memakai `_parse_sm()`: digit terakhir minor, sisanya mayor —
+  `sm_120` adalah `(12, 0)`, bukan `(1, 2, 0)` yang akan terurut di bawah `sm_86`.
+- `scripts/verify_chunk_ids.py` memisahkan `chunk_id` dari nama berkas dengan
+  lebar kolom dinamis.
+
+## Verifikasi
+
+Matriks 24 skenario, tiap flag **dengan dan tanpa** diaktifkan, dijalankan
+terhadap `query()` yang sebenarnya dengan stub `sys.modules` untuk torch,
+prometheus, Qdrant, dan LLM. Yang di-stub hanya batas luar; logika routing
+dijalankan apa adanya.
+
+Hasil kunci:
+
+```
+BASELINE semua mati                    mode=rag, kunci_riset=[]      <- tidak ada kebocoran
+BYPASS mati  | L1 hard-block           mode=blocked
+BYPASS hidup | L1 hard-block           mode=rag, bypass=[l1_hard_block]
+BYPASS hidup | L2 moderation           mode=blocked_moderation       <- TETAP diblokir
+CONDENSATION dimatikan                 condense_dipanggil=false
+OUTPUT_FILTER aktif                    "...meta-analisis [internal system]."
+OUTPUT_FILTER dimatikan                "...meta-analisis transformers."
+VERBOSE mati                           stages=null, preview="[sop]\nIsi chunk..."
+VERBOSE hidup                          dense=4 expansion=5 rerank=3, preview bersih
+HISTORY_TURNS=0                        n_ke_format=0                 <- bug -0 diperbaiki
+rerank GAGAL                           rerank_fallback=true
+```
+
+**Kriteria lulus terpenuhi:** dengan seluruh `RESEARCH_*` mati, `debug` tidak
+memuat satu pun kunci riset, `text_preview` tetap berlabel seperti produksi, dan
+mode yang dihasilkan tiap titik keluar sama persis dengan sebelum tahap ini.
+
+## Temuan sampingan — TIDAK diperbaiki
+
+`_IDENTITY_KEYWORDS` (`rag_pipeline.py:159`) memuat `"meta"` dan dicocokkan
+sebagai **substring polos**. Akibatnya pertanyaan akademik yang sah dibelokkan ke
+chitchat tanpa pernah menyentuh retrieval:
+
+```
+"Bagaimana metodologi meta-analisis dipakai dalam skripsi?"
+    tanpa bypass : mode=chitchat, 0 sumber
+    dengan bypass: mode=rag,      3 sumber
+```
+
+Jalur identity juga **tidak memanggil output filter sama sekali**, berbeda dari
+jalur chitchat biasa.
+
+Tidak diperbaiki karena di luar cakupan tugas ini dan menyangkut keputusan produk
+(daftar itu melindungi dari kebocoran nama model). Untuk riset, tertutup oleh
+`RESEARCH_BYPASS_ROUTING`. Layak dilaporkan ke tim UniAI bersama tiga bug di atas.
+
+## Menyatukan ke `run_manifest.json`
+
+Flag `RESEARCH_*` **belum** masuk `run_manifest.json`, karena berkas penulisnya
+(`chunk_dump.py`) dibekukan pada tahap ini. Dua catatan:
+
+1. Manifest itu merekam **indexing run**. Flag Tahap 5 semuanya query-time dan
+   belum ada nilainya saat indexing berjalan — `retrieval_manifest.json` adalah
+   tempat yang tepat secara semantik, dan di sanalah snapshot-nya sekarang.
+2. Kalau tetap diinginkan di manifest indexing, tambahkan satu baris ke
+   `chunk_dump.write_run()` di dalam blok `"research_flags"`:
+
+   ```python
+   **config.research_query_flags(),
+   ```
+
+   `research_query_flags()` sudah ada di `backend/config.py` dan belum dipanggil
+   siapa pun selain `retrieval_dump.py`.
+
+## Cara mendaratkan perubahan yang BELUM di-commit
+
+`backend/services/rag_pipeline.py` dan `backend/models/schemas.py` **sengaja
+tidak di-commit**. Keduanya sudah memuat modifikasi pra-sesi milik instrumentasi
+F-2 (`backend/metrics.py`), dan hunk Tahap 5 bercampur dengan hunk itu di fungsi
+yang sama: `_TEIRerankPostprocessor`, `_expand_with_neighbors`,
+`_retrieve_and_rerank`, `_vision_query`, `query`, `query_stream`.
+
+**Ketergantungan yang harus diketahui:** kode Tahap 5 bersandar pada parameter
+`timings=` yang ditambahkan F-2 ke tanda tangan `_retrieve_and_rerank`, dan pada
+helper `_timed`/`_safe_inc` milik F-2. Commit yang hanya memuat hunk Tahap 5
+**tidak dapat dikompilasi berdiri sendiri**.
+
+**Urutan yang benar:**
+
+1. Pemilik F-2 commit lebih dulu — `backend/metrics.py` beserta perubahannya di
+   `rag_pipeline.py`, `schemas.py`, `main.py`, dan `moderation.py`.
+2. Setelah itu, `git diff` pada `rag_pipeline.py` dan `schemas.py` hanya akan
+   menyisakan hunk Tahap 5, yang dapat di-commit terpisah.
+
+Jangan membalik urutannya: mendaratkan Tahap 5 lebih dulu akan ikut membawa WIP
+F-2 ke dalam commit yang bukan miliknya.
