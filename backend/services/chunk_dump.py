@@ -77,6 +77,23 @@ VISUAL_TYPE_ENUM = ("flowchart", "tabel_sebagai_gambar", "formulir", "figur_desk
 _PREVIEW_CHARS = 180
 
 
+def _node_transformations() -> list[str]:
+    """Nama kelas transformasi yang benar-benar dijalankan atas tiap Document.
+
+    Diselesaikan dengan aturan yang sama seperti `from_documents`: daftar dari
+    `build_transformations()`, atau `Settings.transformations` bila None.
+    """
+    try:
+        from llama_index.core import Settings
+        from backend.services.node_passthrough import build_transformations
+
+        dipakai = build_transformations() or Settings.transformations
+        return [type(t).__name__ for t in dipakai]
+    except Exception as e:  # manifest tidak boleh menjatuhkan dump
+        logger.warning("node_transformations_tidak_terbaca error=%s", e)
+        return ["<tidak terbaca>"]
+
+
 def dump_dir() -> Path | None:
     """Direktori dump, atau None bila CHUNK_DUMP_DIR kosong (perilaku lama)."""
     raw = (config.CHUNK_DUMP_DIR or "").strip()
@@ -340,6 +357,13 @@ def build_manifest(run_id: str, reports: dict[str, dict], n_chunks: int,
             "LLM_SUPPORTS_VISION": config.LLM_SUPPORTS_VISION,
             "OCR_LANG": config.OCR_LANG,
             "OCR_USE_GPU": config.OCR_USE_GPU,
+            # Kelas transformasi yang BENAR-BENAR dijalankan atas tiap Document.
+            # Dicatat terpisah dari INDEX_DISABLE_NODE_PARSER karena flag yang
+            # benar tidak menjamin perilaku yang benar: `transformations=[]`
+            # pernah membiarkan SentenceSplitter berjalan walau flag menyala,
+            # dan manifest yang hanya mencatat flag tidak menunjukkan apa pun.
+            # ['SentenceSplitter'] saat flag menyala = run itu tidak sahih.
+            "node_transformations": _node_transformations(),
         },
 
         # ── Flag riset Tahap 1 & 2 ──
