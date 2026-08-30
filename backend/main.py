@@ -53,6 +53,42 @@ app.add_middleware(
 )
 
 # ── Request timing + correlation ID middleware ────────────────────────────────
+def _instrument_stream_duration(response, method: str, path: str, request_id: str, start: float) -> None:
+    """Bungkus body_iterator SSE untuk mencatat durasi stream SEBENARNYA.
+
+    `duration_ms` di baris `http_request` hanya mencakup waktu s/d header siap
+    (BaseHTTPMiddleware kembali sebelum body streaming dikirim). Wrapper ini
+    mencatat baris terpisah `stream_complete` saat byte terakhir terkirim, atau
+    `stream_aborted` bila klien memutus koneksi di tengah.
+
+    Dipilih ketimbang BackgroundTask: blok `finally` di generator tetap jalan
+    walau klien disconnect (BackgroundTask bisa terlewat pada kasus itu).
+    """
+    original_iterator = response.body_iterator
+
+    async def _timed_iterator():
+        aborted = False
+        try:
+            async for chunk in original_iterator:
+                yield chunk
+        except BaseException:
+            # Disconnect / cancel: catat sebagai aborted, lalu teruskan exception apa adanya.
+            aborted = True
+            raise
+        finally:
+            try:
+                dur = round((time.perf_counter() - start) * 1000, 2)
+                event = "stream_aborted" if aborted else "stream_complete"
+                logger.info(
+                    f"{event} method={method} path={path} "
+                    f"duration_ms={dur} request_id={request_id}"
+                )
+            except Exception:
+                pass  # instrumentasi tidak boleh menjatuhkan stream
+
+    response.body_iterator = _timed_iterator()
+
+
 @app.middleware("http")
 async def log_request_timing(request: Request, call_next):
     # Gunakan X-Request-ID dari client jika ada, atau generate baru
@@ -69,6 +105,14 @@ async def log_request_timing(request: Request, call_next):
         f"status={response.status_code} duration_ms={duration_ms} request_id={request_id}"
     )
     response.headers["X-Request-ID"] = request_id
+
+    # Streaming (SSE): tambahkan pengukuran durasi sebenarnya. Non-streaming tidak berubah.
+    content_type = response.headers.get("content-type", "")
+    if content_type.startswith("text/event-stream") and hasattr(response, "body_iterator"):
+        _instrument_stream_duration(
+            response, request.method, request.url.path, request_id, start
+        )
+
     return response
 
 app.include_router(chat_router)

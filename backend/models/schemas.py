@@ -81,6 +81,57 @@ class DebugInfo(BaseModel):
     )
     has_images: Optional[bool] = Field(None, description="True kalau request punya image attachment")
     image_count: Optional[int] = Field(None, description="Jumlah image yang diproses di vision mode")
+    # ── Instrumentasi (F-2) — semua opsional, additive ──────────────────────────
+    cache_hit: Optional[bool] = Field(
+        None, description="True kalau jawaban diambil dari cache (jangan ditebak dari mode)"
+    )
+    timings_ms: Optional[dict[str, float]] = Field(
+        None,
+        description=(
+            "Latensi per layer dalam ms. Kunci: moderation, intent, condense, "
+            "cache_lookup, retrieve, neighbor_expansion, rerank, generate, output_filter. "
+            "Kunci yang tidak ada = layer tidak dijalankan (bukan 0)."
+        ),
+    )
+    generate_tokens: Optional[int] = Field(
+        None, description="Jumlah token output LLM kalau tersedia dari vLLM"
+    )
+    ttft_ms: Optional[float] = Field(
+        None, description="Time-to-first-token (ms) — hanya untuk jalur streaming"
+    )
+    # ── Instrumentasi riset (Tahap 5) — semua opsional, additive ────────────────
+    rerank_fallback: Optional[bool] = Field(
+        None,
+        description=(
+            "True kalau rerank GAGAL dan urutan yang dipakai adalah urutan dense. "
+            "Saat True, 'score' pada sources dan 'top_score' adalah skor kemiripan "
+            "dense, BUKAN skor reranker — dua skala berbeda yang tidak dapat "
+            "dibandingkan dengan satu SCORE_THRESHOLD. None = rerank tidak dijalankan."
+        ),
+    )
+    retrieval_stages: Optional[dict] = Field(
+        None,
+        description=(
+            "Hasil per tahap retrieval: 'dense', 'expansion', 'rerank'. Tiap node "
+            "membawa chunk_id, document_id, image_id, element_type, page, rank, "
+            "dan score. Hanya terisi kalau RESEARCH_VERBOSE_RETRIEVAL=true."
+        ),
+    )
+    research_flags: Optional[dict] = Field(
+        None,
+        description=(
+            "Flag RESEARCH_* jalur query yang aktif saat request ini diproses. "
+            "Hanya terisi kalau ada yang menyala — sebagian mengubah angka yang "
+            "dilaporkan, jadi hasil tanpa penyertaan ini tidak dapat ditafsirkan."
+        ),
+    )
+    routing_bypassed: Optional[list[str]] = Field(
+        None,
+        description=(
+            "Titik keluar yang dilewati RESEARCH_BYPASS_ROUTING pada request ini "
+            "(mis. ['l1_hard_block']). Kosong/None = tidak ada yang dilewati."
+        ),
+    )
 
 
 class ChatResponse(BaseModel):

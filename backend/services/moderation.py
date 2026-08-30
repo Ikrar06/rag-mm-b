@@ -34,6 +34,21 @@ from backend.config import (
 
 logger = logging.getLogger(__name__)
 
+# Metric best-effort — import defensif supaya modul tetap jalan kalau metrics absen.
+try:
+    from backend.metrics import MODERATION_BYPASSED
+except Exception:  # pragma: no cover
+    MODERATION_BYPASSED = None
+
+
+def _inc_bypassed() -> None:
+    """Increment counter bypass (fail-open) tanpa pernah melempar."""
+    try:
+        if MODERATION_BYPASSED is not None:
+            MODERATION_BYPASSED.inc()
+    except Exception:
+        pass
+
 
 class ModerationBackend(str, Enum):
     OLLAMA = "ollama"
@@ -177,6 +192,7 @@ def check_moderation_v2(text: str) -> ModerationResult:
 
     if not _circuit.allow_request():
         logger.warning("moderation_bypassed reason=circuit_open")
+        _inc_bypassed()
         return ModerationResult(safe=True, bypassed=True, reason="circuit_open")
 
     return _check_ollama(text)
@@ -195,10 +211,12 @@ def _check_ollama(text: str) -> ModerationResult:
     except (httpx.TimeoutException, httpx.HTTPError, httpx.NetworkError) as e:
         _circuit.record_failure()
         logger.error("moderation_http_error error=%s circuit=%s", e, _circuit.state.value)
+        _inc_bypassed()
         return ModerationResult(safe=True, bypassed=True, reason=f"moderation_error: {type(e).__name__}")
     except Exception as e:
         _circuit.record_failure()
         logger.error("moderation_unexpected error=%s circuit=%s", e, _circuit.state.value)
+        _inc_bypassed()
         return ModerationResult(safe=True, bypassed=True, reason=f"moderation_error: unexpected")
 
     _circuit.record_success()

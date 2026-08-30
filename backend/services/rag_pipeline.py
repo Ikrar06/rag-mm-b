@@ -1,10 +1,13 @@
 """RAG pipeline service — retrieval, rerank, generation dengan history + RBAC + cache."""
 
+import contextvars
+import functools
 import json
 import logging
 import random
 import re
 import time
+from contextlib import contextmanager
 from typing import Generator, List, Optional
 
 from llama_index.core import VectorStoreIndex, Settings
@@ -36,8 +39,14 @@ from backend.config import (
     NEIGHBOR_EXPANSION_ENABLED,
     NEIGHBOR_EXPANSION_RADIUS,
     MAX_EXPANDED_CHUNKS,
+    RESEARCH_BYPASS_ROUTING,
+    RESEARCH_DISABLE_CONDENSATION,
+    RESEARCH_DISABLE_OUTPUT_FILTER,
+    RESEARCH_VERBOSE_RETRIEVAL,
+    research_query_flags,
 )
 from backend.services.llm_factory import get_llm
+from backend.metrics import LAYER_LATENCY, INFLIGHT, CACHE_HITS, RERANK_FALLBACK
 from backend.prompts.templates import (
     RAG_USER_PROMPT,
     RAG_USER_PROMPT_WITH_HISTORY,
@@ -59,6 +68,230 @@ logger = logging.getLogger(__name__)
 # Singletons
 _retriever = None
 _reranker = None
+
+
+# ─── Instrumentasi (F-2) — murni pengukuran, tidak mengubah logika pipeline ───
+
+@contextmanager
+def _timed(store: dict, name: str):
+    """Catat durasi blok (ms) ke `store[name]` + observe ke Prometheus histogram.
+
+    Timing TETAP tercatat walau blok melempar exception (finally), lalu exception
+    diteruskan apa adanya. Overhead: sepasang perf_counter. Kunci hanya ditulis
+    kalau blok ini benar-benar dieksekusi — layer yang dilewati tidak muncul.
+    """
+    t0 = time.perf_counter()
+    try:
+        yield
+    finally:
+        elapsed = time.perf_counter() - t0
+        store[name] = round(elapsed * 1000, 1)
+        try:
+            LAYER_LATENCY.labels(layer=name).observe(elapsed)
+        except Exception:
+            pass  # metric best-effort — tidak boleh ganggu request
+
+
+def _safe_inc(counter, **labels) -> None:
+    """Increment counter Prometheus tanpa pernah melempar (best-effort)."""
+    try:
+        (counter.labels(**labels) if labels else counter).inc()
+    except Exception:
+        pass
+
+
+def _inflight(fn):
+    """Decorator fungsi biasa: naik/turunkan gauge INFLIGHT selama eksekusi."""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            INFLIGHT.inc()
+        except Exception:
+            pass
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            try:
+                INFLIGHT.dec()
+            except Exception:
+                pass
+    return wrapper
+
+
+def _inflight_gen(fn):
+    """Decorator generator: track INFLIGHT selama iterasi dikonsumsi."""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            INFLIGHT.inc()
+        except Exception:
+            pass
+        try:
+            yield from fn(*args, **kwargs)
+        finally:
+            try:
+                INFLIGHT.dec()
+            except Exception:
+                pass
+    return wrapper
+
+
+def _extract_completion_tokens(resp) -> Optional[int]:
+    """Best-effort ambil jumlah token output dari CompletionResponse (vLLM/OpenAILike).
+
+    Return None kalau usage tidak tersedia. Tidak pernah melempar.
+    """
+    try:
+        raw = getattr(resp, "raw", None)
+        if raw is None:
+            return None
+        usage = raw.get("usage") if isinstance(raw, dict) else getattr(raw, "usage", None)
+        if usage is None:
+            return None
+        if isinstance(usage, dict):
+            return usage.get("completion_tokens")
+        return getattr(usage, "completion_tokens", None)
+    except Exception:
+        return None
+
+
+# ─── Instrumentasi riset (Tahap 5) — semua opt-in lewat flag RESEARCH_* ───────
+#
+# Tidak ada layer yang dihapus. Yang dilakukan hanya MELEWATI titik keluar dan
+# MEREKAM apa yang sudah dihitung pipeline. Dengan seluruh flag mati, jalur
+# eksekusi identik dengan sebelum Tahap 5.
+
+# Penanda bahwa rerank jatuh ke urutan dense. ContextVar, bukan variabel modul:
+# endpoint streaming mengembalikan generator SINKRON yang dijalankan Starlette
+# di threadpool, jadi beberapa query bisa berjalan bersamaan. Tiap thread
+# memperoleh salinan konteksnya sendiri, sehingga penanda satu query tidak
+# terbaca oleh query lain.
+# None = rerank belum/tidak dijalankan pada query ini; False = berjalan normal;
+# True = gagal dan jatuh ke urutan dense.
+_rerank_fallback: contextvars.ContextVar[Optional[bool]] = contextvars.ContextVar(
+    "rerank_fallback", default=None
+)
+
+
+def _retrieval_debug(stages: Optional[dict]) -> dict:
+    """Bagian debug yang berasal dari hasil retrieval.
+
+    `rerank_fallback` SELALU disertakan — itu perbaikan bug produksi, bukan
+    instrumentasi riset. Tanpanya, response saat rerank gagal tidak dapat
+    dibedakan dari response normal padahal skornya beda skala.
+
+    `retrieval_stages` hanya kalau RESEARCH_VERBOSE_RETRIEVAL aktif.
+    """
+    d: dict = {"rerank_fallback": _rerank_fallback.get()}
+    if stages:
+        d["retrieval_stages"] = {
+            nama: stages.get(nama, []) for nama in ("dense", "expansion", "rerank")
+        }
+    return d
+
+
+# Kunci debug yang TIDAK boleh masuk cache. Isinya khusus satu query: menyajikan
+# ulang hasil retrieval query lain pada cache hit akan mencemari data evaluasi,
+# karena peringkat dan skornya milik pertanyaan yang berbeda.
+_DEBUG_TIDAK_DI_CACHE = ("retrieval_stages", "routing_bypassed")
+
+
+def _cache_safe_debug(debug: dict) -> dict:
+    """Salinan debug tanpa kunci yang hanya sahih untuk satu query."""
+    return {k: v for k, v in debug.items() if k not in _DEBUG_TIDAK_DI_CACHE}
+
+
+def _filter_output(text: str, session_id: str = "") -> str:
+    """filter_output dengan saklar riset. Lihat RESEARCH_DISABLE_OUTPUT_FILTER."""
+    if RESEARCH_DISABLE_OUTPUT_FILTER:
+        return text
+    return filter_output(text, session_id)
+
+
+def _filter_token(delta: str) -> str:
+    """filter_token dengan saklar riset.
+
+    Ikut dimatikan bersama filter_output: kalau hanya salah satu, token yang
+    di-stream tersaring sementara jawaban akhir tidak, dan keduanya berbeda.
+    """
+    if RESEARCH_DISABLE_OUTPUT_FILTER:
+        return delta
+    return filter_token(delta)
+
+
+def _recent_history(history: list[dict]) -> list[dict]:
+    """Ambil HISTORY_TURNS giliran terakhir dari riwayat.
+
+    PERBAIKAN BUG PRODUKSI, di luar flag riset. Sebelumnya lima tempat menulis
+    `history[-(HISTORY_TURNS * 2):]` langsung. Di Python `-0 == 0`, sehingga
+    HISTORY_TURNS=0 menghasilkan `history[0:]` — SELURUH riwayat, kebalikan dari
+    yang dimaksud. Nilai 0 kini benar-benar berarti tanpa riwayat.
+    """
+    if HISTORY_TURNS <= 0:
+        return []
+    return list(history[-(HISTORY_TURNS * 2):])
+
+
+def _bypass(point: str, bypassed: list[str]) -> bool:
+    """True kalau titik keluar `point` harus dilewati demi eksperimen.
+
+    Dicatat ke log DAN ke daftar `bypassed` yang ikut ke debug response, supaya
+    jumlah item test set yang terselamatkan dapat dihitung per titik. Item
+    berlabel expected_behavior="abstain_or_flag_conflict" harus sampai ke
+    retrieval untuk bisa dinilai; ditolak di L1/L3 berarti tidak terukur.
+    """
+    if not RESEARCH_BYPASS_ROUTING:
+        return False
+    bypassed.append(point)
+    logger.info(
+        "research_bypass_routing point=%s — query diteruskan ke retrieval penuh", point
+    )
+    return True
+
+
+def _research_debug(bypassed: list[str]) -> dict:
+    """Bagian debug yang khusus riset. Kosong kalau tidak ada flag yang menyala."""
+    d: dict = {}
+    flags = research_query_flags()
+    if any(flags.values()):
+        d["research_flags"] = flags
+    if bypassed:
+        d["routing_bypassed"] = list(bypassed)
+    return d
+
+
+def _stage_records(nodes: list, stage: str) -> list[dict]:
+    """Ringkas satu tahap retrieval menjadi baris yang dapat dihitung metriknya.
+
+    Peringkat adalah posisi di dalam tahap ini, bukan peringkat akhir. `score`
+    dipertahankan apa adanya: tetangga hasil ekspansi diberi 0.0 di
+    _expand_with_neighbors, sehingga `is_neighbor` dapat membedakannya dari node
+    dense yang memang berskor rendah.
+
+    Dipanggil SEBELUM SourceLabelPostprocessor, jadi text_preview di sini adalah
+    teks chunk apa adanya — bukan teks yang sudah disisipi "[nama_file]\\n".
+    """
+    out = []
+    for rank, n in enumerate(nodes):
+        meta = n.metadata or {}
+        score = float(n.score) if n.score is not None else None
+        out.append({
+            "stage": stage,
+            "rank": rank,
+            "score": round(score, 6) if score is not None else None,
+            "is_neighbor": stage == "expansion" and score == 0.0,
+            "chunk_id": meta.get("chunk_id"),
+            "document_id": meta.get("document_id"),
+            "image_id": meta.get("image_id"),
+            "element_type": meta.get("element_type"),
+            "page": meta.get("page"),
+            "file_name": meta.get("file_name"),
+            "chunk_index": meta.get("chunk_index"),
+            "text_sha": meta.get("text_sha"),
+            "text_preview": (n.node.text or "")[:300],
+        })
+    return out
+
 
 # ─── Routing keyword sets ────────────────────────────────────────────────────
 
@@ -592,16 +825,22 @@ class _TEIRerankPostprocessor(BaseNodePostprocessor):
                 "tei_rerank_timeout timeout_sec=%.1f n_nodes=%d — fallback to dense order",
                 self.timeout, len(nodes),
             )
+            _safe_inc(RERANK_FALLBACK)
+            _rerank_fallback.set(True)
             return nodes[: self.top_n]
         except (httpx.HTTPError, httpx.NetworkError) as e:
             logger.error(
                 "tei_rerank_http_error error=%s — fallback to dense order", e
             )
+            _safe_inc(RERANK_FALLBACK)
+            _rerank_fallback.set(True)
             return nodes[: self.top_n]
         except Exception as e:
             logger.error(
                 "tei_rerank_unexpected error=%s — fallback to dense order", e
             )
+            _safe_inc(RERANK_FALLBACK)
+            _rerank_fallback.set(True)
             return nodes[: self.top_n]
 
         # TEI returns [{"index": i, "score": s}, ...] sudah sorted desc by score
@@ -746,7 +985,12 @@ def _expand_with_neighbors(nodes: list) -> list:
     return expanded_nodes
 
 
-def _retrieve_and_rerank(question: str, role: str = "public") -> tuple[list, float]:
+def _retrieve_and_rerank(
+    question: str,
+    role: str = "public",
+    timings: Optional[dict] = None,
+    stages: Optional[dict] = None,
+) -> tuple[list, float]:
     """Retrieve from Qdrant + neighbor expansion + rerank. Return (reranked_nodes, top_score).
 
     Pipeline:
@@ -757,6 +1001,15 @@ def _retrieve_and_rerank(question: str, role: str = "public") -> tuple[list, flo
 
     RBAC: saat dokumen sudah punya metadata 'access_level', tambah filter di sini.
     Untuk sekarang: semua dokumen dianggap 'public' — RBAC framework siap tapi belum aktif.
+
+    `stages` adalah parameter KELUARAN opsional, pola yang sama dengan `timings`.
+    Kalau diberi dict, ia diisi hasil ketiga tahap — dense, ekspansi tetangga,
+    dan rerank — masing-masing lewat _stage_records. Tanpa itu tahap dense dan
+    ekspansi keluar dari cakupan saat fungsi ini return, dan Precision@k,
+    Recall@k, MRR@k, serta nDCG@k tidak dapat dihitung per tahap (H12).
+
+    Kunci `rerank_fallback` juga diisi: True berarti rerank gagal dan skor yang
+    tersisa adalah skor dense, bukan skor reranker.
     """
     # TODO POC RBAC: uncomment saat dokumen sudah diklasifikasi dengan access_level metadata
     # from llama_index.core.vector_stores.types import MetadataFilters, MetadataFilter
@@ -767,37 +1020,91 @@ def _retrieve_and_rerank(question: str, role: str = "public") -> tuple[list, flo
 
     _ = role  # placeholder — aktifkan RBAC filter di sini saat docs sudah diklasifikasi
 
+    # store: kalau timings None (mis. dipanggil vision path tanpa instrumentasi),
+    # pakai dict buang supaya _timed tetap aman tanpa efek samping.
+    store = timings if timings is not None else {}
+
+    # NOTE: embed query + Qdrant search terjadi di dalam satu retriever.retrieve();
+    # memisahkan "embed" butuh membongkar internal LlamaIndex → digabung jadi "retrieve".
+    # Reset di AWAL, bukan sebelum rerank: kalau retrieval kosong dan fungsi
+    # return dini, penanda dari query sebelumnya di context yang sama tidak boleh
+    # ikut terbaca.
+    _rerank_fallback.set(None)
+
     retriever = _get_retriever()
-    nodes = retriever.retrieve(question)
+    with _timed(store, "retrieve"):
+        nodes = retriever.retrieve(question)
 
     if not nodes:
+        if stages is not None:
+            stages.update({"dense": [], "expansion": [], "rerank": [],
+                           "clean_texts": [], "rerank_fallback": None})
         return [], 0.0
 
+    if stages is not None:
+        stages["dense"] = _stage_records(nodes, "dense")
+
     # Step 2: neighbor expansion untuk handle PDF panjang (konteks utuh)
-    expanded_nodes = _expand_with_neighbors(nodes)
+    with _timed(store, "neighbor_expansion"):
+        expanded_nodes = _expand_with_neighbors(nodes)
+
+    if stages is not None:
+        stages["expansion"] = _stage_records(expanded_nodes, "expansion")
 
     # Step 3: reranker re-score semua kandidat (retrieved + neighbors)
     reranker = _get_reranker()
     labeler = SourceLabelPostprocessor()
-    reranked = reranker.postprocess_nodes(expanded_nodes, query_bundle=QueryBundle(question))
+    _rerank_fallback.set(False)
+    with _timed(store, "rerank"):
+        reranked = reranker.postprocess_nodes(expanded_nodes, query_bundle=QueryBundle(question))
+    fallback = _rerank_fallback.get()
+
+    # Rekam SEBELUM labeler: setelah ini node.text sudah disisipi "[nama_file]\n"
+    # (SourceLabelPostprocessor mengubah teks di tempat), sehingga pratinjau tidak
+    # lagi berupa teks chunk. clean_texts menyimpan teks apa adanya untuk sources.
+    if stages is not None:
+        stages["rerank"] = _stage_records(reranked, "rerank")
+        stages["clean_texts"] = [(n.node.text or "") for n in reranked]
+        stages["rerank_fallback"] = fallback
+
+    if fallback:
+        logger.warning(
+            "rerank_fallback_active n_nodes=%d — skor yang dilaporkan adalah skor "
+            "DENSE, bukan skor reranker; SCORE_THRESHOLD=%s dikalibrasi untuk skala "
+            "reranker sehingga perbandingannya tidak setara",
+            len(reranked), SCORE_THRESHOLD,
+        )
+
     reranked = labeler.postprocess_nodes(reranked)
 
     top_score = float(max((n.score for n in reranked if n.score is not None), default=0.0))
     return reranked, top_score
 
 
-def _build_sources(nodes: list) -> list[dict]:
-    return [
-        {
+def _build_sources(nodes: list, clean_texts: Optional[list[str]] = None) -> list[dict]:
+    """Ringkas node jadi sources untuk response.
+
+    `clean_texts` (opsional, sejajar indeks dengan `nodes`) menggantikan
+    text_preview dengan teks chunk apa adanya. Dipakai saat
+    RESEARCH_VERBOSE_RETRIEVAL aktif, karena SourceLabelPostprocessor sudah
+    menyisipkan "[nama_file]\\n" ke node.text sebelum fungsi ini dipanggil —
+    pratinjau produksi karenanya bukan teks chunk. Konteks yang dilihat LLM
+    TIDAK diubah: labelnya tetap ada di node.
+    """
+    out = []
+    for i, n in enumerate(nodes):
+        preview = n.text
+        if clean_texts is not None and i < len(clean_texts):
+            preview = clean_texts[i]
+        out.append({
             "file_name": n.metadata.get("file_name", "unknown"),
             "page": n.metadata.get("page"),
             "chunk_index": n.metadata.get("chunk_index"),
             "element_type": n.metadata.get("element_type"),
             "score": round(float(n.score), 4) if n.score is not None else 0.0,
-            "text_preview": n.text[:300],
-        }
-        for n in nodes
-    ]
+            "text_preview": preview[:300],
+        })
+    return out
 
 
 # ─── Vision query (image input support) ──────────────────────────────────────
@@ -886,7 +1193,7 @@ def _vision_query(
         # Threshold 0.85 lebih ketat dari INTENT_CONFIDENCE_THRESHOLD biasa.
         if intent == "out_of_scope" and intent_conf >= 0.85:
             logger.info("vision_early_reject reason=oos_high_confidence")
-            answer = filter_output(_out_of_scope_response(question, history))
+            answer = _filter_output(_out_of_scope_response(question, history))
             return _make(answer, mode="out_of_scope")
     except Exception as e:
         # L3 failure di vision path tidak fatal — lanjut ke VL.
@@ -909,7 +1216,7 @@ def _vision_query(
     else:
         context_str = "(Tidak ada referensi dokumen UNHAS yang relevan untuk pertanyaan ini.)"
 
-    history_str = _format_history(history[-(HISTORY_TURNS * 2):]) if history else ""
+    history_str = _format_history(_recent_history(history)) if history else ""
 
     prompt = VISION_RAG_PROMPT.format(
         context_str=context_str,
@@ -928,7 +1235,7 @@ def _vision_query(
             sources=sources, top_score=top_score,
         )
 
-    answer = filter_output(_format_answer(raw_answer))
+    answer = _filter_output(_format_answer(raw_answer))
     answer, confidence_band = _apply_confidence_disclaimer(answer, top_score)
 
     logger.info(
@@ -952,6 +1259,7 @@ def _vision_query(
 
 # ─── Main entry point ────────────────────────────────────────────────────────
 
+@_inflight
 def query(
     question: str,
     history: Optional[list[dict]] = None,
@@ -965,6 +1273,8 @@ def query(
     untuk vision path.
     """
     t_start = time.time()
+    timings: dict = {}
+    bypassed: list[str] = []
     history = history or []
 
     if images:
@@ -983,6 +1293,9 @@ def query(
         if intent is not None:
             d["intent"] = intent
             d["intent_confidence"] = intent_conf
+        d["timings_ms"] = dict(timings)
+        d["cache_hit"] = False
+        d.update(_research_debug(bypassed))
         return {
             "answer": answer,
             "sources": sources or [],
@@ -992,14 +1305,15 @@ def query(
 
     # ── 1. Layer 1 — Keyword filter (hard_block / soft_flag / safe_context) ──
     l1 = _check_keyword_filter(question)
-    if l1.is_blocked:
+    if l1.is_blocked and not _bypass("l1_hard_block", bypassed):
         return _make_result(_pick(_HARMFUL_RESPONSES), mode="blocked")
 
     # ── 2. Layer 2 — Moderation model (Llama Guard + circuit breaker) ────────
     # Kalau L1 menghasilkan soft-flag (mis. "narkoba" tanpa konteks akademik),
     # L2 jadi judgment kontekstual. Circuit breaker fail-open kalau Guard down —
     # query tetap diproses tapi log mencatat bypassed.
-    mod = check_moderation_v2(question)
+    with _timed(timings, "moderation"):
+        mod = check_moderation_v2(question)
     if mod.bypassed:
         logger.warning("L2_bypassed reason=%s", mod.reason)
     if not mod.safe:
@@ -1016,13 +1330,15 @@ def query(
     # ── 3. Layer 3 — Intent classification (IndoBERT) ─────────────────────────
     # Pre-route: pertanyaan identity → force ke chitchat (bypass classifier
     # yang kadang salah classify pertanyaan model identity)
-    if _is_identity_question(question):
+    if _is_identity_question(question) and not _bypass("identity_override", bypassed):
         logger.info(f"L3_identity_override → chitchat question={question[:60]!r}")
-        answer = _chitchat_response(question, history)
+        with _timed(timings, "generate"):
+            answer = _chitchat_response(question, history)
         return _make_result(answer, mode="chitchat",
                             intent="chitchat", intent_conf=1.0)
 
-    intent_result = classify_intent(question)
+    with _timed(timings, "intent"):
+        intent_result = classify_intent(question)
     intent = intent_result["intent"]
     if intent_result.get("fallback"):
         logger.warning("L3_using_fallback intent=%s", intent)
@@ -1037,11 +1353,17 @@ def query(
             mode="clarification_needed",
             intent=_intent, intent_conf=_intent_conf,
         )
-    if intent == "chitchat":
-        answer = filter_output(_chitchat_response(question, history))
+    if intent == "chitchat" and not _bypass("l3_chitchat", bypassed):
+        with _timed(timings, "generate"):
+            answer = _chitchat_response(question, history)
+        with _timed(timings, "output_filter"):
+            answer = _filter_output(answer)
         return _make_result(answer, mode="chitchat", intent=_intent, intent_conf=_intent_conf)
-    if intent == "out_of_scope":
-        answer = filter_output(_out_of_scope_response(question, history))
+    if intent == "out_of_scope" and not _bypass("l3_out_of_scope", bypassed):
+        with _timed(timings, "generate"):
+            answer = _out_of_scope_response(question, history)
+        with _timed(timings, "output_filter"):
+            answer = _filter_output(answer)
         return _make_result(
             answer,
             mode="out_of_scope",
@@ -1070,43 +1392,59 @@ def query(
 
     # ── 4. Query condensation (kalau ada history) ─────────────────────────────
     condensed = question
-    if history:
-        trimmed_history = _trim_history_by_tokens(list(history[-(HISTORY_TURNS * 2):]))
-        condensed, is_ack = _condense_question(trimmed_history, question)
-        if is_ack:
-            answer = _chitchat_response(question, history)
+    if history and not RESEARCH_DISABLE_CONDENSATION:
+        trimmed_history = _trim_history_by_tokens(_recent_history(history))
+        with _timed(timings, "condense"):
+            condensed, is_ack = _condense_question(trimmed_history, question)
+        if is_ack and not _bypass("condense_ack", bypassed):
+            with _timed(timings, "generate"):
+                answer = _chitchat_response(question, history)
             return _make_result(answer, mode="chitchat", condensed=condensed,
                                 intent=_intent, intent_conf=_intent_conf)
 
         # Re-check L1 pada condensed (LLM bisa transform query jadi harmful)
-        if _check_keyword_filter(condensed).is_blocked:
+        if _check_keyword_filter(condensed).is_blocked and not _bypass(
+            "l1_hard_block_condensed", bypassed
+        ):
             return _make_result(_pick(_HARMFUL_RESPONSES), mode="blocked", condensed=condensed)
 
     # ── 5. Cache check (condensed first, then original as fallback) ──────────
-    cached = cache_get(condensed, role=role)
-    if not cached and condensed != question:
-        cached = cache_get(question, role=role)
+    with _timed(timings, "cache_lookup"):
+        cached = cache_get(condensed, role=role)
+        if not cached and condensed != question:
+            cached = cache_get(question, role=role)
     if cached:
+        _safe_inc(CACHE_HITS, result="hit")
         logger.info(f"Cache hit for: '{condensed[:60]}'")
         return {
             **cached,
             "condensed_question": condensed,
             "debug": {**cached.get("debug", {}), "mode": "cache_hit",
-                      "total_time_s": round(time.time() - t_start, 2)},
+                      "total_time_s": round(time.time() - t_start, 2),
+                      "cache_hit": True, "timings_ms": dict(timings),
+                      "generate_tokens": None, "ttft_ms": None},
         }
+    _safe_inc(CACHE_HITS, result="miss")
 
     # ── 5. RAG retrieval + rerank ─────────────────────────────────────────────
     expanded = _expand_query(condensed)
     if expanded != condensed:
         logger.info(f"Query expanded: '{condensed}' → '{expanded}'")
 
-    reranked_nodes, top_score = _retrieve_and_rerank(expanded, role=role)
-    sources = _build_sources(reranked_nodes)
+    stages: dict = {} if RESEARCH_VERBOSE_RETRIEVAL else None
+    reranked_nodes, top_score = _retrieve_and_rerank(
+        expanded, role=role, timings=timings, stages=stages
+    )
+    sources = _build_sources(
+        reranked_nodes, clean_texts=(stages or {}).get("clean_texts")
+    )
+    retrieval_debug = _retrieval_debug(stages)
 
     # ── 6. Score threshold ────────────────────────────────────────────────────
     if top_score < SCORE_THRESHOLD or not reranked_nodes:
         logger.info(f"Top score {top_score} < {SCORE_THRESHOLD} — low-relevance fallback")
-        answer = _low_relevance_response(condensed)
+        with _timed(timings, "generate"):
+            answer = _low_relevance_response(condensed)
         result = _make_result(answer, mode="rag_low_relevance",
                               sources=sources, top_score=top_score, condensed=condensed,
                               intent=_intent, intent_conf=_intent_conf)
@@ -1114,12 +1452,13 @@ def query(
             "similarity_top_k": SIMILARITY_TOP_K,
             "reranker_top_n": RERANKER_TOP_N,
             "sources_returned": len(sources),
+            **retrieval_debug,
         })
         return result
 
     # ── 7. Build context + prompt ─────────────────────────────────────────────
     context_str = "\n\n".join(n.text for n in reranked_nodes)
-    history_str = _format_history(history[-(HISTORY_TURNS * 2):])
+    history_str = _format_history(_recent_history(history))
 
     if history_str:
         prompt = RAG_USER_PROMPT_WITH_HISTORY.format(
@@ -1132,8 +1471,12 @@ def query(
 
     # ── 8. LLM generate ──────────────────────────────────────────────────────
     llm = get_llm()
-    raw_answer = str(llm.complete(prompt))
-    answer = filter_output(_format_answer(raw_answer))
+    with _timed(timings, "generate"):
+        _resp = llm.complete(prompt)
+        raw_answer = str(_resp)
+    gen_tokens = _extract_completion_tokens(_resp)
+    with _timed(timings, "output_filter"):
+        answer = _filter_output(_format_answer(raw_answer))
     answer, confidence_band = _apply_confidence_disclaimer(answer, top_score)
 
     logger.info(
@@ -1149,21 +1492,25 @@ def query(
         "reranker_top_n": RERANKER_TOP_N,
         "sources_returned": len(sources),
         "confidence_band": confidence_band,
+        "generate_tokens": gen_tokens,
+        **retrieval_debug,
     })
 
     # ── 9. Cache store ────────────────────────────────────────────────────────
     # Store by condensed (canonical standalone question)
-    cache_set(condensed, answer, sources, role=role, debug=result["debug"])
+    cache_debug = _cache_safe_debug(result["debug"])
+    cache_set(condensed, answer, sources, role=role, debug=cache_debug)
     # Also store by original question so repeated same-question hits cache
     # even when condensation produces a slightly different form
     if condensed != question:
-        cache_set(question, answer, sources, role=role, debug=result["debug"])
+        cache_set(question, answer, sources, role=role, debug=cache_debug)
 
     return result
 
 
 # ─── Streaming entry point ────────────────────────────────────────────────────
 
+@_inflight_gen
 def query_stream(
     question: str,
     history: Optional[list[dict]] = None,
@@ -1179,6 +1526,10 @@ def query_stream(
     di-chunk lokal jadi mirip streaming untuk UI).
     """
     t_start = time.time()
+    t_perf = time.perf_counter()
+    timings: dict = {}
+    bypassed: list[str] = []
+    ttft_ms = None
     history = history or []
 
     if images:
@@ -1212,6 +1563,9 @@ def query_stream(
         if intent is not None:
             d["intent"] = intent
             d["intent_confidence"] = intent_conf
+        d["timings_ms"] = dict(timings)
+        d["cache_hit"] = False
+        d.update(_research_debug(bypassed))
         if extra:
             d.update(extra)
         return {
@@ -1231,12 +1585,15 @@ def query_stream(
         yield meta
 
     # ── 1. Layer 1 — Keyword filter (hard_block / soft_flag / safe_context) ──
-    if _check_keyword_filter(question).is_blocked:
+    if _check_keyword_filter(question).is_blocked and not _bypass(
+        "l1_hard_block", bypassed
+    ):
         yield from _fake_stream(_pick(_HARMFUL_RESPONSES), _make_meta("", "blocked"))
         return
 
     # ── 2. Layer 2 — Moderation model (Llama Guard + circuit breaker) ────────
-    mod = check_moderation_v2(question)
+    with _timed(timings, "moderation"):
+        mod = check_moderation_v2(question)
     if mod.bypassed:
         logger.warning("L2_bypassed reason=%s", mod.reason)
     if not mod.safe:
@@ -1247,14 +1604,16 @@ def query_stream(
 
     # ── 3. Layer 3 — Intent classification (IndoBERT) ─────────────────────────
     # Pre-route: pertanyaan identity → force ke chitchat
-    if _is_identity_question(question):
+    if _is_identity_question(question) and not _bypass("identity_override", bypassed):
         logger.info(f"L3_identity_override → chitchat question={question[:60]!r}")
-        answer = _chitchat_response(question, history)
+        with _timed(timings, "generate"):
+            answer = _chitchat_response(question, history)
         yield from _fake_stream(answer, _make_meta(answer, "chitchat",
                                                     intent="chitchat", intent_conf=1.0))
         return
 
-    intent_result = classify_intent(question)
+    with _timed(timings, "intent"):
+        intent_result = classify_intent(question)
     intent = intent_result["intent"]
     _intent = intent
     _intent_conf = intent_result["confidence"]
@@ -1265,13 +1624,19 @@ def query_stream(
         yield from _fake_stream(msg, _make_meta(msg, "clarification_needed",
                                                 intent=_intent, intent_conf=_intent_conf))
         return
-    if intent == "chitchat":
-        answer = filter_output(_chitchat_response(question, history))
+    if intent == "chitchat" and not _bypass("l3_chitchat", bypassed):
+        with _timed(timings, "generate"):
+            answer = _chitchat_response(question, history)
+        with _timed(timings, "output_filter"):
+            answer = _filter_output(answer)
         yield from _fake_stream(answer, _make_meta(answer, "chitchat",
                                                    intent=_intent, intent_conf=_intent_conf))
         return
-    if intent == "out_of_scope":
-        msg = filter_output(_out_of_scope_response(question, history))
+    if intent == "out_of_scope" and not _bypass("l3_out_of_scope", bypassed):
+        with _timed(timings, "generate"):
+            msg = _out_of_scope_response(question, history)
+        with _timed(timings, "output_filter"):
+            msg = _filter_output(msg)
         yield from _fake_stream(msg, _make_meta(msg, "out_of_scope",
                                                 intent=_intent, intent_conf=_intent_conf))
         return
@@ -1290,24 +1655,30 @@ def query_stream(
 
     # ── 4. Condensation ────────────────────────────────────────────────────────
     condensed = question
-    if history:
-        trimmed_history = _trim_history_by_tokens(list(history[-(HISTORY_TURNS * 2):]))
-        condensed, is_ack = _condense_question(trimmed_history, question)
-        if is_ack:
-            answer = _chitchat_response(question, history)
+    if history and not RESEARCH_DISABLE_CONDENSATION:
+        trimmed_history = _trim_history_by_tokens(_recent_history(history))
+        with _timed(timings, "condense"):
+            condensed, is_ack = _condense_question(trimmed_history, question)
+        if is_ack and not _bypass("condense_ack", bypassed):
+            with _timed(timings, "generate"):
+                answer = _chitchat_response(question, history)
             yield from _fake_stream(answer, _make_meta(answer, "chitchat", condensed=condensed,
                                                        intent=_intent, intent_conf=_intent_conf))
             return
-        if _check_keyword_filter(condensed).is_blocked:
+        if _check_keyword_filter(condensed).is_blocked and not _bypass(
+            "l1_hard_block_condensed", bypassed
+        ):
             yield from _fake_stream(_pick(_HARMFUL_RESPONSES),
                                     _make_meta("", "blocked", condensed=condensed))
             return
 
     # ── 4. Cache check ────────────────────────────────────────────────────────
-    cached = cache_get(condensed, role=role)
-    if not cached and condensed != question:
-        cached = cache_get(question, role=role)
+    with _timed(timings, "cache_lookup"):
+        cached = cache_get(condensed, role=role)
+        if not cached and condensed != question:
+            cached = cache_get(question, role=role)
     if cached:
+        _safe_inc(CACHE_HITS, result="hit")
         answer = cached["answer"]
         meta = {
             "type": "meta",
@@ -1315,22 +1686,33 @@ def query_stream(
             "sources": cached.get("sources", []),
             "condensed_question": condensed,
             "debug": {**cached.get("debug", {}), "mode": "cache_hit",
-                      "total_time_s": round(time.time() - t_start, 2)},
+                      "total_time_s": round(time.time() - t_start, 2),
+                      "cache_hit": True, "timings_ms": dict(timings),
+                      "generate_tokens": None, "ttft_ms": None},
         }
         yield from _fake_stream(answer, meta, delay=0.015)  # cache: faster
         return
+    _safe_inc(CACHE_HITS, result="miss")
 
     # ── 5. Retrieval + rerank ─────────────────────────────────────────────────
     expanded = _expand_query(condensed)
-    reranked_nodes, top_score = _retrieve_and_rerank(expanded, role=role)
-    sources = _build_sources(reranked_nodes)
+    stages: dict = {} if RESEARCH_VERBOSE_RETRIEVAL else None
+    reranked_nodes, top_score = _retrieve_and_rerank(
+        expanded, role=role, timings=timings, stages=stages
+    )
+    sources = _build_sources(
+        reranked_nodes, clean_texts=(stages or {}).get("clean_texts")
+    )
+    retrieval_debug = _retrieval_debug(stages)
 
     # ── 6. Score threshold ────────────────────────────────────────────────────
     if top_score < SCORE_THRESHOLD or not reranked_nodes:
-        answer = _low_relevance_response(condensed)
+        with _timed(timings, "generate"):
+            answer = _low_relevance_response(condensed)
         extra = {"similarity_top_k": SIMILARITY_TOP_K,
                  "reranker_top_n": RERANKER_TOP_N,
-                 "sources_returned": len(sources)}
+                 "sources_returned": len(sources),
+                 **retrieval_debug}
         yield from _fake_stream(
             answer,
             _make_meta(answer, "rag_low_relevance", sources=sources,
@@ -1341,7 +1723,7 @@ def query_stream(
 
     # ── 7. Build prompt ───────────────────────────────────────────────────────
     context_str = "\n\n".join(n.text for n in reranked_nodes)
-    history_str = _format_history(history[-(HISTORY_TURNS * 2):])
+    history_str = _format_history(_recent_history(history))
     if history_str:
         prompt = RAG_USER_PROMPT_WITH_HISTORY.format(
             chat_history=history_str, context_str=context_str, query_str=question)
@@ -1351,13 +1733,17 @@ def query_stream(
     # ── 8. Stream LLM tokens ─────────────────────────────────────────────────
     llm = get_llm()
     parts: list[str] = []
-    for token_resp in llm.stream_complete(prompt):
-        delta = token_resp.delta
-        if delta:
-            parts.append(delta)
-            yield {"type": "token", "delta": filter_token(delta)}
+    with _timed(timings, "generate"):
+        for token_resp in llm.stream_complete(prompt):
+            delta = token_resp.delta
+            if delta:
+                if ttft_ms is None:
+                    ttft_ms = round((time.perf_counter() - t_perf) * 1000, 1)
+                parts.append(delta)
+                yield {"type": "token", "delta": _filter_token(delta)}
 
-    full_answer = filter_output(_format_answer("".join(parts)))
+    with _timed(timings, "output_filter"):
+        full_answer = _filter_output(_format_answer("".join(parts)))
     full_answer, confidence_band = _apply_confidence_disclaimer(full_answer, top_score)
 
     # Kalau marginal, kirim disclaimer chunk sebagai token tambahan supaya client
@@ -1383,10 +1769,17 @@ def query_stream(
         "intent": _intent,
         "intent_confidence": _intent_conf,
         "confidence_band": confidence_band,
+        "timings_ms": dict(timings),
+        "cache_hit": False,
+        "generate_tokens": len(parts),
+        "ttft_ms": ttft_ms,
+        **_research_debug(bypassed),
+        **retrieval_debug,
     }
-    cache_set(condensed, full_answer, sources, role=role, debug=debug_dict)
+    cache_debug = _cache_safe_debug(debug_dict)
+    cache_set(condensed, full_answer, sources, role=role, debug=cache_debug)
     if condensed != question:
-        cache_set(question, full_answer, sources, role=role, debug=debug_dict)
+        cache_set(question, full_answer, sources, role=role, debug=cache_debug)
 
     # ── 10. Meta event ────────────────────────────────────────────────────────
     yield {
