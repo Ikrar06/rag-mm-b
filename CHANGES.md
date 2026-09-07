@@ -1977,3 +1977,89 @@ helper `_timed`/`_safe_inc` milik F-2. Commit yang hanya memuat hunk Tahap 5
 
 Jangan membalik urutannya: mendaratkan Tahap 5 lebih dulu akan ikut membawa WIP
 F-2 ke dalam commit yang bukan miliknya.
+
+---
+
+# TAHAP A — telusur tabel terpotong lintas halaman (belum ada perbaikan pipeline)
+
+Pipeline tidak disentuh. Yang ditambahkan hanya instrumen ukur read-only,
+`scripts/analisis_tabel_lintas_halaman.py`.
+
+## Temuan 1 — unstructured 0.16.11 tidak punya penanda kelanjutan tabel
+
+Field `is_continuation` **ada tapi bukan itu maknanya**:
+
+```
+unstructured/documents/elements.py:180
+    # -- used in chunks only, when chunk must be split mid-text to fit window --
+elements.py:496
+    "is_continuation": cls.DROP,  # -- not expected, added by chunking, not before --
+```
+
+Semua yang menyetelnya ada di lapisan chunking (`chunking/base.py:630`, `:778`,
+`:798`), tidak satu pun di `partition/`. Artinya "potongan ke-2+ dari SATU
+element yang dipotong agar muat jendela chunk", bukan "tabel ini lanjutan tabel
+di halaman sebelumnya". Satu-satunya penggabungan tabel di seluruh paket adalah
+`partition/xlsx.py:305 _merge_overlapping_tables` — antar-sheet spreadsheet.
+
+**Konsekuensi:** rekonstruksi tabel lintas halaman harus bersandar heuristik.
+Tidak ada sinyal dari pustaka yang bisa dipercaya.
+
+## Temuan 2 — tidak ada logika batas halaman di pipeline
+
+`_extract_hi_res` (`preprocessing.py:372-374`) loop datar; halaman dibaca sebagai
+label saja. `_chunk_elements` (`:909`) juga loop datar, tanpa satu pun cabang
+yang bereaksi terhadap pergantian halaman.
+
+Pemotongan **tidak terjadi di repo ini**: tabel lintas halaman sudah tiba sebagai
+dua element `Table` terpisah dari `partition_pdf`, karena deteksi layout hi_res
+bekerja per halaman. `_chunk_elements` setia menjadikan masing-masing satu chunk.
+
+## Temuan 3 — `document_id` di payload Qdrant BUKAN slug dokumen
+
+**Wajib diketahui peneliti fork lain.** LlamaIndex menimpanya saat menulis ke
+vector store:
+
+```
+llama_index/core/vector_stores/utils.py, node_to_metadata_dict()
+    metadata["document_id"] = node.ref_doc_id or "None"
+    metadata["doc_id"]      = node.ref_doc_id or "None"
+    metadata["ref_doc_id"]  = node.ref_doc_id or "None"
+```
+
+`indexing.py` membuat satu `Document` per chunk, jadi **setiap titik memperoleh
+UUID yang berbeda**. Mengelompokkan dengan field itu menghasilkan "1.160 chunk
+tabel di 1.160 dokumen" dan nol pasangan — bukan karena tidak ada tabel
+bersambung, tapi karena tiap chunk jadi dokumen sendiri. Gejala ini sudah nyata
+terjadi pada versi pertama instrumen ukur.
+
+| Cara membaca | `document_id` yang didapat |
+|---|---|
+| `client.scroll()` — payload mentah | **UUID node** |
+| `n.metadata` setelah retrieval | slug (benar) |
+| `chunks.jsonl` dari `chunk_dump` | slug (benar) |
+
+Dua yang terakhir aman karena `metadata_dict_to_node` merekonstruksi dari
+`_node_content`, dan `chunk_dump` menulis dari objek `Document` **sebelum**
+indexing. Terverifikasi langsung terhadap `llama-index-core==0.14.13`.
+
+**Cara aman mengambil slug dari payload:** potong `chunk_id` dengan jangkar di
+ujung, `^(.+)_p(?:\d+|NA)_c\d+$`. Slug juga selamat di dalam `_node_content`
+(di-dump sebelum penimpaan) dan dipakai instrumen ini sebagai silang-periksa —
+kalau keduanya tidak sepakat, itu dilaporkan.
+
+Yang **tidak** terdampak: `index_verify.py` (hanya memakai `chunk_id`),
+`_stage_records` dan `retrieval_dump.py` (membaca `n.metadata` pasca-retrieval),
+`chunks.jsonl`.
+
+## Temuan 4 — baris mati `current_page` (prioritas rendah)
+
+`current_page` diinisialisasi `1` (`preprocessing.py:776`), lalu `:966` dan
+`:1007` menulis `if not current_page: current_page = page`. `not 1` selalu False,
+jadi baris itu tidak pernah dieksekusi; `current_page` hanya berubah di Title
+(`:924`).
+
+**Diverifikasi tidak merusak identitas:** nol chunk yang `page` di payload
+berbeda dengan `page` di `chunk_id`, dari 25.475 chunk. Chunk tabel memakai
+`page` element langsung, jadi tidak lewat jalur ini sama sekali. Dicatat saja,
+tidak perlu diperbaiki dalam tugas ini.
