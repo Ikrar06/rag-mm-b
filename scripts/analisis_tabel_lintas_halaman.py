@@ -29,6 +29,21 @@ Lima sinyal
 Sinyal 5 tidak diminta di daftar awal tapi paling tajam memisahkan kasus:
 dua tabel berbeda hampir selalu dipisahkan prosa atau judul.
 
+Jebakan: `document_id` di payload Qdrant BUKAN slug
+---------------------------------------------------
+LlamaIndex menimpanya dengan UUID node saat menulis ke vector store:
+
+    llama_index/core/vector_stores/utils.py, node_to_metadata_dict()
+        metadata["document_id"] = node.ref_doc_id or "None"
+
+`indexing.py` membuat satu Document per chunk, jadi setiap titik memperoleh UUID
+yang berbeda. Mengelompokkan dengan field itu menghasilkan "1.160 chunk tabel di
+1.160 dokumen" dan NOL pasangan — bukan nol karena tidak ada tabel bersambung,
+tapi karena tiap chunk jadi dokumen sendiri sehingga tidak ada yang bertetangga.
+
+Slug diambil dari `chunk_id`, yang tidak ditimpa. Ia juga selamat di dalam
+`_node_content` (di-dump SEBELUM penimpaan) dan dipakai sebagai silang-periksa.
+
 Sumber data
 -----------
     --chunks-jsonl PATH   baca dump chunks.jsonl (tidak perlu Qdrant)
@@ -144,15 +159,60 @@ def bandingkan_header(a: _Tabel, b: _Tabel) -> str:
     return "tak_tentu"
 
 
+# chunk_id berbentuk "{document_id}_p{N}_c{NN}" atau "{document_id}_pNA_c{NN}"
+# (preprocessing.emit). Jangkar di UJUNG supaya slug yang kebetulan memuat "_p"
+# tidak terpotong di tempat yang salah.
+_CHUNK_ID_RE = re.compile(r"^(?P<doc>.+)_p(?:\d+|NA)_c\d+$")
+
+
+def slug_dari_chunk_id(chunk_id) -> str | None:
+    if not isinstance(chunk_id, str):
+        return None
+    m = _CHUNK_ID_RE.match(chunk_id)
+    return m.group("doc") if m else None
+
+
+def kunci_dokumen(r: dict) -> str:
+    """Slug dokumen sebuah chunk.
+
+    JANGAN memakai payload['document_id'] dari Qdrant. LlamaIndex MENIMPA field
+    itu dengan UUID node saat menulis ke vector store:
+
+        llama_index/core/vector_stores/utils.py, node_to_metadata_dict()
+            metadata["document_id"] = node.ref_doc_id or "None"
+
+    indexing.py membuat satu Document per chunk, jadi tiap titik memperoleh UUID
+    yang berbeda. Mengelompokkan dengan field itu menghasilkan "N chunk di N
+    dokumen" dan nol pasangan — gejala yang persis pernah terjadi.
+
+    Urutan sumber: chunk_id (selalu utuh), lalu slug yang selamat di dalam
+    _node_content (di-dump SEBELUM penimpaan), lalu file_name sebagai upaya
+    terakhir.
+    """
+    return (slug_dari_chunk_id(r.get("chunk_id"))
+            or r.get("_slug_node_content")
+            or r.get("file_name")
+            or "?")
+
+
 def muat_jsonl(path: Path) -> list[dict]:
     out = []
     for i, ln in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         if not ln.strip():
             continue
         try:
-            out.append(json.loads(ln))
+            r = json.loads(ln)
         except json.JSONDecodeError as e:
             raise ValueError(f"{path} baris {i}: {e}") from e
+        # Dump bisa berisi payload mentah Qdrant. Pulihkan slug dari
+        # _node_content di sini juga supaya silang-periksa bekerja di kedua jalur.
+        if isinstance(r, dict) and "_node_content" in r:
+            try:
+                dalam = (json.loads(r["_node_content"]) or {}).get("metadata") or {}
+            except Exception:
+                dalam = {}
+            r = {**dalam, **r, "_slug_node_content": dalam.get("document_id")}
+        out.append(r)
     return out
 
 
@@ -172,11 +232,14 @@ def muat_qdrant(collection: str) -> list[dict]:
             pl = p.payload or {}
             if not isinstance(pl, dict):
                 continue
-            if "chunk_id" not in pl and "_node_content" in pl:
+            # _node_content memuat metadata APA ADANYA sebelum LlamaIndex
+            # menimpa document_id — slug aslinya selamat di sana.
+            if "_node_content" in pl:
                 try:
-                    pl = {**pl, **((json.loads(pl["_node_content"]) or {}).get("metadata") or {})}
+                    dalam = (json.loads(pl["_node_content"]) or {}).get("metadata") or {}
                 except Exception:
-                    pass
+                    dalam = {}
+                pl = {**dalam, **pl, "_slug_node_content": dalam.get("document_id")}
             out.append(pl)
         if offset is None:
             break
@@ -210,13 +273,38 @@ def main() -> int:
 
     print(f"Sumber : {asal}")
     print(f"Chunk  : {len(rows)}")
+    print(f"Dokumen: {len({kunci_dokumen(r) for r in rows})} unik "
+          f"(dari chunk_id, BUKAN dari payload document_id yang ditimpa LlamaIndex)")
 
     # Kelompokkan per dokumen. chunk_index memberi urutan dokumen yang sama
     # dengan urutan element dari partition_pdf.
     per_dok: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
-        dok = r.get("document_id") or r.get("file_name") or "?"
-        per_dok[dok].append(r)
+        per_dok[kunci_dokumen(r)].append(r)
+
+    # Deteksi dini kalau pengelompokan runtuh lagi: satu chunk per "dokumen"
+    # berarti kuncinya unik per titik, bukan per dokumen.
+    if len(rows) >= 20 and len(per_dok) > 0.9 * len(rows):
+        print("  PERINGATAN: hampir tiap chunk jadi dokumen sendiri "
+              f"({len(per_dok)} kunci / {len(rows)} chunk). chunk_id mungkin "
+              "tidak berbentuk {document_id}_p{N}_c{NN}.")
+
+    tak_cocok = [r for r in rows if not slug_dari_chunk_id(r.get("chunk_id"))]
+    if tak_cocok:
+        contoh_id = tak_cocok[0].get("chunk_id")
+        print(f"  PERINGATAN: {len(tak_cocok)}/{len(rows)} chunk_id tidak cocok pola "
+              f"{{document_id}}_p{{N}}_c{{NN}}, mis. {contoh_id!r}. Slug-nya jatuh ke "
+              f"_node_content atau file_name — pengelompokan bisa salah.")
+
+    # Silang-periksa dua jalur pemulihan slug.
+    beda = [r for r in rows
+            if r.get("_slug_node_content")
+            and slug_dari_chunk_id(r.get("chunk_id"))
+            and r["_slug_node_content"] != slug_dari_chunk_id(r["chunk_id"])]
+    if beda:
+        print(f"  PERINGATAN: {len(beda)} chunk punya slug berbeda antara chunk_id "
+              f"dan _node_content, mis. {beda[0].get('chunk_id')!r} vs "
+              f"{beda[0]['_slug_node_content']!r}")
 
     tabel_total = sum(1 for r in rows if r.get("element_type") == "Table")
     dok_bertabel = {d for d, v in per_dok.items() if any(x.get("element_type") == "Table" for x in v)}
