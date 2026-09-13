@@ -191,6 +191,7 @@ def _ringkas_sel(h) -> dict:
             {"kolom": k.kolom, "skor": k.skor,
              "ekor_a": k.ekor_a[-80:], "kepala_b": k.kepala_b[:80],
              "tanpa_tanda_baca": k.tanpa_tanda_baca,
+             "ekor_menggantung": k.ekor_menggantung,
              "lanjutan_huruf_kecil": k.lanjutan_huruf_kecil,
              "lanjutan_konjungsi": k.lanjutan_konjungsi,
              "sel_lain_kosong_a": k.sel_lain_kosong_a,
@@ -467,6 +468,52 @@ def main() -> int:
     else:
         print("\n  Tidak ada kandidat kuat. Kasus ini tidak perlu ditangani.")
 
+    # ── Sebaran per dokumen ─────────────────────────────────────────────────
+    #
+    # Kalau satu dokumen menyumbang mayoritas masalah, menolaknya sekaligus
+    # lebih tepat daripada menyetel heuristik untuk mengakomodasinya.
+    print("\n" + "=" * 78)
+    print("SEBARAN PER DOKUMEN")
+    print("=" * 78)
+
+    per_dok_stat: dict[str, Counter] = defaultdict(Counter)
+    for r in semua:
+        st = per_dok_stat[r["document_id"]]
+        st[r["kategori"]] += 1
+        st["pasangan"] += 1
+        if r["sel_terpotong"]["n_kuat"]:
+            st["sel_terpotong"] += 1
+        if r["sel_terpotong"]["catatan"]:
+            st["tak_dinilai"] += 1
+
+    urut = sorted(per_dok_stat.items(), key=lambda kv: -kv[1]["pasangan"])
+    print(f"  {'dokumen':<44}{'psg':>5}{'kuat':>6}{'mungkin':>9}"
+          f"{'beda':>6}{'sel':>5}{'sumber':>10}")
+    print("  " + "-" * 83)
+    for dok, st in urut[: max(args.contoh, 10)]:
+        pr = profil.get(dok)
+        sumber = pr.sumber_halaman_tabel if pr else "-"
+        print(f"  {dok[:43]:<44}{st['pasangan']:>5}{st['lanjutan_kuat']:>6}"
+              f"{st['mungkin']:>9}{st['tabel_berbeda']:>6}"
+              f"{st['sel_terpotong']:>5}{sumber:>10}")
+    if len(urut) > max(args.contoh, 10):
+        print(f"  ... dan {len(urut) - max(args.contoh, 10)} dokumen lain")
+
+    # Dominasi: satu dokumen yang menyumbang >= 40% suatu kategori layak
+    # dipertimbangkan ditolak seluruhnya.
+    print()
+    for kat in (*KATEGORI, "sel_terpotong"):
+        n_kat = (hitung[kat] if kat in KATEGORI
+                 else sum(1 for r in semua if r["sel_terpotong"]["n_kuat"]))
+        if not n_kat:
+            continue
+        top = max(per_dok_stat.items(), key=lambda kv: kv[1][kat])
+        n_top = top[1][kat]
+        if n_top and n_top / n_kat >= 0.40:
+            print(f"  DOMINASI: {top[0]} menyumbang {n_top}/{n_kat} "
+                  f"({100 * n_top / n_kat:.0f}%) kategori {kat!r}")
+    print("  -> menolak satu dokumen bisa lebih tepat daripada menyetel heuristik.")
+
     for kat in KATEGORI:
         if not contoh[kat]:
             continue
@@ -496,6 +543,9 @@ def main() -> int:
                       "rasio_tabel_berteks": round(v.rasio_tabel_berteks, 4),
                       "n_halaman_tabel": len(v.halaman_tabel), "error": v.error}
                 for dok, v in profil.items()
+            },
+            "per_dokumen": {
+                dok: dict(st) for dok, st in sorted(per_dok_stat.items())
             },
             "pasangan": semua,
         }, indent=2, ensure_ascii=False), encoding="utf-8")

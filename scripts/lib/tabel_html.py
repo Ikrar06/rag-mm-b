@@ -14,14 +14,42 @@ import re
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 
-# Kata sambung Indonesia yang lazim mengawali lanjutan kalimat. Dipakai sebagai
-# indikator sel yang terpenggal, bukan sebagai bukti.
+# Kata sambung yang lazim mengawali lanjutan kalimat. Dwibahasa: laporan
+# keuangan di korpus ini menulis Indonesia dan Inggris berdampingan.
 KONJUNGSI = frozenset({
     "dan", "atau", "serta", "yang", "dengan", "untuk", "dalam", "pada", "dari",
     "ke", "oleh", "sebagai", "maupun", "tersebut", "kepada", "tentang", "agar",
-    "sehingga", "apabila", "bila", "jika", "karena", "namun", "tetapi", "serta",
-    "melampirkan", "disertai", "beserta",
+    "sehingga", "apabila", "bila", "jika", "karena", "namun", "tetapi",
+    "melampirkan", "disertai", "beserta", "atas", "terhadap", "antara",
+    "and", "or", "the", "of", "with", "which", "that", "for", "to", "in", "on",
+    "as", "by", "from", "at", "were", "was", "is", "are",
 })
+
+# Kata yang TIDAK DAPAT mengakhiri kalimat — kehadirannya di ujung sel A adalah
+# bukti terkuat bahwa isinya terpenggal. Jauh lebih tajam daripada "tanpa tanda
+# baca penutup", yang selalu benar untuk sel berisi angka.
+EKOR_MENGGANTUNG = frozenset({
+    "sebesar", "sejumlah", "yaitu", "adalah", "dengan", "dan", "atau", "untuk",
+    "pada", "dari", "oleh", "sebagai", "berupa", "antara", "terhadap", "dalam",
+    "ke", "di", "yang", "serta", "meliputi", "termasuk", "atas", "kepada",
+    "menjadi", "tentang", "per", "melampirkan", "disertai", "sebagaimana",
+    "amounting", "of", "the", "to", "with", "as", "for", "in", "on", "by",
+    "and", "or", "from", "between", "against", "including",
+})
+
+# Kata yang lazim menjadi judul kolom. Kemunculannya di awal potongan B berarti
+# itu baris header halaman baru, bukan lanjutan sel.
+KATA_HEADER = frozenset({
+    "uraian", "description", "no", "no.", "nomor", "number", "total", "jumlah",
+    "keterangan", "catatan", "notes", "note", "rincian", "nama", "name",
+    "kode", "code", "tahun", "year", "saldo", "balance", "akun", "account",
+    "ref", "jml", "subtotal", "sub total", "amount", "nilai", "aset", "assets",
+    "liabilitas", "liabilities", "ekuitas", "equity", "jenis", "type",
+})
+
+# Sel yang isinya hanya angka, pemisah, mata uang, atau tanda kurung.
+_NUMERIK_RE = re.compile(r"^(?:rp\.?|idr|usd|\$)?\s*[\d.,%()\-\s/]+$", re.IGNORECASE)
+_TAHUN_RE = re.compile(r"^(?:19|20)\d{2}$")
 
 # Tanda baca yang menandai akhir isi sel yang utuh.
 _PENUTUP = tuple(".!?:;)]}”\"'%")
@@ -147,6 +175,7 @@ class SelTerpotong:
     ekor_a: str
     kepala_b: str
     tanpa_tanda_baca: bool
+    ekor_menggantung: bool
     lanjutan_huruf_kecil: bool
     lanjutan_konjungsi: bool
     sel_lain_kosong_a: bool
@@ -163,8 +192,21 @@ class SelTerpotong:
         return self.sel_lain_kosong_a or self.sel_lain_kosong_b
 
     @property
+    def sinyal_kebahasaan(self) -> bool:
+        """Minimal satu bukti dari BAHASA, bukan sekadar tata letak.
+
+        Sel terpotong adalah gejala kebahasaan. Kombinasi "tanpa tanda baca" +
+        "ada sel kosong" saja lolos untuk setiap baris angka di laporan
+        keuangan — itu yang menghasilkan positif palsu 25->26 dan 26->27.
+        """
+        return (self.ekor_menggantung
+                or self.lanjutan_konjungsi
+                or self.lanjutan_huruf_kecil)
+
+    @property
     def skor(self) -> int:
         return sum((self.tanpa_tanda_baca,
+                    self.ekor_menggantung,
                     self.lanjutan_huruf_kecil or self.lanjutan_konjungsi,
                     self.sel_lain_kosong))
 
@@ -178,7 +220,36 @@ class HasilSel:
 
     @property
     def kuat(self) -> tuple[SelTerpotong, ...]:
-        return tuple(k for k in self.kandidat if k.skor >= 2)
+        return tuple(k for k in self.kandidat
+                     if k.skor >= 2 and k.sinyal_kebahasaan)
+
+
+
+def seluruhnya_numerik(teks: str) -> bool:
+    """Sel yang isinya hanya angka/pemisah/mata uang.
+
+    Sel semacam ini TIDAK PERNAH menandakan pemenggalan: angka memang tidak
+    diakhiri titik, sehingga indikator "tanpa tanda baca penutup" selalu
+    menyala palsu untuknya.
+    """
+    t = teks.strip()
+    return bool(t) and bool(_NUMERIK_RE.match(t)) and any(c.isdigit() for c in t)
+
+
+def kata_header(teks: str) -> bool:
+    """Sel yang isinya judul kolom atau tahun telanjang — penanda baris header
+    halaman baru, bukan lanjutan sel."""
+    t = " ".join(teks.split()).strip().lower().rstrip(":")
+    if not t or len(t.split()) > 3:
+        return False
+    return t in KATA_HEADER or bool(_TAHUN_RE.match(t))
+
+
+def _ekor_menggantung(teks: str) -> bool:
+    t = teks.strip().rstrip(",;")
+    if not t:
+        return False
+    return re.split(r"\s+", t)[-1].strip(".,;:()").lower() in EKOR_MENGGANTUNG
 
 
 def _berakhir_tanpa_penutup(teks: str) -> bool:
@@ -203,12 +274,19 @@ def deteksi_sel_terpotong(a: Tabel | None, b: Tabel | None) -> HasilSel:
     diulang tidak menolong — sistem mengambil setengah jawaban dan mengira utuh.
 
     Tiga indikator per kolom:
-      - sel terakhir A berakhir tanpa tanda baca penutup
+      - sel terakhir A berakhir dengan kata yang menuntut pelengkap (TERKUAT)
+      - sel terakhir A berakhir tanpa tanda baca penutup (lemah sendirian)
       - sel pertama B di kolom yang sama diawali huruf kecil ATAU konjungsi
       - ada sel lain yang kosong di baris terakhir A ATAU baris pertama B
         (nomor baris lazimnya tidak diulang di potongan lanjutan)
 
-    Mengembalikan KANDIDAT, bukan putusan. `kuat` menyaring skor >= 2.
+    Ditolak lebih dulu, tanpa menghitung indikator: sel A seluruhnya numerik,
+    sel B seluruhnya numerik, atau sel B berupa judul kolom / tahun telanjang.
+    Ketiganya pola positif palsu yang terukur di korpus — angka diikuti tahun
+    atau kata header.
+
+    Mengembalikan KANDIDAT, bukan putusan. `kuat` menyaring skor >= 2 DAN
+    menuntut minimal satu sinyal kebahasaan.
     """
     if a is None or b is None or not a.baris or not b.baris:
         return HasilSel(catatan="raw_html tidak dapat diurai pada salah satu potongan")
@@ -228,13 +306,18 @@ def deteksi_sel_terpotong(a: Tabel | None, b: Tabel | None) -> HasilSel:
     for i, (sa, sb) in enumerate(zip(ekor, kepala)):
         if not sa.strip() or not sb.strip():
             continue
+        # Penolakan keras, sebelum indikator apa pun dihitung.
+        if seluruhnya_numerik(sa) or seluruhnya_numerik(sb) or kata_header(sb):
+            continue
         kecil, konj = _mulai_lanjutan(sb)
         tanpa_baca = _berakhir_tanpa_penutup(sa)
-        if not (tanpa_baca or kecil or konj):
+        gantung = _ekor_menggantung(sa)
+        if not (tanpa_baca or kecil or konj or gantung):
             continue
         kandidat.append(SelTerpotong(
             kolom=i, ekor_a=sa, kepala_b=sb,
             tanpa_tanda_baca=tanpa_baca,
+            ekor_menggantung=gantung,
             lanjutan_huruf_kecil=kecil,
             lanjutan_konjungsi=konj,
             sel_lain_kosong_a=kosong_a,
