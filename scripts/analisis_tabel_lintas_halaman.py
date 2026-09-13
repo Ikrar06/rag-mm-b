@@ -49,10 +49,22 @@ Sumber data
     --chunks-jsonl PATH   baca dump chunks.jsonl (tidak perlu Qdrant)
     (default)             scroll koleksi Qdrant
 
+Dua angka yang tidak ada di payload
+-----------------------------------
+`--pdf-dir` membuka PDF aslinya untuk membedakan dokumen digital dari hasil
+pindai. Lapisan teks hanya ada di berkas asli, tidak ikut ke Qdrant. Tanpa
+argumen itu, seluruh bagian KOMPOSISI SUMBER dilewati.
+
+Ambangnya menyalin `preprocessing.OCR_TEXT_THRESHOLD_CHARS`, aturan yang sudah
+dipakai pipeline untuk memutuskan sebuah halaman perlu di-OCR.
+
 Usage:
-    python scripts/analisis_tabel_lintas_halaman.py --collection rag_mm_b_varian_b_v2
+    # satu jalan, seluruh angka:
+    python scripts/analisis_tabel_lintas_halaman.py \
+        --collection rag_mm_b_varian_b_v2 --pdf-dir data/pdfs \
+        --contoh 10 --json hasil.json
+
     python scripts/analisis_tabel_lintas_halaman.py --chunks-jsonl dump/chunks.jsonl
-    python scripts/analisis_tabel_lintas_halaman.py --contoh 10 --json hasil.json
 """
 
 from __future__ import annotations
@@ -69,6 +81,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from lib.pdf_sumber import profil_dari_pdf  # noqa: E402
 from lib.tabel_html import (  # noqa: E402
     bandingkan_header, deteksi_sel_terpotong, urai,
 )
@@ -193,6 +206,9 @@ def main() -> int:
     ap.add_argument("--chunks-jsonl", default=None)
     ap.add_argument("--contoh", type=int, default=5, help="Contoh nyata per kategori")
     ap.add_argument("--json", default=None, help="Tulis hasil lengkap ke berkas JSON")
+    ap.add_argument("--pdf-dir", default=None,
+                    help="Folder PDF sumber. Tanpa ini, komposisi digital/pindai "
+                         "dilewati (payload Qdrant tidak memuat lapisan teks).")
     args = ap.parse_args()
 
     if args.chunks_jsonl:
@@ -222,6 +238,13 @@ def main() -> int:
     per_dok: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
         per_dok[kunci_dokumen(r)].append(r)
+
+    nama_berkas: dict[str, str] = {}
+    for dok, chunks in per_dok.items():
+        for c in chunks:
+            if isinstance(c.get("file_name"), str) and c["file_name"]:
+                nama_berkas[dok] = c["file_name"]
+                break
 
     # Deteksi dini kalau pengelompokan runtuh lagi: satu chunk per "dokumen"
     # berarti kuncinya unik per titik, bukan per dokumen.
@@ -335,6 +358,78 @@ def main() -> int:
     for k, n in hc.most_common():
         print(f"    {k:<18}{n:>5}  {100 * n / total:>5.1f}%")
 
+    # ── Komposisi sumber: PDF digital vs pindai ─────────────────────────────
+    #
+    # Tidak dapat dijawab dari payload Qdrant: lapisan teks hanya ada di PDF
+    # aslinya. Dilewati bila --pdf-dir tidak diberikan.
+    profil: dict[str, object] = {}
+    if args.pdf_dir:
+        pdf_dir = Path(args.pdf_dir)
+        halaman_tabel_per_dok: dict[str, set] = defaultdict(set)
+        for dok, chunks in per_dok.items():
+            for c in chunks:
+                if c.get("element_type") == "Table" and isinstance(c.get("page"), int):
+                    halaman_tabel_per_dok[dok].add(c["page"])
+
+        for dok in sorted(dok_bertabel):
+            nama = nama_berkas.get(dok)
+            if not nama:
+                continue
+            profil[dok] = profil_dari_pdf(
+                pdf_dir / nama, tuple(sorted(halaman_tabel_per_dok[dok]))
+            )
+
+        print("\n" + "=" * 78)
+        print("KOMPOSISI SUMBER — PDF DIGITAL vs PINDAI")
+        print("=" * 78)
+        print(f"  Folder PDF: {pdf_dir}")
+        print(f"  Dokumen bertabel diperiksa: {len(profil)} dari {len(dok_bertabel)}")
+        if len(profil) < len(dok_bertabel):
+            print(f"  {len(dok_bertabel) - len(profil)} dokumen dilewati "
+                  f"(file_name tidak ada di payload)")
+
+        for label, atribut in (("seluruh halaman", "sumber"),
+                               ("HALAMAN BERTABEL saja", "sumber_halaman_tabel")):
+            c = Counter(getattr(v, atribut) for v in profil.values())
+            n = sum(c.values()) or 1
+            print(f"\n  Dinilai atas {label}:")
+            for k in ("digital", "campuran", "pindai", "tak_terbaca"):
+                if c[k]:
+                    print(f"    {k:<14}{c[k]:>4}  {100 * c[k] / n:>5.1f}%")
+
+        print("\n  Angka yang menentukan adalah HALAMAN BERTABEL: sebuah dokumen")
+        print("  bisa mayoritas digital sementara justru halaman tabelnya sisipan pindai.")
+
+        buruk = sorted((v for v in profil.values()
+                        if v.sumber_halaman_tabel in ("pindai", "campuran")),
+                       key=lambda v: v.rasio_tabel_berteks)
+        if buruk:
+            print(f"\n  DOKUMEN YANG HALAMAN TABELNYA TANPA LAPISAN TEKS "
+                  f"({len(buruk)}) — isi selnya dari OCR:")
+            for v in buruk[: max(args.contoh, 5)]:
+                print(f"    {v.file_name:<52}{v.rasio_tabel_berteks:>5.0%} berteks  "
+                      f"({len(v.halaman_tabel)} hal tabel)")
+
+        # Silang-tabulasi: kategori pasangan x sumber halamannya.
+        print("\n  SILANG-TABULASI kategori pasangan x lapisan teks halaman:")
+        print(f"    {'kategori':<16}{'berteks':>9}{'tanpa teks':>12}{'tak jelas':>11}")
+        for kat in KATEGORI:
+            b = t_ = x = 0
+            for r in semua:
+                if r["kategori"] != kat:
+                    continue
+                pr = profil.get(r["document_id"])
+                if pr is None or pr.error:
+                    x += 1
+                elif (pr.halaman_berlapis_teks(r["halaman"][0])
+                      and pr.halaman_berlapis_teks(r["halaman"][1])):
+                    b += 1
+                else:
+                    t_ += 1
+            print(f"    {kat:<16}{b:>9}{t_:>12}{x:>11}")
+        print("    -> baris 'lanjutan_kuat' kolom 'tanpa teks' adalah kandidat")
+        print("       yang headernya berasal dari OCR; itu yang perlu ditolak.")
+
     # ── Kasus 3: sel terpotong di tengah ────────────────────────────────────
     #
     # Berbeda dari baris terpotong dan berbeda penanganannya: header yang
@@ -394,6 +489,14 @@ def main() -> int:
             "ringkasan": {k: {"pasangan": hitung[k], "dokumen": len(dok_per_kat[k])}
                           for k in KATEGORI},
             "ambang": {"AMBANG_BAWAH": AMBANG_BAWAH, "AMBANG_ATAS": AMBANG_ATAS},
+            "sumber_dokumen": {
+                dok: {"file_name": v.file_name, "n_halaman": v.n_halaman,
+                      "sumber": v.sumber, "sumber_halaman_tabel": v.sumber_halaman_tabel,
+                      "rasio_berteks": round(v.rasio_berteks, 4),
+                      "rasio_tabel_berteks": round(v.rasio_tabel_berteks, 4),
+                      "n_halaman_tabel": len(v.halaman_tabel), "error": v.error}
+                for dok, v in profil.items()
+            },
             "pasangan": semua,
         }, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"\nHasil lengkap: {args.json}")
