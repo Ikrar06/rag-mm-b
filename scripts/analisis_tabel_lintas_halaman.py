@@ -62,101 +62,22 @@ import json
 import re
 import sys
 from collections import Counter, defaultdict
-from html.parser import HTMLParser
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from lib.tabel_html import (  # noqa: E402
+    bandingkan_header, deteksi_sel_terpotong, urai,
+)
 
 # Ambang posisi vertikal. bbox ternormalisasi [0,1] dengan y dari ATAS
 # (preprocessing._element_bbox). Longgar sengaja: tabel bawah halaman sering
 # menyisakan ruang untuk footer, dan tabel atas halaman sering di bawah header.
 AMBANG_BAWAH = 0.72   # A berakhir di bawah ambang ini = "menempel dasar halaman"
 AMBANG_ATAS = 0.30    # B mulai di atas ambang ini = "menempel puncak halaman"
-
-
-class _Tabel(HTMLParser):
-    """Ambil baris tabel sebagai list-of-list, plus tahu mana sel header."""
-
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.baris: list[list[str]] = []
-        self.ada_th = False
-        self.ada_thead = False
-        self._baris: list[str] | None = None
-        self._sel: list[str] | None = None
-
-    def handle_starttag(self, tag, attrs):
-        if tag == "thead":
-            self.ada_thead = True
-        elif tag == "tr":
-            self._baris = []
-        elif tag in ("td", "th"):
-            if tag == "th":
-                self.ada_th = True
-            self._sel = []
-
-    def handle_endtag(self, tag):
-        if tag in ("td", "th") and self._sel is not None and self._baris is not None:
-            self._baris.append(" ".join("".join(self._sel).split()))
-            self._sel = None
-        elif tag == "tr" and self._baris is not None:
-            if self._baris:
-                self.baris.append(self._baris)
-            self._baris = None
-
-    def handle_data(self, data):
-        if self._sel is not None:
-            self._sel.append(data)
-
-
-def urai(html: str) -> _Tabel | None:
-    if not html or "<t" not in html.lower():
-        return None
-    p = _Tabel()
-    try:
-        p.feed(html)
-        p.close()
-    except Exception:
-        return None
-    return p if p.baris else None
-
-
-def n_kolom(t: _Tabel) -> int:
-    """Jumlah kolom modal — tahan terhadap baris judul yang di-colspan."""
-    c = Counter(len(b) for b in t.baris if b)
-    return c.most_common(1)[0][0] if c else 0
-
-
-def _norm(sel: list[str]) -> str:
-    return "|".join(re.sub(r"\s+", " ", s).strip().lower() for s in sel)
-
-
-def _angka(sel: list[str]) -> float:
-    """Proporsi sel yang berupa angka. Baris data biasanya tinggi, header rendah."""
-    if not sel:
-        return 0.0
-    n = sum(1 for s in sel if re.fullmatch(r"[\d.,%()\-\s/]+", s.strip()) and s.strip())
-    return n / len(sel)
-
-
-def bandingkan_header(a: _Tabel, b: _Tabel) -> str:
-    """'b_tanpa_header' | 'header_diulang' | 'header_berbeda' | 'tak_tentu'."""
-    if not a.baris or not b.baris:
-        return "tak_tentu"
-    if _norm(a.baris[0]) == _norm(b.baris[0]):
-        return "header_diulang"
-    # A punya penanda header eksplisit, B tidak → B potongan lanjutan.
-    if (a.ada_th or a.ada_thead) and not (b.ada_th or b.ada_thead):
-        return "b_tanpa_header"
-    # Tanpa penanda eksplisit: pakai bentuk baris pertama. Baris pertama B yang
-    # didominasi angka adalah baris DATA, artinya headernya tertinggal di A.
-    if _angka(b.baris[0]) >= 0.5 and _angka(a.baris[0]) < 0.5:
-        return "b_tanpa_header"
-    if (a.ada_th or a.ada_thead) and (b.ada_th or b.ada_thead):
-        return "header_berbeda"
-    return "tak_tentu"
 
 
 # chunk_id berbentuk "{document_id}_p{N}_c{NN}" atau "{document_id}_pNA_c{NN}"
@@ -246,6 +167,26 @@ def muat_qdrant(collection: str) -> list[dict]:
     return out
 
 
+
+def _ringkas_sel(h) -> dict:
+    """HasilSel -> dict siap-JSON. Tidak mengubah argumennya."""
+    return {
+        "n_kandidat": len(h.kandidat),
+        "n_kuat": len(h.kuat),
+        "catatan": h.catatan,
+        "kuat": [
+            {"kolom": k.kolom, "skor": k.skor,
+             "ekor_a": k.ekor_a[-80:], "kepala_b": k.kepala_b[:80],
+             "tanpa_tanda_baca": k.tanpa_tanda_baca,
+             "lanjutan_huruf_kecil": k.lanjutan_huruf_kecil,
+             "lanjutan_konjungsi": k.lanjutan_konjungsi,
+             "sel_lain_kosong_a": k.sel_lain_kosong_a,
+             "sel_lain_kosong_b": k.sel_lain_kosong_b}
+            for k in h.kuat
+        ],
+    }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Ukur tabel terpotong lintas halaman")
     ap.add_argument("--collection", default=None)
@@ -325,11 +266,11 @@ def main() -> int:
             if not isinstance(pa, int) or not isinstance(pb, int) or pb != pa + 1:
                 continue
 
-            ta, tb = urai(a.get("raw_html") or ""), urai(b.get("raw_html") or "")
-            ka = n_kolom(ta) if ta else 0
-            kb = n_kolom(tb) if tb else 0
+            ta, tb = urai(a.get("raw_html")), urai(b.get("raw_html"))
+            ka = ta.n_kolom if ta else 0
+            kb = tb.n_kolom if tb else 0
             kolom_sama = bool(ka and kb and ka == kb)
-            header = bandingkan_header(ta, tb) if (ta and tb) else "tak_tentu"
+            header = bandingkan_header(ta, tb)
 
             ba, bb = a.get("bbox"), b.get("bbox")
             bawah_atas = bool(
@@ -365,8 +306,9 @@ def main() -> int:
                            "tanpa_sisipan": tanpa_sisipan,
                            "n_sisipan": len(sisipan)},
                 "bbox_a": ba, "bbox_b": bb,
-                "baris_pertama_a": (ta.baris[0] if ta and ta.baris else None),
-                "baris_pertama_b": (tb.baris[0] if tb and tb.baris else None),
+                "baris_pertama_a": (list(ta.baris[0]) if ta and ta.baris else None),
+                "baris_pertama_b": (list(tb.baris[0]) if tb and tb.baris else None),
+                "sel_terpotong": _ringkas_sel(deteksi_sel_terpotong(ta, tb)),
             }
             semua.append(rec)
             if len(contoh[kat]) < args.contoh:
@@ -392,6 +334,43 @@ def main() -> int:
     print("  header:")
     for k, n in hc.most_common():
         print(f"    {k:<18}{n:>5}  {100 * n / total:>5.1f}%")
+
+    # ── Kasus 3: sel terpotong di tengah ────────────────────────────────────
+    #
+    # Berbeda dari baris terpotong dan berbeda penanganannya: header yang
+    # diulang TIDAK menolong, karena pemetaan baris-kolomnya sudah benar —
+    # yang terpenggal adalah isi selnya.
+    dgn_kandidat = [r for r in semua if r["sel_terpotong"]["n_kandidat"]]
+    dgn_kuat = [r for r in semua if r["sel_terpotong"]["n_kuat"]]
+    tak_terurai = [r for r in semua if r["sel_terpotong"]["catatan"]]
+
+    print("\n" + "=" * 78)
+    print("KASUS 3 — SEL TERPOTONG DI TENGAH")
+    print("=" * 78)
+    print(f"  {'pasangan dengan kandidat':<34}{len(dgn_kandidat):>5}  "
+          f"{100 * len(dgn_kandidat) / total:>5.1f}%")
+    print(f"  {'pasangan dengan kandidat KUAT':<34}{len(dgn_kuat):>5}  "
+          f"{100 * len(dgn_kuat) / total:>5.1f}%   (>= 2 dari 3 indikator)")
+    print(f"  {'tidak dapat dinilai':<34}{len(tak_terurai):>5}  "
+          f"{100 * len(tak_terurai) / total:>5.1f}%   (raw_html/lebar baris)")
+    per_kat = Counter(r["kategori"] for r in dgn_kuat)
+    if per_kat:
+        print("  sebaran kandidat kuat per kategori:")
+        for k in KATEGORI:
+            if per_kat[k]:
+                print(f"    {k:<16}{per_kat[k]:>5}")
+
+    if dgn_kuat:
+        print(f"\n  CONTOH (maks {args.contoh}):")
+        for r in dgn_kuat[: max(args.contoh, 1)]:
+            print(f"    {r['document_id']}  hal {r['halaman'][0]}->{r['halaman'][1]}  "
+                  f"[{r['kategori']}]")
+            for k in r["sel_terpotong"]["kuat"]:
+                print(f"      kolom {k['kolom']}  skor {k['skor']}/3")
+                print(f"        A ...{k['ekor_a']}")
+                print(f"        B {k['kepala_b']}...")
+    else:
+        print("\n  Tidak ada kandidat kuat. Kasus ini tidak perlu ditangani.")
 
     for kat in KATEGORI:
         if not contoh[kat]:
