@@ -59,7 +59,19 @@ logger = logging.getLogger(__name__)
 VERDICT_DESCRIBED = "described"
 VERDICT_DECORATIVE = "decorative"
 VERDICT_UNCLEAR = "unclear"
-CACHEABLE_VERDICTS = (VERDICT_DESCRIBED, VERDICT_DECORATIVE, VERDICT_UNCLEAR)
+
+# Verdict adjudikasi tabel lintas halaman (variant="table_continuation").
+# Cache yang sama dipakai karena masalahnya identik: keputusan model atas gambar
+# harus deterministik lintas run, dan kuncinya sudah memuat digest model serta
+# hash prompt sehingga entri dari konfigurasi berbeda tidak saling tertukar.
+VERDICT_LANJUTAN = "lanjutan"
+VERDICT_BUKAN_LANJUTAN = "bukan_lanjutan"
+VERDICT_TIDAK_JELAS = "tidak_jelas"
+
+CACHEABLE_VERDICTS = (
+    VERDICT_DESCRIBED, VERDICT_DECORATIVE, VERDICT_UNCLEAR,
+    VERDICT_LANJUTAN, VERDICT_BUKAN_LANJUTAN, VERDICT_TIDAK_JELAS,
+)
 
 VARIANT_NARRATIVE = "narrative"
 
