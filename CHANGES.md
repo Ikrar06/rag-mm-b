@@ -2184,3 +2184,48 @@ yang pertama jatuh ke adjudikasi vision sementara yang kedua bukti lawan.
 menyala: cache yang sama menampung putusan adjudikasi dengan prompt berbeda,
 sehingga `prompt_sha256`-nya berbeda dan terbaca sebagai "konfigurasi vision
 asing" padahal modelnya sama. Kini hanya varian `narrative` yang diperiksa.
+
+## TAHAP C — migrasi ground truth
+
+`scripts/migrasi_gold.py`. Memakai nama field **implementasi** —
+`relevant_text_chunks` dan `relevant_images` — bukan `gold_chunk_ids` /
+`gold_image_ids` dari skema deck.
+
+Sebagian besar ini **verifikasi**, bukan penyelamatan, karena Tahap B tidak
+menggeser `chunk_id`. Dua kasus tepi tetap dideteksi:
+
+| Status | Arti |
+|---|---|
+| `identik` | `chunk_id` ada, `text_sha` sama — tidak ada yang perlu dilakukan |
+| `isi_berubah` | `chunk_id` sama, `text_sha` berubah — potongan lanjutan yang headernya diulang. **Perlu tinjau ulang manusia** |
+| `pindah` | `chunk_id` hilang, dikenali lewat `text_sha` — chunk yang dulu dibuang filter min-token kini lolos dan menggeser ordinal |
+| `ambigu` | satu `text_sha` cocok >1 chunk baru — **tidak dipilih otomatis** |
+| `hilang` | tidak ada jangkar sama sekali |
+
+**Seluruh kolom terbawa apa adanya**, termasuk `human_verdict`, `catatan`, dan
+`structural_annotation`. Laporan membandingkan sebaran `human_verdict` sebelum
+dan sesudah migrasi supaya kehilangan apa pun langsung terlihat.
+
+`query_id` **sengaja tidak diubah** walau memuat `chunk_id` yang bergeser: ia
+identitas item, bukan rujukan ke chunk, dan mengubahnya memutus jejak ke hasil
+tinjauan manusia. Item semacam itu dilaporkan terpisah.
+
+`relevant_images` tidak dimigrasi — penamaan `image_id` tidak tersentuh
+perubahan ini — tetapi keberadaannya **divalidasi**.
+
+```bash
+python scripts/migrasi_gold.py \
+    --gold ~/rag_mm_b/data/eval/ground_truth_final_20260906.jsonl \
+    --chunks-lama dump/<run_lama>/chunks.jsonl \
+    --chunks-baru dump/<run_baru>/chunks.jsonl \
+    --images-baru dump/<run_baru>/images.jsonl \
+    --out-dir data/eval/migrasi
+```
+
+`--chunks-lama` opsional tapi sangat disarankan: tanpanya perubahan isi tidak
+terdeteksi dan chunk yang bergeser tidak punya jangkar. Ketiadaannya dilaporkan,
+bukan disamarkan jadi "identik".
+
+`ground_truth_migrated.jsonl` bebas field diagnostik sehingga siap untuk
+`validasi_ground_truth.py`. Yang tidak terpetakan **tidak dibuang** — dipisahkan
+ke berkas tersendiri beserta alasan per chunk.
