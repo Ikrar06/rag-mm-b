@@ -18,7 +18,9 @@ Logika murni dipisah dari I/O supaya dapat diuji tanpa PDF.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from lib.kualitas_teks import Kualitas, gabung, nilai_teks
 
 # Cermin preprocessing.OCR_TEXT_THRESHOLD_CHARS (backend/services/preprocessing.py:201).
 # Halaman dengan teks <= ini dianggap tidak punya lapisan teks yang berguna.
@@ -40,6 +42,9 @@ class ProfilDokumen:
     halaman_berteks: frozenset[int] = frozenset()
     halaman_tabel: tuple[int, ...] = ()
     error: str = ""
+    # Kualitas lapisan teks. Sebuah dokumen bisa ditandai "digital" karena
+    # PUNYA lapisan teks, padahal teksnya sendiri hasil OCR yang rusak.
+    kualitas: Kualitas = field(default_factory=Kualitas)
 
     @property
     def n_halaman_berteks(self) -> int:
@@ -97,6 +102,7 @@ def profil_dari_cacah(
     file_name: str,
     char_per_halaman: dict[int, int],
     halaman_tabel: tuple[int, ...] = (),
+    kualitas: Kualitas | None = None,
 ) -> ProfilDokumen:
     """Bangun profil dari cacahan karakter per halaman (1-indexed).
 
@@ -110,6 +116,7 @@ def profil_dari_cacah(
             h for h, n in char_per_halaman.items() if n > AMBANG_KARAKTER
         ),
         halaman_tabel=tuple(sorted(set(halaman_tabel))),
+        kualitas=kualitas or Kualitas(),
     )
 
 
@@ -124,8 +131,13 @@ def profil_dari_pdf(path, halaman_tabel: tuple[int, ...] = ()) -> ProfilDokumen:
     nama = getattr(path, "name", str(path))
     try:
         with fitz.open(str(path)) as doc:
-            cacah = {i + 1: len(doc[i].get_text().strip()) for i in range(doc.page_count)}
+            teks = {i + 1: doc[i].get_text().strip() for i in range(doc.page_count)}
+            cacah = {h: len(t) for h, t in teks.items()}
+            # Kualitas dinilai HANYA atas halaman bertabel bila ada — itu yang
+            # menentukan apakah header yang akan diulang layak diulang.
+            relevan = set(halaman_tabel) or set(teks)
+            mutu = gabung(nilai_teks(t) for h, t in teks.items() if h in relevan)
     except Exception as e:
         return ProfilDokumen(file_name=nama, halaman_tabel=tuple(sorted(set(halaman_tabel))),
                              error=f"{type(e).__name__}: {e}")
-    return profil_dari_cacah(nama, cacah, halaman_tabel)
+    return profil_dari_cacah(nama, cacah, halaman_tabel, mutu)

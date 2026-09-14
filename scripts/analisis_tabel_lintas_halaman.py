@@ -201,12 +201,120 @@ def _ringkas_sel(h) -> dict:
     }
 
 
+
+# Kategori yang otomatis DISARANKAN terima. Sisanya disarankan tolak; peninjau
+# tetap dapat mempromosikannya dengan menyunting berkas.
+_KATEGORI_TERIMA = ("lanjutan_kuat",)
+
+
+def _saran(rec: dict, pr, vision) -> tuple[str, str]:
+    """(saran, alasan). Penolakan otomatis TIDAK menghapus entri dari berkas."""
+    hal_a, hal_b = rec["halaman"]
+    if pr is not None and not pr.error:
+        if not (pr.halaman_berlapis_teks(hal_a) and pr.halaman_berlapis_teks(hal_b)):
+            return "tolak", (
+                "halaman tanpa lapisan teks — header berasal dari OCR, dan "
+                "mengulangnya berarti menyalin teks rusak ke dua embedding"
+            )
+        if pr.kualitas.label == "rusak":
+            return "tolak", (
+                f"lapisan teks dokumen rusak (skor {pr.kualitas.skor:.2f}) — "
+                f"header yang diulang akan ikut rusak"
+            )
+    if vision and vision.get("verdict") == "bukan_lanjutan":
+        return "tolak", f"model vision: {vision.get('alasan') or 'tabel berbeda'}"
+    if rec["kategori"] in _KATEGORI_TERIMA:
+        return "terima", "sinyal struktural tegas"
+    if vision and vision.get("verdict") == "lanjutan":
+        return "terima", f"model vision: {vision.get('alasan') or 'tabel sama'}"
+    return "tolak", f"kategori {rec['kategori']!r} tidak tegas"
+
+
+def _tulis_keputusan(args, semua, profil, nama_berkas, asal) -> None:
+    """Tulis table_continuation.json dengan kolom keputusan KOSONG."""
+    from datetime import datetime, timezone
+
+    vision_per_pasangan: dict[str, dict] = {}
+    if args.vision:
+        from backend.services.table_adjudicator import adjudikasi
+        pdf_dir = Path(args.pdf_dir)
+        kandidat = [r for r in semua if r["kategori"] != "tabel_berbeda"]
+        print(f"\n  Adjudikasi vision atas {len(kandidat)} pasangan ambigu...")
+        for i, r in enumerate(kandidat, 1):
+            nama = nama_berkas.get(r["document_id"])
+            if not nama:
+                continue
+            h = adjudikasi(pdf_dir / nama, r["halaman"][0], r["bbox_a"],
+                           r["halaman"][1], r["bbox_b"])
+            vision_per_pasangan[r["kunci"]] = {
+                "verdict": h.verdict, "keyakinan": h.keyakinan,
+                "alasan": h.alasan, "dari_cache": h.dari_cache, "error": h.error,
+            }
+            if i % 10 == 0 or i == len(kandidat):
+                print(f"    {i}/{len(kandidat)}")
+
+    pasangan = {}
+    for r in semua:
+        if r["kategori"] == "tabel_berbeda" and not r["sel_terpotong"]["n_kuat"]:
+            continue                      # tidak perlu ditinjau
+        pr = profil.get(r["document_id"])
+        v = vision_per_pasangan.get(r["kunci"])
+        saran, alasan = _saran(r, pr, v)
+        pasangan[r["kunci"]] = {
+            "document_id": r["document_id"],
+            "file_name": (pr.file_name if pr else nama_berkas.get(r["document_id"])),
+            "chunk_id_a": r["chunk_id_a"], "chunk_id_b": r["chunk_id_b"],
+            "halaman": r["halaman"], "kategori": r["kategori"],
+            "sinyal": r["sinyal"], "kolom": r["kolom"],
+            "baris_pertama_a": r["baris_pertama_a"],
+            "baris_pertama_b": r["baris_pertama_b"],
+            "sumber_halaman_tabel": (pr.sumber_halaman_tabel if pr else None),
+            "kualitas_teks": ({"label": pr.kualitas.label, "skor": pr.kualitas.skor,
+                               "tanpa_vokal": round(pr.kualitas.rasio_tanpa_vokal, 3),
+                               "kapital_campur": round(pr.kualitas.rasio_kapital_campur, 3),
+                               "kata_fungsi": round(pr.kualitas.rasio_fungsi, 3)}
+                              if pr else None),
+            "peringatan_sel_terpotong": r["sel_terpotong"]["kuat"] or None,
+            "vision": v,
+            "saran": saran,
+            "alasan_saran": alasan,
+            # ── DIISI MANUSIA ──
+            "keputusan": "",
+            "catatan_peninjau": "",
+        }
+
+    out = Path(args.tulis_keputusan).expanduser()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({
+        "_meta": {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "tool": "scripts/analisis_tabel_lintas_halaman.py",
+            "sumber": asal,
+            "catatan": "Isi kolom 'keputusan' dengan 'terima' atau 'tolak'. "
+                       "Hanya 'terima' yang diproses indexing. Entri yang "
+                       "ditolak sengaja TIDAK dihapus supaya tetap terlihat.",
+        },
+        "pasangan": pasangan,
+    }, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    n_terima = sum(1 for v in pasangan.values() if v["saran"] == "terima")
+    print(f"\n  table_continuation.json: {out}")
+    print(f"    {len(pasangan)} pasangan untuk ditinjau, {n_terima} disarankan terima")
+    print(f"    kolom 'keputusan' KOSONG — isi 'terima'/'tolak' sebelum re-index")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Ukur tabel terpotong lintas halaman")
     ap.add_argument("--collection", default=None)
     ap.add_argument("--chunks-jsonl", default=None)
     ap.add_argument("--contoh", type=int, default=5, help="Contoh nyata per kategori")
     ap.add_argument("--json", default=None, help="Tulis hasil lengkap ke berkas JSON")
+    ap.add_argument("--tulis-keputusan", default=None, metavar="PATH",
+                    help="Tulis table_continuation.json dengan kolom keputusan "
+                         "kosong untuk ditinjau manusia. Butuh --pdf-dir.")
+    ap.add_argument("--vision", action="store_true",
+                    help="Adjudikasi pasangan ambigu dengan model vision. "
+                         "Butuh --pdf-dir dan server vision aktif.")
     ap.add_argument("--pdf-dir", default=None,
                     help="Folder PDF sumber. Tanpa ini, komposisi digital/pindai "
                          "dilewati (payload Qdrant tidak memuat lapisan teks).")
@@ -323,6 +431,7 @@ def main() -> int:
             dok_per_kat[kat].add(dok)
             rec = {
                 "document_id": dok, "kategori": kat, "skor": skor,
+                "kunci": f"{a.get('chunk_id')}__{b.get('chunk_id')}",
                 "chunk_id_a": a.get("chunk_id"), "chunk_id_b": b.get("chunk_id"),
                 "halaman": [pa, pb], "kolom": [ka, kb],
                 "sinyal": {"kolom_sama": kolom_sama, "header": header,
@@ -528,6 +637,14 @@ def main() -> int:
             print(f"    baris-1 A: {r['baris_pertama_a']}")
             print(f"    baris-1 B: {r['baris_pertama_b']}")
             print(f"    sinyal   : {r['sinyal']}")
+
+    # ── Berkas keputusan terkurasi ──────────────────────────────────────────
+    if args.tulis_keputusan:
+        if not profil:
+            print("\nGAGAL menulis keputusan: butuh --pdf-dir untuk menilai "
+                  "lapisan teks dan kualitas OCR tiap dokumen.")
+            return 2
+        _tulis_keputusan(args, semua, profil, nama_berkas, asal)
 
     if args.json:
         Path(args.json).write_text(json.dumps({
