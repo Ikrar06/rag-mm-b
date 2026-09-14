@@ -31,12 +31,14 @@ from backend.config import (
     INDEX_MIN_CHUNK_TOKENS,
     INDEX_PERSIST_IMAGES,
     INDEX_STRUCTURAL_METADATA,
+    INDEX_TABLE_CONTINUATION,
     INDEX_TABLES_AS_OWN_CHUNKS,
     PDF_EXTRACTION_STRATEGY,
     PDF_EXTRACT_IMAGES, PDF_DESCRIBE_IMAGES,
     PDF_EXTRACT_TABLES, PDF_TABLE_MAX_CHARS,
     LLM_SUPPORTS_VISION,
 )
+from backend.services import table_continuation
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +149,9 @@ class ExtractionReport:
     strategy_used: str = ""
     hi_res_fallback_reason: str | None = None
     ocr_failed_pages: list[dict] = field(default_factory=list)
+    # Env var Unstructured yang disetel kode, bukan shell. Wajib tercatat:
+    # nilainya menentukan isi metadata element.
+    env_unstructured: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict:
         return {
@@ -154,6 +159,7 @@ class ExtractionReport:
             "strategy_used": self.strategy_used,
             "hi_res_fallback_reason": self.hi_res_fallback_reason,
             "ocr_failed_pages": list(self.ocr_failed_pages),
+            "env_unstructured": dict(self.env_unstructured),
         }
 
     @property
@@ -352,6 +358,13 @@ def _extract_hi_res(
     if PDF_EXTRACT_IMAGES:
         extract_image_block_types = ["Image", "Figure"]
 
+    # EXTRACT_TABLE_AS_CELLS disetel DI SINI, bukan di shell: nilainya menentukan
+    # isi metadata element dan karenanya wajib tercatat di run_manifest.json.
+    # Env var yang hanya hidup di shell peneliti tidak akan masuk artefak.
+    env_tabel = table_continuation.siapkan_ekstraksi()
+    if env_tabel and report is not None:
+        report.env_unstructured = dict(env_tabel)
+
     try:
         raw_elements = partition_pdf(
             filename=str(pdf_path),
@@ -369,12 +382,21 @@ def _extract_hi_res(
         return _extract_fast(pdf_path, report=report)
 
     elements = []
+    penanda_per_halaman: dict[int, list] = {}
     for el in raw_elements:
         category = el.category
         page = getattr(el.metadata, "page_number", None) or 0
 
-        # Skip noise
-        if category in ("Header", "Footer", "PageNumber", "PageBreak"):
+        # Header/Footer/PageNumber TIDAK layak diindeks — itu tetap benar.
+        # Tapi bbox-nya menandai batas area teks halaman, dan itu yang membuat
+        # "menempel dasar halaman" bisa diukur per halaman alih-alih dengan
+        # ambang tetap terhadap halaman penuh. Dipakai untuk mengukur, dibuang
+        # dari chunk.
+        if category in table_continuation.KATEGORI_PENANDA:
+            if INDEX_TABLE_CONTINUATION:
+                b = _element_bbox(el)
+                if b:
+                    penanda_per_halaman.setdefault(page, []).append(b)
             continue
 
         bbox = _element_bbox(el)
@@ -393,6 +415,13 @@ def _extract_hi_res(
                     "raw_html": html or "",
                     "table_format": table_format,
                     "bbox": bbox,
+                    # Grid sel eksplisit dengan colspan/rowspan, terisi hanya
+                    # bila EXTRACT_TABLE_AS_CELLS menyala. Lebih andal daripada
+                    # mengurai raw_html, yang dari OCR kerap cacat.
+                    "table_as_cells": (
+                        getattr(el.metadata, "table_as_cells", None)
+                        if INDEX_TABLE_CONTINUATION else None
+                    ),
                 },
             })
 
@@ -419,6 +448,9 @@ def _extract_hi_res(
                 "page": page,
                 "metadata": {"bbox": bbox},
             })
+
+    if INDEX_TABLE_CONTINUATION:
+        table_continuation.lengkapi_sinyal(elements, penanda_per_halaman, pdf_path)
 
     return elements
 

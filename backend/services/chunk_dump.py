@@ -32,6 +32,7 @@ import csv
 import hashlib
 import json
 import logging
+import os
 import platform
 import subprocess
 import sys
@@ -364,6 +365,10 @@ def build_manifest(run_id: str, reports: dict[str, dict], n_chunks: int,
             # dan manifest yang hanya mencatat flag tidak menunjukkan apa pun.
             # ['SentenceSplitter'] saat flag menyala = run itu tidak sahih.
             "node_transformations": _node_transformations(),
+            # Menentukan apakah metadata element memuat grid sel eksplisit.
+            # Disetel kode, bukan shell (table_continuation.siapkan_ekstraksi),
+            # supaya nilai efektifnya tercatat di artefak eksperimen.
+            "EXTRACT_TABLE_AS_CELLS": os.environ.get("EXTRACT_TABLE_AS_CELLS"),
         },
 
         # ── Flag riset Tahap 1 & 2 ──
@@ -372,6 +377,8 @@ def build_manifest(run_id: str, reports: dict[str, dict], n_chunks: int,
             "INDEX_MAX_CHUNK_TOKENS": config.INDEX_MAX_CHUNK_TOKENS,
             "INDEX_MIN_CHUNK_TOKENS": config.INDEX_MIN_CHUNK_TOKENS,
             "INDEX_DISABLE_NODE_PARSER": config.INDEX_DISABLE_NODE_PARSER,
+            "INDEX_TABLE_CONTINUATION": config.INDEX_TABLE_CONTINUATION,
+            "TABLE_CONTINUATION_VISION": config.TABLE_CONTINUATION_VISION,
             "INDEX_STRUCTURAL_METADATA": config.INDEX_STRUCTURAL_METADATA,
             # Tidak diminta eksplisit, tapi WAJIB dicatat: menggeser batas chunk
             # teks di seluruh dokumen, bukan sekadar menambah chunk tabel.

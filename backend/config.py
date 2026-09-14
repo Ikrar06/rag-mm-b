@@ -618,3 +618,30 @@ def research_query_flags() -> dict[str, bool]:
         "RESEARCH_DISABLE_OUTPUT_FILTER": RESEARCH_DISABLE_OUTPUT_FILTER,
         "RESEARCH_VERBOSE_RETRIEVAL": RESEARCH_VERBOSE_RETRIEVAL,
     }
+
+
+# =============================================================================
+# Tabel terpotong lintas halaman (Tahap B)
+# =============================================================================
+# Default mati: tanpa flag ini, ekstraksi dan chunking identik dengan sekarang.
+#
+# Menyalakannya MEWAJIBKAN re-index penuh DAN migrasi gold. Lihat CHANGES.md,
+# bagian "TAHAP B". Yang berubah hanya text_sha potongan lanjutan; chunk_id
+# TIDAK bergeser, karena mengulang header tidak menambah atau mengurangi chunk.
+INDEX_TABLE_CONTINUATION = os.getenv(
+    "INDEX_TABLE_CONTINUATION", "false"
+).lower() == "true"
+
+# Adjudikasi pasangan ambigu oleh model vision. Hanya berlaku saat
+# INDEX_TABLE_CONTINUATION aktif. Dipisah karena ia memanggil model — peneliti
+# yang ingin sinyal struktural saja dapat mematikannya tanpa kehilangan sisanya.
+TABLE_CONTINUATION_VISION = os.getenv(
+    "TABLE_CONTINUATION_VISION", "false"
+).lower() == "true"
+
+# Berkas keputusan terkurasi: dibuat instrumen, DITINJAU MANUSIA, dibaca
+# indexing. Pola yang sama dengan document_registry.json — keputusan tidak
+# ditanam di kode supaya dapat diaudit dan identik lintas fork.
+TABLE_CONTINUATION_PATH = os.getenv(
+    "TABLE_CONTINUATION_PATH", "~/rag_mm_b_shared/table_continuation.json"
+)
