@@ -2063,3 +2063,124 @@ jadi baris itu tidak pernah dieksekusi; `current_page` hanya berubah di Title
 berbeda dengan `page` di `chunk_id`, dari 25.475 chunk. Chunk tabel memakai
 `page` element langsung, jadi tidak lewat jalur ini sama sekali. Dicatat saja,
 tidak perlu diperbaiki dalam tugas ini.
+
+---
+
+# TAHAP B — tabel terpotong di batas halaman
+
+**Mewajibkan re-index penuh DAN migrasi gold.** Wajib diterapkan identik oleh
+peneliti fork lain. Seluruhnya di belakang `INDEX_TABLE_CONTINUATION`, default
+mati: tanpa flag, ekstraksi dan chunking identik dengan sebelumnya.
+
+## Masalahnya bukan di repo ini
+
+`partition_pdf` mendeteksi layout **per halaman**, jadi tabel yang melintasi
+halaman sudah tiba sebagai dua element `Table` terpisah. `_chunk_elements` setia
+menjadikan masing-masing satu chunk. Tidak ada titik di pipeline tempat keduanya
+bisa dikenali sebagai satu tabel, dan `unstructured` tidak menyediakan penanda
+apa pun (lihat Tahap A, temuan 1).
+
+Akibatnya baris data di halaman kedua kehilangan header kolomnya, dan RCAA
+mengukur kerusakan ekstraksi alih-alih kemampuan retrieval.
+
+## Yang berubah — dan yang TIDAK
+
+| | Berubah? |
+|---|---|
+| `chunk_id` | **Tidak.** Mengulang header tidak menambah/mengurangi chunk |
+| `text_sha` | Ya, hanya pada potongan lanjutan yang disetujui |
+| Jumlah chunk | Tidak |
+| `raw_html` | **Tidak** — catatan ekstraksi yang setia, rujukan RCAA |
+| Jalur query | Tidak disentuh |
+
+`chunk_id` stabil karena `ordinal` hanya naik saat sebuah chunk benar-benar
+di-`append`; filter `INDEX_MIN_CHUNK_TOKENS` melakukan `continue` **sebelum**
+ordinal diambil. Menambah header hanya memperbesar chunk, jadi paling banter
+menyelamatkan chunk dari filter itu — kasus yang harus **dideteksi**, bukan
+diasumsikan tidak ada (lihat Tahap C).
+
+## Bentuk yang dipilih: (a) + (b), bukan (c)
+
+**(c) menggabung jadi satu chunk ditolak.** `jadwal-retensi-arsip` punya 80
+halaman tabel; rantai penggabungan menghasilkan chunk puluhan ribu token,
+melampaui `--max-model-len 8192`, dan memaksa pemotongan ulang yang justru
+sengaja dihindari demi RCAA. Ia juga mengubah jumlah chunk, yang menggeser
+`chunk_id` dan membatalkan 1.300 gold.
+
+**(a) metadata penaut dikerjakan untuk rekonstruksi offline, bukan retrieval.**
+`_expand_with_neighbors` menyaring `file_name` + `section` + rentang
+`chunk_index`; tidak ada tempat untuk `table_group_id`, dan menambahkannya
+berarti menyentuh jalur query.
+
+**(b) header diulang adalah perbaikan yang sebenarnya.** Tiap potongan berdiri
+sendiri tanpa bergantung pada ekspansi tetangga maupun reranker. Ongkosnya 5–20
+token per chunk — di bawah 0,5% terhadap chunk tabel yang sudah 4.091 token.
+
+## Keputusan tidak ditanam di kode
+
+`table_continuation.json` — berkas terkurasi, dibuat instrumen, **ditinjau
+manusia**, dibaca indexing. Pola yang sama dengan `document_registry.json`.
+
+Hanya entri berkeputusan `"terima"` yang diproses. Entri yang ditolak sengaja
+**tetap ada** di berkas supaya terlihat saat ditinjau. Berkas tidak ada atau
+rusak berarti himpunan kosong — menyalakan flag tanpa berkas keputusan
+menghasilkan perilaku identik dengan flag mati.
+
+## Wajib identik antar fork
+
+| Item | Nilai | Kenapa |
+|---|---|---|
+| `INDEX_TABLE_CONTINUATION` | `true` | Menentukan ada tidaknya pengulangan header |
+| `TABLE_CONTINUATION_VISION` | disepakati | Mengubah kolom saran, bukan keputusan |
+| **`EXTRACT_TABLE_AS_CELLS`** | `true` | Env var Unstructured. Disetel **kode**, bukan shell |
+| `table_continuation.json` | berkas yang **sama** | Keputusannya menentukan isi chunk |
+
+`EXTRACT_TABLE_AS_CELLS` disetel di `table_continuation.siapkan_ekstraksi()`,
+dipanggil `_extract_hi_res` tepat sebelum `partition_pdf`. Bukan di shell:
+nilainya menentukan isi metadata element dan karenanya wajib tercatat di
+`run_manifest.json`. Nilai yang sudah ada di lingkungan **tidak ditimpa**, dan
+manifest merekam nilai efektifnya.
+
+## Keterbatasan yang sudah diukur, TIDAK diperbaiki
+
+**Sel yang terpotong di tengah.** Berbeda dari baris terpotong: pemetaan
+baris-kolom benar, tapi nilai selnya terbelah jadi dua fragmen. Header yang
+diulang tidak menolong — sistem mengambil setengah jawaban dan mengira utuh.
+
+Setelah detektornya diperketat (menolak pola angka-diikuti-tahun dan
+angka-diikuti-kata-header, serta menuntut minimal satu sinyal kebahasaan),
+sisanya **belasan kandidat di seluruh korpus**, tersebar: rubrik 3,
+rencana-strategis 4, laporan-keuangan 2, sisanya 0–1. Dari 110 kandidat versi
+pertama, hampir seluruhnya positif palsu.
+
+Karena frekuensinya rendah dan tersebar, ini **dilaporkan sebagai peringatan**
+di `table_continuation.json` (`peringatan_sel_terpotong`) untuk peninjau dan tim
+eval — tanpa penanganan otomatis. Menyambung isi sel akan mengubah struktur
+tabel potongan A sehingga `raw_html`-nya tidak lagi setia pada dokumen asli;
+ongkos itu tidak sepadan untuk belasan kasus.
+
+**Batas kolom hanya untuk PDF digital** (68,4% halaman bertabel). Pada halaman
+pindai, sinyalnya "tidak tersedia" — dibedakan tegas dari "tidak cocok", karena
+yang pertama jatuh ke adjudikasi vision sementara yang kedua bukti lawan.
+`mirip()` mengembalikan `None`, bukan `False`.
+
+## Prosedur penerapan
+
+1. `python scripts/analisis_tabel_lintas_halaman.py --collection <koleksi>
+   --pdf-dir data/pdfs --tulis-keputusan ~/rag_mm_b_shared/table_continuation.json
+   [--vision]`
+2. **Tinjau kolom `keputusan`.** Isi `terima`/`tolak` tiap entri. Kolom `saran`
+   dan `alasan_saran` sudah terisi; kandidat di halaman tanpa lapisan teks
+   otomatis disarankan tolak.
+3. Set `INDEX_TABLE_CONTINUATION=true`, re-index penuh.
+4. `python scripts/verify_chunk_ids.py --collection <koleksi>` — harus 0 duplikat.
+5. Migrasi gold (Tahap C). Harapannya **verifikasi, bukan penyelamatan**:
+   mayoritas item terpetakan identik lewat `text_sha`, hanya potongan lanjutan
+   yang berubah.
+
+## Perbaikan sampingan
+
+`_check_vision_cache` akan menolak run begitu `TABLE_CONTINUATION_VISION`
+menyala: cache yang sama menampung putusan adjudikasi dengan prompt berbeda,
+sehingga `prompt_sha256`-nya berbeda dan terbaca sebagai "konfigurasi vision
+asing" padahal modelnya sama. Kini hanya varian `narrative` yang diperiksa.
