@@ -53,6 +53,13 @@ _STRUCTURAL_METADATA_KEYS = (
     "table_format",
     "bbox",
     "image_id",
+    # Tahap B — hanya terisi saat INDEX_TABLE_CONTINUATION aktif. Menautkan
+    # potongan tabel yang berlanjut supaya tim eval dapat merekonstruksinya
+    # offline; jalur query TIDAK memakainya (_expand_with_neighbors menyaring
+    # file_name + section + chunk_index, tidak ada tempat untuk table_group_id).
+    "table_group_id",
+    "table_part",
+    "table_header_repeated",
 )
 
 
@@ -163,9 +170,15 @@ def _check_vision_cache() -> None:
     digest_kini = prov["vision_model_digest"]
     prompt_kini = prov["prompt_sha256"]
 
+    # Hanya varian DESKRIPSI yang diperiksa. Cache yang sama juga menampung
+    # putusan adjudikasi tabel (variant="table_continuation"), yang memakai
+    # prompt berbeda dan karenanya prompt_sha256 berbeda. Tanpa penyaringan ini,
+    # menyalakan TABLE_CONTINUATION_VISION membuat gerbang ini menolak run
+    # dengan alasan "konfigurasi vision asing" — padahal modelnya sama.
     asing = [
         c for c in vision_cache.configurations()
-        if c["vision_model_digest"] != digest_kini or c["prompt_sha256"] != prompt_kini
+        if c.get("variant") == vision_cache.VARIANT_NARRATIVE
+        and (c["vision_model_digest"] != digest_kini or c["prompt_sha256"] != prompt_kini)
     ]
     if not asing:
         return

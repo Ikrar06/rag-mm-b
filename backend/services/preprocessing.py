@@ -804,6 +804,9 @@ def _chunk_elements(
     """
     chunks: list[dict] = []
     current_section: str = ""
+    # Potongan tabel terakhir yang di-emit: (chunk_id, baris header Markdown).
+    # Dipakai mengenali pasangan (A, B) saat INDEX_TABLE_CONTINUATION aktif.
+    tabel_terakhir: tuple[str, str] | None = None
     current_buffer: list[str] = []
     current_page: int = 1
     current_categories: set[str] = set()
@@ -975,16 +978,51 @@ def _chunk_elements(
                 # splittable=False: memecah Markdown tabel memisahkan baris
                 # header dari baris data, dan relasi baris-kolom itu justru
                 # yang diukur RCAA di lapis 3.
+                teks_tabel = (f"## {current_section}\n\n" if current_section else "") + text
+                extra_tabel = {
+                    "raw_html": (el.get("metadata") or {}).get("raw_html"),
+                    "table_format": (el.get("metadata") or {}).get("table_format"),
+                    "bbox": el_bbox,
+                }
+
+                if INDEX_TABLE_CONTINUATION and document_id:
+                    # chunk_id dihitung SEBELUM emit. Ia deterministik dari
+                    # (document_id, segmen halaman, pencacah), jadi pasangan
+                    # dapat dicocokkan ke berkas keputusan tanpa menunggu chunk
+                    # selesai dibuat.
+                    segmen = _page_segment(page)
+                    calon_id = f"{document_id}_{segmen}_c{page_counters.get(segmen, 0):02d}"
+                    if tabel_terakhir is not None:
+                        kunci = table_continuation.kunci_pasangan(
+                            tabel_terakhir[0], calon_id
+                        )
+                        if kunci in table_continuation.muat_keputusan():
+                            teks_tabel = table_continuation.ulangi_header(
+                                tabel_terakhir[1], teks_tabel
+                            )
+                            extra_tabel["table_group_id"] = tabel_terakhir[2]
+                            extra_tabel["table_part"] = tabel_terakhir[3] + 1
+                            extra_tabel["table_header_repeated"] = True
+                            logger.info(
+                                "tabel_lanjutan_digabung a=%s b=%s",
+                                tabel_terakhir[0], calon_id,
+                            )
+                    if "table_group_id" not in extra_tabel:
+                        extra_tabel["table_group_id"] = calon_id
+                        extra_tabel["table_part"] = 0
+                    tabel_terakhir = (
+                        calon_id,
+                        table_continuation.baris_header_markdown(teks_tabel),
+                        extra_tabel["table_group_id"],
+                        extra_tabel["table_part"],
+                    )
+
                 emit(
-                    (f"## {current_section}\n\n" if current_section else "") + text,
+                    teks_tabel,
                     page,
                     "Table",
                     splittable=False,
-                    extra={
-                        "raw_html": (el.get("metadata") or {}).get("raw_html"),
-                        "table_format": (el.get("metadata") or {}).get("table_format"),
-                        "bbox": el_bbox,
-                    },
+                    extra=extra_tabel,
                 )
             else:
                 # Tabel kecil → append ke buffer dengan separator.

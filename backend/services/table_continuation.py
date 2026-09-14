@@ -165,3 +165,103 @@ def lengkapi_sinyal(elements: list[dict], penanda_per_halaman: dict, pdf_path) -
             logger.warning("batas_kolom_gagal page=%s error=%s", el.get("page"), e)
             meta["batas_kolom"] = None
             meta["batas_kolom_tersedia"] = False
+
+
+# ─── Berkas keputusan terkurasi ──────────────────────────────────────────────
+
+_PEMISAH_RE = None      # diisi saat pertama dipakai, lihat baris_header_markdown
+_keputusan_cache: frozenset | None = None
+
+
+def kunci_pasangan(chunk_id_a: str, chunk_id_b: str) -> str:
+    """Kunci stabil sebuah pasangan potongan.
+
+    Memakai chunk_id, yang TIDAK bergeser saat header diulang — mengulang header
+    tidak menambah atau mengurangi chunk. Berkas keputusan karenanya tetap sahih
+    setelah re-index.
+    """
+    return f"{chunk_id_a}__{chunk_id_b}"
+
+
+def baris_header_markdown(teks: str, maks_baris: int = 3) -> str:
+    """Ambil baris header dari teks tabel Markdown.
+
+    Teks chunk sudah berupa Markdown (`_html_table_to_markdown`) dan bisa
+    didahului prefiks `## {section}`, jadi pencarian dimulai dari baris pertama
+    yang diawali pipa. Header = baris pertama plus baris pemisah `| --- |`.
+
+    Mengembalikan string kosong bila tidak ada bentuk tabel Markdown yang
+    dikenali — pemanggil memperlakukannya sebagai "tidak ada header untuk
+    diulang" dan membiarkan potongan apa adanya.
+    """
+    import re as _re
+
+    baris = (teks or "").splitlines()
+    mulai = next((i for i, b in enumerate(baris) if b.lstrip().startswith("|")), None)
+    if mulai is None or mulai + 1 >= len(baris):
+        return ""
+    pemisah = baris[mulai + 1].strip()
+    if not _re.fullmatch(r"\|[\s:|-]+\|", pemisah):
+        return ""
+    return "\n".join(baris[mulai:mulai + min(maks_baris, 2)])
+
+
+def muat_keputusan(path=None) -> frozenset[str]:
+    """Kunci pasangan yang DISETUJUI manusia untuk digabung.
+
+    Hanya entri dengan `keputusan == "terima"` yang dikembalikan. Entri bernilai
+    lain — termasuk yang ditolak otomatis karena headernya dari OCR — sengaja
+    tetap ada di berkas supaya terlihat saat ditinjau, tapi tidak diproses.
+
+    Berkas tidak ada berarti himpunan kosong, bukan galat: menyalakan flag tanpa
+    berkas keputusan menghasilkan perilaku identik dengan flag mati, dan itu
+    aman. Ketiadaannya dicatat sebagai peringatan.
+    """
+    global _keputusan_cache
+    if _keputusan_cache is not None:
+        return _keputusan_cache
+
+    from backend.config import TABLE_CONTINUATION_PATH
+    import json
+    from pathlib import Path
+
+    p = Path(os.path.expanduser(str(path or TABLE_CONTINUATION_PATH)))
+    if not p.exists():
+        logger.warning(
+            "table_continuation_tidak_ada path=%s — tidak ada pasangan yang "
+            "digabung. Buat dengan scripts/analisis_tabel_lintas_halaman.py, "
+            "lalu tinjau kolom 'keputusan'.", p,
+        )
+        _keputusan_cache = frozenset()
+        return _keputusan_cache
+
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+        pasangan = (raw or {}).get("pasangan") if isinstance(raw, dict) else None
+        if not isinstance(pasangan, dict):
+            raise ValueError(
+                f"kunci 'pasangan' harus object, bukan {type(pasangan).__name__}"
+            )
+    except (json.JSONDecodeError, OSError, ValueError) as e:
+        logger.error(
+            "table_continuation_rusak path=%s error=%s — diperlakukan kosong "
+            "supaya indexing tidak menggabung berdasarkan berkas yang tidak "
+            "dapat dibaca", p, e,
+        )
+        _keputusan_cache = frozenset()
+        return _keputusan_cache
+
+    disetujui = frozenset(
+        k for k, v in pasangan.items()
+        if isinstance(v, dict) and str(v.get("keputusan", "")).strip().lower() == "terima"
+    )
+    logger.info("table_continuation_dimuat path=%s total=%d disetujui=%d",
+                p, len(pasangan), len(disetujui))
+    _keputusan_cache = disetujui
+    return _keputusan_cache
+
+
+def reload_keputusan() -> None:
+    """Buang cache keputusan. Dipakai uji dan setelah berkas disunting."""
+    global _keputusan_cache
+    _keputusan_cache = None
