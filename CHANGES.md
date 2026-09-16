@@ -2284,3 +2284,53 @@ Urutan jangkar kini: **`text_sha` dulu** (identitas isi, tahan pergeseran
 penomoran), lalu **sufiks teks** (untuk pengulangan header: teks baru berakhir
 dengan teks lama), lalu **`chunk_id`** sebagai upaya terakhir yang selalu
 ditandai perlu ditinjau.
+
+## `page_span` — field TAMBAHAN, bukan pengganti `page_number`
+
+Ada di `chunks.jsonl` dan `chunks_review.csv`.
+
+`page_number` tetap seperti yang dijanjikan skema: nomor halaman chunk,
+bertipe skalar. `page_span` **hanya ada** bila isi chunk merentang lebih dari
+satu halaman; ketiadaannya berarti `page_number` sudah memerikan seluruh chunk.
+Konsumen yang tidak mengenalnya dapat mengabaikannya tanpa kehilangan apa pun
+yang dijanjikan skema.
+
+```json
+{"page_number": 4, "page_span": [4, 5], "bbox": [0.1, 0.85, 0.9, 0.94]}
+```
+
+`bbox` pada contoh itu adalah kotak di halaman **4** saja — bagian yang berada
+di halaman 5 tidak ikut, karena koordinat ternormalisasi dari halaman berbeda
+berada di kerangka yang berbeda.
+
+Di CSV ia ditulis `"4-5"`; kolom kosong berarti satu halaman.
+
+## Jangkar pembeda `document_id` pada tabrakan `text_sha`
+
+Teks baku yang muncul di banyak dokumen membuat satu `text_sha` cocok dengan
+banyak chunk. Di antara kandidat itu, yang berada di dokumen yang **sama**
+dengan chunk gold dipilih — boilerplate lazimnya tersebar satu per dokumen,
+sehingga penyaringan ini memangkas sebagian besar tabrakan.
+
+`document_id` dibaca dari `chunk_id` itu sendiri, bukan dari field `document_id`
+gold: yang pertama intrinsik pada chunk, yang kedua bisa tidak sinkron. Kalau
+keduanya berbeda, itu masalah data tersendiri yang tidak boleh disamarkan oleh
+pemetaan yang diam-diam memilih salah satu.
+
+Tiga keluaran yang dibedakan:
+
+| Kondisi | Hasil |
+|---|---|
+| Tepat satu kandidat sedokumen | `pindah` |
+| Lebih dari satu sedokumen | `ambigu` — teks identik berulang **di dalam** satu dokumen, tidak dapat dipilih tanpa menebak |
+| Tidak satu pun sedokumen | `ambigu` — chunk aslinya kemungkinan tidak lagi diproduksi |
+
+### Mengukur tabrakan SEBELUM migrasi
+
+```bash
+python scripts/migrasi_gold.py --hitung-tabrakan --chunks-lama dump/<run>/chunks.jsonl
+```
+
+Tidak menjalankan migrasi dan tidak butuh `--gold`. Yang menentukan bukan angka
+totalnya melainkan pemecahannya: tabrakan **lintas** dokumen terselesaikan
+jangkar pembeda, tabrakan **di dalam** satu dokumen tidak.
