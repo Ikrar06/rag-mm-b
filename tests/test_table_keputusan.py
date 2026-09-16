@@ -126,3 +126,50 @@ def test_kunci_pasangan_stabil_dan_berurutan():
     a, b = "dok_p4_c00", "dok_p5_c01"
     assert tc.kunci_pasangan(a, b) == f"{a}__{b}"
     assert tc.kunci_pasangan(a, b) != tc.kunci_pasangan(b, a)
+
+
+# ─── nilai keputusan yang tidak lugas ────────────────────────────────────────
+
+@pytest.mark.unit
+@pytest.mark.parametrize("nilai", [
+    "", "   ", None, "tolak", "TOLAK",
+    # Nilai yang MIRIP terima tapi bukan — tidak boleh dianggap terima.
+    "ok", "ya", "y", "setuju", "true", "1", "terima?", "terima dengan catatan",
+])
+def test_hanya_terima_persis_yang_menggabung(tmp_path, nilai):
+    tc.reload_keputusan()
+    p = _tulis(tmp_path, {"a__b": {"keputusan": nilai}})
+    assert tc.muat_keputusan(p) == frozenset()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("nilai", ["terima", "TERIMA", "  Terima  "])
+def test_terima_tidak_peka_huruf_dan_spasi(tmp_path, nilai):
+    tc.reload_keputusan()
+    p = _tulis(tmp_path, {"a__b": {"keputusan": nilai}})
+    assert tc.muat_keputusan(p) == frozenset({"a__b"})
+
+
+@pytest.mark.unit
+def test_kosong_dilewati_tanpa_peringatan(tmp_path, caplog):
+    """Berkas memang lahir dengan kolom keputusan kosong — itu bukan kelalaian."""
+    tc.reload_keputusan()
+    p = _tulis(tmp_path, {"a__b": {"keputusan": ""}, "c__d": {}})
+    with caplog.at_level("WARNING"):
+        assert tc.muat_keputusan(p) == frozenset()
+    assert not [r for r in caplog.records if "tak_dikenali" in r.getMessage()]
+
+
+@pytest.mark.unit
+def test_nilai_tak_dikenali_diperingatkan_bukan_ditebak(tmp_path, caplog):
+    """Melewatinya diam-diam membuang niat peninjau tanpa jejak."""
+    tc.reload_keputusan()
+    p = _tulis(tmp_path, {"a__b": {"keputusan": "ok"},
+                          "c__d": {"keputusan": "ya"},
+                          "e__f": {"keputusan": "terima"}})
+    with caplog.at_level("WARNING"):
+        hasil = tc.muat_keputusan(p)
+    assert hasil == frozenset({"e__f"})
+    pesan = " ".join(r.getMessage() for r in caplog.records)
+    assert "tak_dikenali" in pesan and "jumlah=2" in pesan
+    assert "'ok'" in pesan or '"ok"' in pesan

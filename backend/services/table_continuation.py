@@ -37,6 +37,13 @@ TOLERANSI_MARGIN = 0.05
 # Kategori element yang BUKAN isi dokumen tapi menandai batas area teks.
 KATEGORI_PENANDA = frozenset({"Header", "Footer", "PageNumber", "PageBreak"})
 
+# Nilai kolom `keputusan` yang dikenali. Hanya "terima" yang memicu penggabungan.
+KEPUTUSAN_TERIMA = "terima"
+KEPUTUSAN_TOLAK = "tolak"
+# Kosong = belum ditinjau. Dilewati, dan itu BUKAN kelalaian yang perlu
+# diperingatkan — berkas memang lahir dengan kolom ini kosong.
+KEPUTUSAN_DIKENALI = frozenset({KEPUTUSAN_TERIMA, KEPUTUSAN_TOLAK, ""})
+
 
 def siapkan_ekstraksi() -> dict[str, str]:
     """Setel env var Unstructured sebelum `partition_pdf`, dan laporkan apa yang disetel.
@@ -251,12 +258,40 @@ def muat_keputusan(path=None) -> frozenset[str]:
         _keputusan_cache = frozenset()
         return _keputusan_cache
 
-    disetujui = frozenset(
-        k for k, v in pasangan.items()
-        if isinstance(v, dict) and str(v.get("keputusan", "")).strip().lower() == "terima"
-    )
-    logger.info("table_continuation_dimuat path=%s total=%d disetujui=%d",
-                p, len(pasangan), len(disetujui))
+    disetujui: set[str] = set()
+    tak_dikenali: dict[str, str] = {}
+    belum_ditinjau = 0
+    for k, v in pasangan.items():
+        if not isinstance(v, dict):
+            continue
+        nilai = str(v.get("keputusan", "")).strip().lower()
+        if nilai == KEPUTUSAN_TERIMA:
+            disetujui.add(k)
+        elif nilai == "":
+            belum_ditinjau += 1
+        elif nilai not in KEPUTUSAN_DIKENALI:
+            tak_dikenali[k] = nilai
+
+    # Nilai tak dikenali DILEWATI — sikap aman, karena menebak bahwa "ok"
+    # berarti terima akan menggabung tabel atas dasar tebakan. Tapi melewatinya
+    # DIAM-DIAM membuang niat peninjau tanpa jejak, jadi selalu diperingatkan.
+    if tak_dikenali:
+        contoh = ", ".join(f"{k}={v!r}" for k, v in list(tak_dikenali.items())[:5])
+        logger.warning(
+            "table_continuation_keputusan_tak_dikenali jumlah=%d contoh=%s — "
+            "DILEWATI. Nilai yang dikenali hanya %r dan %r; isi ulang entri ini "
+            "bila memang dimaksudkan diterima.",
+            len(tak_dikenali), contoh, KEPUTUSAN_TERIMA, KEPUTUSAN_TOLAK,
+        )
+    if belum_ditinjau:
+        logger.info(
+            "table_continuation_belum_ditinjau jumlah=%d — dilewati, bukan diterima",
+            belum_ditinjau,
+        )
+    disetujui = frozenset(disetujui)
+    logger.info("table_continuation_dimuat path=%s total=%d disetujui=%d "
+                "belum_ditinjau=%d tak_dikenali=%d",
+                p, len(pasangan), len(disetujui), belum_ditinjau, len(tak_dikenali))
     _keputusan_cache = disetujui
     return _keputusan_cache
 
