@@ -208,18 +208,36 @@ _KATEGORI_TERIMA = ("lanjutan_kuat",)
 
 
 def _saran(rec: dict, pr, vision) -> tuple[str, str]:
-    """(saran, alasan). Penolakan otomatis TIDAK menghapus entri dari berkas."""
+    """(saran, alasan). Penolakan otomatis TIDAK menghapus entri dari berkas.
+
+    `kualitas_teks` SENGAJA tidak dipakai di sini. Heuristiknya mengukur ciri
+    PROSA — token tanpa vokal, huruf terisolasi, cakupan kata fungsi — dan pada
+    isi tabel arah sinyalnya TERBALIK, terukur pada dua contoh nyata dari korpus:
+
+        "ATATAN ATAS LAPORAN KEUANGAN JUNI 2022 Umuk Tomggal"  (jelas rusak)
+            no-vokal 0%   terisolasi 0%   kata-fungsi 14%  -> tampak SEHAT
+        "NO. | IBUKOTA PROVINSI | KOTA/KABUPATEN TUJUAN | SATUAN | BESARAN"
+            no-vokal 0%   terisolasi 12%  kata-fungsi 0%   -> DIHUKUM
+
+    Kerusakan pada contoh pertama adalah SUBSTITUSI karakter (CATATAN->ATATAN,
+    Untuk->Umuk, Tanggal->Tomggal). Semua kata itu punya vokal, tidak pendek,
+    dan berkapital wajar, jadi tidak satu pun indikator dapat melihatnya —
+    mendeteksinya butuh kamus. Sementara sel tabel yang sehat hampir tidak
+    pernah memuat kata fungsi, sehingga SELALU terhukum.
+
+    Menyetel ulang ambang tidak menolong ketika yang rusak memicu nol indikator
+    dan yang sehat memicu dua. Nilainya tetap ditampilkan sebagai kolom
+    informasi, dengan nama kunci yang menyatakan keterbatasannya.
+
+    Yang TETAP jadi penolak otomatis: halaman tanpa lapisan teks. Itu bukan
+    penilaian kualitas melainkan fakta bahwa isi selnya berasal dari OCR.
+    """
     hal_a, hal_b = rec["halaman"]
     if pr is not None and not pr.error:
         if not (pr.halaman_berlapis_teks(hal_a) and pr.halaman_berlapis_teks(hal_b)):
             return "tolak", (
                 "halaman tanpa lapisan teks — header berasal dari OCR, dan "
                 "mengulangnya berarti menyalin teks rusak ke dua embedding"
-            )
-        if pr.kualitas.label == "rusak":
-            return "tolak", (
-                f"lapisan teks dokumen rusak (skor {pr.kualitas.skor:.2f}) — "
-                f"header yang diulang akan ikut rusak"
             )
     if vision and vision.get("verdict") == "bukan_lanjutan":
         return "tolak", "model vision menilai tabel berbeda (alasan model belum diverifikasi)"
@@ -356,11 +374,18 @@ def _tulis_keputusan(args, semua, profil, nama_berkas, asal) -> None:
             "baris_pertama_a": r["baris_pertama_a"],
             "baris_pertama_b": r["baris_pertama_b"],
             "sumber_halaman_tabel": (pr.sumber_halaman_tabel if pr else None),
-            "kualitas_teks": ({"label": pr.kualitas.label, "skor": pr.kualitas.skor,
-                               "tanpa_vokal": round(pr.kualitas.rasio_tanpa_vokal, 3),
-                               "kapital_campur": round(pr.kualitas.rasio_kapital_campur, 3),
-                               "kata_fungsi": round(pr.kualitas.rasio_fungsi, 3)}
-                              if pr else None),
+            "kualitas_teks_TIDAK_SAHIH_UNTUK_TABEL": (
+                {"label": pr.kualitas.label, "skor": pr.kualitas.skor,
+                 "tanpa_vokal": round(pr.kualitas.rasio_tanpa_vokal, 3),
+                 "terisolasi": round(pr.kualitas.rasio_terisolasi, 3),
+                 "kapital_campur": round(pr.kualitas.rasio_kapital_campur, 3),
+                 "kata_fungsi": round(pr.kualitas.rasio_fungsi, 3),
+                 "catatan": "Mengukur ciri PROSA. Pada isi tabel arah sinyalnya "
+                            "terbalik: teks rusak akibat substitusi karakter "
+                            "tidak terdeteksi, sedangkan sel tabel sehat "
+                            "terhukum karena tidak memuat kata fungsi. TIDAK "
+                            "dipakai menggerakkan kolom saran."}
+                if pr else None),
             "peringatan_sel_terpotong": r["sel_terpotong"]["kuat"] or None,
             "vision": v,
             "saran": saran,
