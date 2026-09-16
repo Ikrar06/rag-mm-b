@@ -99,11 +99,13 @@ def test_chunk_bergeser_dikenali_lewat_text_sha():
 
 @pytest.mark.unit
 def test_text_sha_ganda_tidak_dipilih_otomatis():
+    """Dua kandidat di dokumen yang SAMA — jangkar dokumen tidak memangkas apa
+    pun, jadi tetap ambigu."""
     idx = bangun_indeks([{"chunk_id": "a_p1_c00", "text_sha": "dup"},
                          {"chunk_id": "a_p2_c00", "text_sha": "dup"}])
     h = petakan_chunk("a_p9_c00", "dup", idx)
     assert h.status == STATUS_AMBIGU and h.baru is None and not h.terpetakan
-    assert "2 chunk baru" in h.alasan
+    assert "2 chunk di dokumen yang SAMA" in h.alasan
 
 
 @pytest.mark.unit
@@ -249,3 +251,68 @@ def test_chunk_tanpa_sha_tetap_terdaftar_tapi_bukan_jangkar():
     idx = bangun_indeks([{"chunk_id": "a_p1_c00"}])
     assert petakan_chunk("a_p1_c00", None, idx).status == STATUS_IDENTIK
     assert idx.chunk_per_sha == {}
+
+
+# ─── jangkar pembeda document_id ─────────────────────────────────────────────
+
+@pytest.mark.unit
+def test_boilerplate_lintas_dokumen_diselesaikan_jangkar_dokumen():
+    """Paragraf baku yang muncul SEKALI di tiap dokumen: tabrakan text_sha
+    terselesaikan karena hanya satu kandidat berada di dokumen yang sama."""
+    idx = bangun_indeks([
+        {"chunk_id": "dok-a_p9_c00", "text_sha": "baku"},
+        {"chunk_id": "dok-b_p3_c00", "text_sha": "baku"},
+        {"chunk_id": "dok-c_p7_c00", "text_sha": "baku"},
+    ])
+    h = petakan_chunk("dok-b_p2_c00", "baku", idx)
+    assert h.status == STATUS_PINDAH and h.baru == "dok-b_p3_c00"
+    assert "dokumen yang sama" in h.alasan
+
+
+@pytest.mark.unit
+def test_teks_identik_berulang_dalam_satu_dokumen_tetap_ambigu():
+    """Jangkar dokumen tidak menolong di sini — tidak dapat dipilih tanpa menebak."""
+    idx = bangun_indeks([
+        {"chunk_id": "dok-a_p3_c00", "text_sha": "baku"},
+        {"chunk_id": "dok-a_p9_c00", "text_sha": "baku"},
+        {"chunk_id": "dok-b_p1_c00", "text_sha": "baku"},
+    ])
+    h = petakan_chunk("dok-a_p2_c00", "baku", idx)
+    assert h.status == STATUS_AMBIGU and h.baru is None
+    assert "dokumen yang SAMA" in h.alasan
+
+
+@pytest.mark.unit
+def test_tidak_satu_pun_kandidat_di_dokumen_yang_sama():
+    """Chunk aslinya kemungkinan tidak lagi diproduksi — jangan asal pilih."""
+    idx = bangun_indeks([
+        {"chunk_id": "dok-x_p1_c00", "text_sha": "baku"},
+        {"chunk_id": "dok-y_p1_c00", "text_sha": "baku"},
+    ])
+    h = petakan_chunk("dok-z_p1_c00", "baku", idx)
+    assert h.status == STATUS_AMBIGU and "TIDAK SATU PUN" in h.alasan
+
+
+@pytest.mark.unit
+def test_id_persis_menang_atas_tabrakan():
+    """Kalau id lama ADA di antara kandidat, itu jawabannya — tanpa keraguan."""
+    idx = bangun_indeks([
+        {"chunk_id": "dok-a_p3_c00", "text_sha": "baku"},
+        {"chunk_id": "dok-a_p9_c00", "text_sha": "baku"},
+    ])
+    h = petakan_chunk("dok-a_p3_c00", "baku", idx)
+    assert h.status == STATUS_IDENTIK and h.baru == "dok-a_p3_c00"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("cid,harapan", [
+    ("standar-biaya-2026_p12_c03", "standar-biaya-2026"),
+    ("dok_p1_c00", "dok"),
+    ("dok_pNA_c07", "dok"),
+    ("bentuk-lain", None),
+    ("", None),
+    (None, None),
+])
+def test_slug_dokumen_dari_chunk_id(cid, harapan):
+    from lib.gold_migrasi import slug_dokumen
+    assert slug_dokumen(cid) == harapan

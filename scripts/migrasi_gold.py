@@ -55,7 +55,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lib.gold_migrasi import (  # noqa: E402
     STATUS_AMBIGU, STATUS_HILANG, STATUS_IDENTIK, STATUS_ISI_BERUBAH,
-    STATUS_PINDAH, bangun_indeks, petakan_item, query_id_usang, terapkan,
+    STATUS_PINDAH, bangun_indeks, petakan_item, query_id_usang, slug_dokumen,
+    terapkan,
 )
 
 URUTAN_STATUS = (STATUS_IDENTIK, STATUS_ISI_BERUBAH, STATUS_PINDAH,
@@ -138,9 +139,87 @@ def muat_chunk(args) -> tuple[list[dict], list[str], str]:
     return rows, images, f"qdrant:{koleksi}"
 
 
+
+def _hitung_tabrakan(path: Path) -> int:
+    """Hitung text_sha yang dipakai lebih dari satu chunk.
+
+    Menjawab satu pertanyaan sebelum migrasi dijalankan: berapa banyak chunk
+    yang isinya tidak unik, sehingga `text_sha` tidak dapat dipakai sebagai
+    jangkar tunggal.
+
+    Yang menentukan bukan angka totalnya, melainkan pemecahannya: tabrakan
+    LINTAS dokumen dapat diselesaikan jangkar pembeda `document_id`, sedangkan
+    tabrakan DI DALAM satu dokumen tidak — teks identik berulang di dokumen yang
+    sama tidak dapat dipilih tanpa menebak.
+    """
+    try:
+        rows = baca_jsonl(path)
+    except (ValueError, OSError) as e:
+        print(f"GAGAL membaca {path}: {e}")
+        return 2
+
+    per_sha: dict[str, list[str]] = {}
+    tanpa_sha = 0
+    for r in rows:
+        cid, sha = r.get("chunk_id"), r.get("text_sha")
+        if not isinstance(cid, str) or not cid:
+            continue
+        if not isinstance(sha, str) or not sha:
+            tanpa_sha += 1
+            continue
+        per_sha.setdefault(sha, []).append(cid)
+
+    tabrakan = {s: ids for s, ids in per_sha.items() if len(ids) > 1}
+    n_chunk_kena = sum(len(v) for v in tabrakan.values())
+    total = sum(len(v) for v in per_sha.values())
+
+    # Pisahkan yang terselesaikan jangkar dokumen dari yang tidak.
+    lintas, dalam, dalam_chunk = 0, 0, 0
+    for ids in tabrakan.values():
+        per_dok: dict[str, int] = {}
+        for cid in ids:
+            d = slug_dokumen(cid) or "?"
+            per_dok[d] = per_dok.get(d, 0) + 1
+        if max(per_dok.values()) == 1:
+            lintas += 1                      # tiap dokumen punya satu -> terselesaikan
+        else:
+            dalam += 1
+            dalam_chunk += sum(n for n in per_dok.values() if n > 1)
+
+    print(f"Sumber : {path}")
+    print(f"Chunk  : {total} ber-text_sha" + (f", {tanpa_sha} TANPA text_sha" if tanpa_sha else ""))
+    print(f"text_sha unik : {len(per_sha)}")
+    print()
+    print("=" * 72)
+    print("TABRAKAN text_sha")
+    print("=" * 72)
+    print(f"  {'text_sha dipakai >1 chunk':<38}{len(tabrakan):>7}"
+          f"{100 * len(tabrakan) / max(len(per_sha), 1):>7.1f}%")
+    print(f"  {'chunk yang isinya tidak unik':<38}{n_chunk_kena:>7}"
+          f"{100 * n_chunk_kena / max(total, 1):>7.1f}%")
+    print()
+    print(f"  {'terselesaikan jangkar document_id':<38}{lintas:>7}"
+          f"   (tersebar lintas dokumen)")
+    print(f"  {'TETAP ambigu':<38}{dalam:>7}"
+          f"   ({dalam_chunk} chunk, teks identik berulang di dokumen yang sama)")
+
+    if tabrakan:
+        print("\n  TERBESAR:")
+        for sha, ids in sorted(tabrakan.items(), key=lambda kv: -len(kv[1]))[:5]:
+            dok = {slug_dokumen(c) or "?" for c in ids}
+            sifat = "lintas dokumen" if len(dok) == len(ids) else f"{len(dok)} dokumen"
+            print(f"    {len(ids):>5} chunk  sha={sha[:16]}  {sifat}")
+            print(f"           contoh: {', '.join(ids[:3])}")
+
+    print("\n  Angka yang menentukan adalah baris 'TETAP ambigu': hanya itu yang")
+    print("  akan masuk ground_truth_tidak_terpetakan.jsonl, dan hanya bila ada")
+    print("  item gold yang merujuknya.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Migrasi ground truth ke index baru")
-    ap.add_argument("--gold", required=True, help="ground_truth_final_*.jsonl")
+    ap.add_argument("--gold", default=None, help="ground_truth_final_*.jsonl")
     ap.add_argument("--chunks-baru", default=None,
                     help="chunks.jsonl dari run BARU (alternatif --collection)")
     ap.add_argument("--images-baru", default=None, help="images.jsonl dari run BARU")
@@ -148,8 +227,21 @@ def main() -> int:
     ap.add_argument("--chunks-lama", default=None,
                     help="chunks.jsonl run LAMA — jangkar text_sha. Sangat disarankan.")
     ap.add_argument("--out-dir", default="migrasi_gold")
+    ap.add_argument("--hitung-tabrakan", action="store_true",
+                    help="Hitung text_sha yang muncul lebih dari sekali lalu "
+                         "berhenti. Tidak menjalankan migrasi, tidak butuh --gold.")
     args = ap.parse_args()
 
+    if args.hitung_tabrakan:
+        sumber = args.chunks_lama or args.chunks_baru
+        if not sumber:
+            print("GAGAL: --hitung-tabrakan butuh --chunks-lama atau --chunks-baru")
+            return 2
+        return _hitung_tabrakan(Path(sumber).expanduser())
+
+    if not args.gold:
+        print("GAGAL: --gold wajib kecuali memakai --hitung-tabrakan")
+        return 2
     if not args.chunks_baru and not args.collection:
         print("GAGAL: beri --chunks-baru atau --collection")
         return 2

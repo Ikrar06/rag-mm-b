@@ -51,6 +51,7 @@ _CSV_COLUMNS = [
     "chunk_id",
     "document_id",
     "page_number",
+    "page_span",
     "chunk_type",
     "element_type",
     "chunk_index",
@@ -146,6 +147,14 @@ def _record(doc) -> dict:
         "text_content": doc.text,
         "text_as_html": meta.get("raw_html") or None,
         "bbox": meta.get("bbox"),
+        # TAMBAHAN di luar skema minimum, BUKAN pengganti page_number.
+        #
+        # page_number tetap nomor halaman chunk, bertipe skalar seperti yang
+        # dijanjikan skema. page_span hanya ADA bila isi chunk merentang lebih
+        # dari satu halaman; ketiadaannya berarti page_number sudah memerikan
+        # seluruh chunk. Konsumen yang tidak mengenalnya dapat mengabaikannya
+        # tanpa kehilangan apa pun yang dijanjikan skema.
+        "page_span": meta.get("page_span"),
         # ── kolom tambahan di luar skema minimum ──
         # image_id menautkan chunk ImageDescription ke barisnya di images.jsonl.
         # Tanpa ini metrik lapis 1 tidak dapat distratifikasi per tipe visual,
@@ -179,6 +188,7 @@ def _row(rec: dict) -> dict:
         "chunk_id": rec.get("chunk_id") or "",
         "document_id": rec.get("document_id") or "",
         "page_number": "" if rec.get("page_number") is None else rec["page_number"],
+        "page_span": "-".join(str(h) for h in (rec.get("page_span") or [])),
         "chunk_type": rec.get("chunk_type") or "",
         "element_type": rec.get("element_type") or "",
         "chunk_index": rec.get("chunk_index"),

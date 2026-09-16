@@ -22,7 +22,24 @@ Fungsi murni: tidak menyentuh berkas, tidak mengubah argumennya.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+
+# chunk_id berbentuk "{document_id}_p{N}_c{NN}". Jangkar di UJUNG supaya slug
+# yang memuat "_p" tidak terpotong di tempat yang salah.
+_CHUNK_ID_RE = re.compile(r"^(?P<doc>.+)_p(?:\d+|NA)_c\d+$")
+
+
+def slug_dokumen(chunk_id: str) -> str | None:
+    """document_id sebuah chunk, dibaca dari chunk_id-nya sendiri.
+
+    Sengaja dari chunk_id, bukan dari field `document_id` gold: yang pertama
+    intrinsik pada chunk itu, yang kedua bisa saja tidak sinkron. Kalau keduanya
+    berbeda, itu masalah data tersendiri yang tidak boleh disamarkan oleh
+    pemetaan yang diam-diam memilih salah satu.
+    """
+    m = _CHUNK_ID_RE.match(chunk_id or "")
+    return m.group("doc") if m else None
 
 STATUS_IDENTIK = "identik"
 STATUS_ISI_BERUBAH = "isi_berubah"
@@ -153,10 +170,31 @@ def petakan_chunk(chunk_id: str, sha_lama: str | None, indeks: IndeksBaru,
         return HasilChunk(chunk_id, kandidat[0], STATUS_PINDAH,
                           "chunk_id bergeser; dikenali lewat text_sha yang sama")
     if len(kandidat) > 1:
+        # Jangkar pembeda: boilerplate identik lazimnya tersebar di BANYAK
+        # dokumen, jadi menyaring kandidat ke dokumen yang sama memangkas
+        # sebagian besar tabrakan. Yang tersisa — teks identik berulang di
+        # dalam satu dokumen — memang tidak dapat dipilih tanpa menebak.
+        dok = slug_dokumen(chunk_id)
+        sedokumen = tuple(c for c in kandidat if slug_dokumen(c) == dok) if dok else ()
+        if len(sedokumen) == 1:
+            return HasilChunk(
+                chunk_id, sedokumen[0], STATUS_PINDAH,
+                f"text_sha cocok dengan {len(kandidat)} chunk baru, tapi hanya "
+                f"satu berada di dokumen yang sama ({dok})",
+            )
+        if len(sedokumen) > 1:
+            return HasilChunk(
+                chunk_id, None, STATUS_AMBIGU,
+                f"text_sha {sha_lama[:12]} cocok dengan {len(sedokumen)} chunk "
+                f"di dokumen yang SAMA ({', '.join(sedokumen[:4])}) — teks "
+                f"identik berulang di dalam satu dokumen, tidak dapat dipilih "
+                f"tanpa menebak",
+            )
         return HasilChunk(
             chunk_id, None, STATUS_AMBIGU,
             f"text_sha {sha_lama[:12]} cocok dengan {len(kandidat)} chunk baru "
-            f"({', '.join(kandidat[:4])}) — tidak dipilih otomatis",
+            f"({', '.join(kandidat[:4])}) dan TIDAK SATU PUN di dokumen yang "
+            f"sama — chunk aslinya kemungkinan tidak lagi diproduksi",
         )
 
     # ── Jangkar 2: sufiks teks (pola pengulangan header) ──
