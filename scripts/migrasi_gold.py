@@ -167,20 +167,27 @@ def main() -> int:
         return 2
 
     sha_lama: dict[str, str] = {}
+    teks_lama: dict[str, str] = {}
     if args.chunks_lama:
         for r in baca_jsonl(Path(args.chunks_lama).expanduser()):
-            if isinstance(r.get("chunk_id"), str) and isinstance(r.get("text_sha"), str):
-                sha_lama[r["chunk_id"]] = r["text_sha"]
+            cid = r.get("chunk_id")
+            if not isinstance(cid, str) or not cid:
+                continue
+            if isinstance(r.get("text_sha"), str):
+                sha_lama[cid] = r["text_sha"]
+            isi = r.get("text_content") or r.get("text")
+            if isinstance(isi, str) and isi:
+                teks_lama[cid] = isi
 
     indeks = bangun_indeks(rows, images)
 
     print(f"Gold        : {gold_path}  ({len(gold)} item)")
     print(f"Index baru  : {asal}  ({indeks.n_chunk} chunk, {len(indeks.image_ids)} gambar)")
-    print(f"Jangkar lama: {len(sha_lama)} text_sha"
+    print(f"Jangkar lama: {len(sha_lama)} text_sha, {len(teks_lama)} teks"
           + ("" if sha_lama else "  <-- TIDAK ADA: perubahan isi tidak terdeteksi, "
                                 "dan chunk yang bergeser tidak punya jangkar"))
 
-    hasil = [petakan_item(it, sha_lama, indeks) for it in gold]
+    hasil = [petakan_item(it, sha_lama, indeks, teks_lama) for it in gold]
 
     out = Path(args.out_dir).expanduser()
     terpetakan = [h for h in hasil if h.terpetakan]
@@ -241,7 +248,7 @@ def main() -> int:
     (out / "laporan_migrasi.json").write_text(json.dumps({
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "gold": str(gold_path), "index_baru": asal,
-        "jangkar_text_sha": len(sha_lama),
+        "jangkar_text_sha": len(sha_lama), "jangkar_teks": len(teks_lama),
         "n_item": len(gold), "per_status": dict(per_status),
         "n_migrated": n_mig, "n_perlu_tinjau": n_tinjau, "n_tidak_terpetakan": n_gagal,
         "human_verdict_sebelum": dict(per_verdict),

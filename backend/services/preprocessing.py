@@ -808,9 +808,21 @@ def _chunk_elements(
     # Dipakai mengenali pasangan (A, B) saat INDEX_TABLE_CONTINUATION aktif.
     tabel_terakhir: tuple[str, str] | None = None
     current_buffer: list[str] = []
-    current_page: int = 1
+    # None = buffer kosong, halaman ditentukan element PERTAMA yang masuk.
+    #
+    # Sebelumnya diinisialisasi 1, yang truthy, sehingga `if not current_page`
+    # di tiga tempat tidak pernah dieksekusi dan current_page hanya berubah di
+    # Title. Akibatnya SETIAP chunk teks dalam satu section memakai nomor
+    # halaman judul section-nya, bukan halamannya sendiri — dan karena page
+    # payload dan page di chunk_id sama-sama berasal dari variabel ini,
+    # keduanya selalu sepakat sehingga kesalahannya tidak terlihat dari
+    # pemeriksaan konsistensi.
+    current_page: int | None = None
     current_categories: set[str] = set()
-    current_bboxes: list[list[float]] = []
+    # (halaman, bbox). Halamannya ikut karena bbox ternormalisasi hanya
+    # bermakna relatif terhadap halaman asalnya; menggabungkan kotak dari
+    # halaman berbeda menghasilkan persegi yang tidak berpadanan dengan apa pun.
+    current_bboxes: list[tuple[int, list[float]]] = []
     # Ekor chunk sebelumnya yang disemai ke buffer ini sebagai overlap. Dikeluarkan
     # dari dasar text_sha supaya hash tidak bergantung pada isi chunk tetangga.
     current_overlap_seed: str = ""
@@ -912,19 +924,35 @@ def _chunk_elements(
     def _union_bbox() -> list[float] | None:
         """Gabungan bbox element yang ada di buffer saat ini.
 
-        Chunk teks bisa merangkum beberapa element, jadi bbox-nya adalah kotak
-        yang melingkupi semuanya. Untuk chunk hasil pemecahan, bbox tetap
-        merujuk element sumber — bukan potongan — karena pemecahan terjadi di
-        ruang teks, bukan ruang halaman.
+        HANYA element yang berada di halaman chunk ini yang digabung. Buffer
+        bisa merentang beberapa halaman, dan bbox ternormalisasi dari halaman
+        berbeda berada di kerangka koordinat berbeda — menggabungkannya
+        menghasilkan persegi yang tidak berpadanan dengan apa pun di halaman
+        mana pun. Halaman lain yang ikut terangkum dilaporkan lewat
+        `_rentang_halaman()`.
+
+        Untuk chunk hasil pemecahan, bbox tetap merujuk element sumber — bukan
+        potongan — karena pemecahan terjadi di ruang teks, bukan ruang halaman.
         """
-        if not current_bboxes:
+        sehalaman = [b for hal, b in current_bboxes if hal == current_page]
+        if not sehalaman:
             return None
         return [
-            round(min(b[0] for b in current_bboxes), 4),
-            round(min(b[1] for b in current_bboxes), 4),
-            round(max(b[2] for b in current_bboxes), 4),
-            round(max(b[3] for b in current_bboxes), 4),
+            round(min(b[0] for b in sehalaman), 4),
+            round(min(b[1] for b in sehalaman), 4),
+            round(max(b[2] for b in sehalaman), 4),
+            round(max(b[3] for b in sehalaman), 4),
         ]
+
+    def _rentang_halaman() -> list[int] | None:
+        """Halaman yang isinya ikut masuk chunk ini, bila lebih dari satu.
+
+        None untuk chunk satu halaman — ketiadaannya berarti `page_number`
+        sudah memerikan seluruh chunk. Ada untuk chunk yang merentang, supaya
+        informasi itu tidak hilang hanya karena `page_number` bertipe skalar.
+        """
+        halaman = sorted({hal for hal, _ in current_bboxes if hal})
+        return halaman if len(halaman) > 1 else None
 
     def flush():
         if not current_buffer:
@@ -937,7 +965,7 @@ def _chunk_elements(
             current_page,
             "+".join(sorted(current_categories)) or "text",
             splittable=True,
-            extra={"bbox": _union_bbox()},
+            extra={"bbox": _union_bbox(), "page_span": _rentang_halaman()},
             inherited_prefix=current_overlap_seed,
         )
 
@@ -961,7 +989,7 @@ def _chunk_elements(
             current_buffer.append(f"# {text}")
             current_categories.add("Title")
             if el_bbox:
-                current_bboxes.append(el_bbox)
+                current_bboxes.append((page, el_bbox))
             continue
 
         if cat == "Table":
@@ -975,6 +1003,7 @@ def _chunk_elements(
                 current_categories = set()
                 current_bboxes = []
                 current_overlap_seed = ""
+                current_page = None
                 # splittable=False: memecah Markdown tabel memisahkan baris
                 # header dari baris data, dan relasi baris-kolom itu justru
                 # yang diukur RCAA di lapis 3.
@@ -1032,8 +1061,8 @@ def _chunk_elements(
                 current_buffer.append(f"**Tabel:**\n{text}")
                 current_categories.add("Table")
                 if el_bbox:
-                    current_bboxes.append(el_bbox)
-                if not current_page:
+                    current_bboxes.append((page, el_bbox))
+                if current_page is None:
                     current_page = page
 
         elif cat == "ImageDescription":
@@ -1043,6 +1072,7 @@ def _chunk_elements(
             current_categories = set()
             current_bboxes = []
             current_overlap_seed = ""
+            current_page = None
             # splittable=False: satu deskripsi = satu gambar. Memecahnya merusak
             # relasi narrative_summary <-> image_id. Praktisnya tidak pernah
             # terpicu karena image_describer.py:150 membatasi max_tokens=300.
@@ -1069,12 +1099,17 @@ def _chunk_elements(
                 current_categories = set()
                 current_bboxes = []
                 current_overlap_seed = overlap_text
+                # Buffer baru: halamannya ditentukan element berikutnya, bukan
+                # diwarisi dari chunk sebelumnya. Teks overlap memang berasal
+                # dari halaman lama, tapi ia hanya jembatan konteks — isi chunk
+                # ini ditentukan element yang menyusul.
+                current_page = None
 
             current_buffer.append(text)
             current_categories.add(cat)
             if el_bbox:
-                current_bboxes.append(el_bbox)
-            if not current_page:
+                current_bboxes.append((page, el_bbox))
+            if current_page is None:
                 current_page = page
 
     flush()

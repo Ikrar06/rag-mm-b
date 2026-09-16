@@ -57,10 +57,36 @@ def test_chunk_identik():
 
 @pytest.mark.unit
 def test_isi_berubah_chunk_id_tetap():
-    """Potongan lanjutan yang headernya diulang: chunk_id sama, text_sha beda."""
+    """chunk_id masih ada tapi isinya beda, dan tidak ada jangkar isi.
+
+    Dipetakan ke id yang sama sebagai UPAYA TERAKHIR, dengan peringatan bahwa
+    id itu bisa saja kini ditempati chunk lain."""
     h = petakan_chunk("sop_p17_c01", "sha_lama", IDX)
     assert h.status == STATUS_ISI_BERUBAH and h.baru == "sop_p17_c01"
-    assert h.terpetakan and "ditinjau ulang" in h.alasan
+    assert h.terpetakan and "ditempati chunk LAIN" in h.alasan
+
+
+@pytest.mark.unit
+def test_sufiks_menang_atas_chunk_id():
+    """Pengulangan header: isi lama jadi EKOR isi baru di chunk yang bergeser.
+
+    Jangkar isi harus menang atas chunk_id, karena id lama bisa saja kini
+    ditempati chunk yang sama sekali berbeda."""
+    idx = bangun_indeks([
+        {"chunk_id": "sop_p40_c02", "text_sha": "milik_chunk_lain",
+         "text_content": "Paragraf yang sama sekali berbeda isinya di sini."},
+        {"chunk_id": "sop_p40_c03", "text_sha": "sha_baru",
+         "text_content": "| Uraian | 2024 |\n| --- | --- |\n| Kegiatan A | 1.250.000 |"},
+    ])
+    h = petakan_chunk("sop_p40_c02", "sha_lama", idx,
+                      teks_lama="| Kegiatan A | 1.250.000 |" + " " * 0 + " pelengkap agar cukup panjang")
+    # Teks lama bukan ekor -> jatuh ke jangkar ketiga.
+    assert h.baru == "sop_p40_c02"
+
+    h2 = petakan_chunk("sop_p40_c02", "sha_lama", idx,
+                       teks_lama="| Uraian | 2024 |\n| --- | --- |\n| Kegiatan A | 1.250.000 |")
+    assert h2.baru == "sop_p40_c03" and h2.status == STATUS_ISI_BERUBAH
+    assert "BERAKHIR dengan teks lama" in h2.alasan
 
 
 @pytest.mark.unit
@@ -96,7 +122,7 @@ def test_hilang_dengan_jangkar_yang_tidak_cocok():
 def test_tanpa_dump_lama_perubahan_isi_tidak_disamarkan():
     h = petakan_chunk("sop_p17_c01", None, IDX)
     assert h.status == STATUS_IDENTIK
-    assert "tidak dapat dibandingkan" in h.alasan
+    assert "TIDAK dapat dibandingkan" in h.alasan
 
 
 # ─── petakan_item ────────────────────────────────────────────────────────────

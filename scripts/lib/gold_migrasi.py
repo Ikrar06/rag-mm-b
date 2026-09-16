@@ -22,7 +22,7 @@ Fungsi murni: tidak menyentuh berkas, tidak mengubah argumennya.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 STATUS_IDENTIK = "identik"
 STATUS_ISI_BERUBAH = "isi_berubah"
@@ -41,6 +41,9 @@ class IndeksBaru:
     sha_per_chunk: dict[str, str]
     chunk_per_sha: dict[str, tuple[str, ...]]
     image_ids: frozenset[str] = frozenset()
+    # chunk_id -> teks. Hanya terisi bila dump baru membawa `text_content`.
+    # Dipakai sebagai jangkar KETIGA, lihat petakan_chunk.
+    teks_per_chunk: dict[str, str] = field(default_factory=dict)
 
     @property
     def n_chunk(self) -> int:
@@ -50,11 +53,13 @@ class IndeksBaru:
 def bangun_indeks(baris_chunk, image_ids=()) -> IndeksBaru:
     """Bangun IndeksBaru dari rekaman chunk index baru.
 
-    Tiap rekaman cukup punya `chunk_id` dan `text_sha`. Rekaman tanpa salah
-    satunya dilewati — chunk tanpa `chunk_id` memang tidak dapat dirujuk gold.
+    Tiap rekaman cukup punya `chunk_id` dan `text_sha`. `text_content` opsional
+    tapi mengaktifkan jangkar ketiga. Rekaman tanpa `chunk_id` dilewati — chunk
+    tanpa id memang tidak dapat dirujuk gold.
     """
     sha_per_chunk: dict[str, str] = {}
     per_sha: dict[str, list[str]] = {}
+    teks: dict[str, str] = {}
     for r in baris_chunk:
         cid, sha = r.get("chunk_id"), r.get("text_sha")
         if not isinstance(cid, str) or not cid:
@@ -62,10 +67,14 @@ def bangun_indeks(baris_chunk, image_ids=()) -> IndeksBaru:
         sha_per_chunk[cid] = sha if isinstance(sha, str) else ""
         if isinstance(sha, str) and sha:
             per_sha.setdefault(sha, []).append(cid)
+        isi = r.get("text_content") or r.get("text")
+        if isinstance(isi, str) and isi:
+            teks[cid] = isi
     return IndeksBaru(
         sha_per_chunk=sha_per_chunk,
         chunk_per_sha={k: tuple(v) for k, v in per_sha.items()},
         image_ids=frozenset(i for i in image_ids if isinstance(i, str) and i),
+        teks_per_chunk=teks,
     )
 
 
@@ -83,52 +92,102 @@ class HasilChunk:
         return self.status in STATUS_TERPETAKAN
 
 
-def petakan_chunk(chunk_id: str, sha_lama: str | None, indeks: IndeksBaru) -> HasilChunk:
+def _cocok_sufiks(teks_lama: str, indeks: IndeksBaru) -> tuple[str, ...]:
+    """Chunk baru yang teksnya BERAKHIR dengan teks lama.
+
+    Jangkar ketiga, untuk potongan tabel lanjutan: pengulangan header menambah
+    baris di DEPAN, sehingga teks baru = header + teks lama. text_sha berubah
+    dan chunk_id bergeser, jadi dua jangkar pertama sama-sama gagal — tapi
+    ekornya masih utuh.
+    """
+    ekor = " ".join((teks_lama or "").split())
+    if len(ekor) < 40:
+        return ()                     # terlalu pendek untuk jadi bukti
+    return tuple(
+        cid for cid, isi in indeks.teks_per_chunk.items()
+        if " ".join(isi.split()).endswith(ekor)
+    )
+
+
+def petakan_chunk(chunk_id: str, sha_lama: str | None, indeks: IndeksBaru,
+                  teks_lama: str | None = None) -> HasilChunk:
     """Petakan satu chunk_id gold ke index baru.
+
+    URUTAN JANGKAR: text_sha DULU, chunk_id belakangan. Ini bukan detail gaya —
+    `chunk_id` adalah POSISI, dan saat penomoran halaman diperbaiki, sebuah id
+    lama bisa tetap ada di index baru tapi kini ditempati chunk yang BERBEDA.
+    Memeriksa chunk_id lebih dulu akan memetakan gold ke isi yang keliru, dan
+    kekeliruannya senyap karena id-nya tampak sahih. Terukur di uji skala: 70
+    chunk terpetakan "isi berubah" padahal hanya 23 yang isinya benar-benar
+    berubah.
+
+    Tiga jangkar berurutan:
+      1. text_sha — identitas ISI, tahan terhadap pergeseran penomoran
+      2. sufiks teks — untuk potongan tabel yang headernya diulang: teks baru
+         berakhir dengan teks lama, sehingga sha berubah tapi ekornya utuh
+      3. chunk_id — hanya sebagai upaya terakhir, dan hasilnya ditandai perlu
+         ditinjau karena isinya sudah tidak sama
 
     `sha_lama` boleh None bila dump lama tidak tersedia; pemetaan lalu hanya
     dapat mengandalkan keberadaan `chunk_id`, dan perubahan isi tidak terdeteksi.
     Itu dilaporkan apa adanya, bukan disamarkan jadi "identik".
     """
-    sha_baru = indeks.sha_per_chunk.get(chunk_id)
-
-    if sha_baru is not None:
-        if sha_lama is None:
-            return HasilChunk(chunk_id, chunk_id, STATUS_IDENTIK,
-                              "chunk_id masih ada; isi tidak dapat dibandingkan "
-                              "karena dump lama tidak diberikan")
-        if sha_lama == sha_baru:
-            return HasilChunk(chunk_id, chunk_id, STATUS_IDENTIK)
-        return HasilChunk(
-            chunk_id, chunk_id, STATUS_ISI_BERUBAH,
-            "chunk_id sama tapi text_sha berubah — kemungkinan besar potongan "
-            "tabel lanjutan yang headernya diulang; perlu ditinjau ulang manusia",
-        )
-
-    # chunk_id hilang. Jangkar text_sha.
     if not sha_lama:
+        if chunk_id in indeks.sha_per_chunk:
+            return HasilChunk(chunk_id, chunk_id, STATUS_IDENTIK,
+                              "chunk_id masih ada; isi TIDAK dapat dibandingkan "
+                              "karena dump lama tidak diberikan")
         return HasilChunk(
             chunk_id, None, STATUS_HILANG,
             "chunk_id tidak ada di index baru dan text_sha lama tidak diketahui, "
             "sehingga tidak ada jangkar untuk mencarinya",
         )
 
+    # ── Jangkar 1: text_sha ──
     kandidat = indeks.chunk_per_sha.get(sha_lama, ())
+    if chunk_id in kandidat:
+        # Id yang sama DAN isi yang sama — tidak ada keraguan, walau ada chunk
+        # lain berisi teks identik di tempat lain.
+        return HasilChunk(chunk_id, chunk_id, STATUS_IDENTIK)
     if len(kandidat) == 1:
-        return HasilChunk(
-            chunk_id, kandidat[0], STATUS_PINDAH,
-            f"chunk_id bergeser; dikenali lewat text_sha yang sama",
-        )
+        return HasilChunk(chunk_id, kandidat[0], STATUS_PINDAH,
+                          "chunk_id bergeser; dikenali lewat text_sha yang sama")
     if len(kandidat) > 1:
         return HasilChunk(
             chunk_id, None, STATUS_AMBIGU,
             f"text_sha {sha_lama[:12]} cocok dengan {len(kandidat)} chunk baru "
             f"({', '.join(kandidat[:4])}) — tidak dipilih otomatis",
         )
+
+    # ── Jangkar 2: sufiks teks (pola pengulangan header) ──
+    if teks_lama:
+        sufiks = _cocok_sufiks(teks_lama, indeks)
+        if len(sufiks) == 1:
+            return HasilChunk(
+                chunk_id, sufiks[0], STATUS_ISI_BERUBAH,
+                "isi berubah; dikenali karena teks baru BERAKHIR dengan teks "
+                "lama — pola pengulangan baris header. Perlu ditinjau ulang",
+            )
+        if len(sufiks) > 1:
+            return HasilChunk(
+                chunk_id, None, STATUS_AMBIGU,
+                f"teks lama cocok sebagai ekor {len(sufiks)} chunk baru — "
+                f"tidak dipilih otomatis",
+            )
+
+    # ── Jangkar 3: chunk_id, upaya terakhir ──
+    if chunk_id in indeks.sha_per_chunk:
+        return HasilChunk(
+            chunk_id, chunk_id, STATUS_ISI_BERUBAH,
+            "chunk_id masih ada TAPI isinya berbeda dan tidak ada jangkar isi "
+            "yang cocok. Id ini bisa saja kini ditempati chunk LAIN — wajib "
+            "ditinjau manusia sebelum dipakai",
+        )
     return HasilChunk(
         chunk_id, None, STATUS_HILANG,
-        "chunk_id tidak ada dan tidak ada chunk baru ber-text_sha sama — isinya "
-        "berubah ATAU chunk-nya tidak lagi diproduksi",
+        "chunk_id tidak ada dan tidak ada chunk baru ber-text_sha sama maupun "
+        "berteks berakhiran sama — isinya berubah ATAU chunk-nya tidak lagi "
+        "diproduksi",
     )
 
 
@@ -161,7 +220,8 @@ class HasilItem:
         return self.status in STATUS_TERPETAKAN
 
 
-def petakan_item(item: dict, sha_lama_per_chunk: dict, indeks: IndeksBaru) -> HasilItem:
+def petakan_item(item: dict, sha_lama_per_chunk: dict, indeks: IndeksBaru,
+                 teks_lama_per_chunk: dict | None = None) -> HasilItem:
     """Petakan satu item gold. TIDAK mengubah `item`.
 
     `relevant_images` tidak dimigrasi — penamaan image_id tidak tersentuh
@@ -169,7 +229,8 @@ def petakan_item(item: dict, sha_lama_per_chunk: dict, indeks: IndeksBaru) -> Ha
     menunjuk gambar hilang sama tidak sahihnya dengan yang menunjuk chunk hilang.
     """
     chunks = tuple(
-        petakan_chunk(cid, sha_lama_per_chunk.get(cid), indeks)
+        petakan_chunk(cid, sha_lama_per_chunk.get(cid), indeks,
+                      (teks_lama_per_chunk or {}).get(cid))
         for cid in (item.get("relevant_text_chunks") or [])
         if isinstance(cid, str) and cid
     )

@@ -60,6 +60,9 @@ _STRUCTURAL_METADATA_KEYS = (
     "table_group_id",
     "table_part",
     "table_header_repeated",
+    # Hanya ada bila chunk merentang lebih dari satu halaman. Ketiadaannya
+    # berarti page_number sudah memerikan seluruh chunk.
+    "page_span",
 )
 
 
