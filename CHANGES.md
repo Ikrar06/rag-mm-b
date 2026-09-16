@@ -2229,3 +2229,58 @@ bukan disamarkan jadi "identik".
 `ground_truth_migrated.jsonl` bebas field diagnostik sehingga siap untuk
 `validasi_ground_truth.py`. Yang tidak terpetakan **tidak dibuang** — dipisahkan
 ke berkas tersendiri beserta alasan per chunk.
+
+## Perbaikan wajib: `page_number` dan `bbox` chunk teks
+
+Digabung ke Tahap B karena keduanya mengubah `chunk_id` dan dataset ini akan
+dipublikasikan — skemanya menjanjikan `page_number` sebagai nomor halaman chunk.
+
+`current_page` diinisialisasi `1` (truthy), sehingga `if not current_page` di
+tiga tempat tidak pernah dieksekusi dan halaman hanya berubah di `Title`.
+Akibatnya **setiap chunk teks dalam satu section memakai nomor halaman judul
+section-nya**. Section yang merentang halaman 4–7 menghasilkan `_p4_c00`,
+`_p4_c01`, `_p4_c02`, `_p4_c03` — tiga di antaranya salah.
+
+**Kenapa pemeriksaan konsistensi tidak dapat melihatnya:** `page` di payload dan
+nomor halaman di `chunk_id` sama-sama berasal dari `current_page`, jadi keduanya
+selalu sepakat — sama-sama salah. Verifikasi "nol chunk yang page payload
+berbeda dengan page chunk_id" lolos sempurna pada data yang keliru.
+
+**Dampak pada bbox.** Koordinat ternormalisasi hanya bermakna relatif terhadap
+halaman asalnya. Chunk berlabel halaman 4 yang membawa bbox dari halaman 5
+menunjuk tempat yang keliru; dan buffer yang merentang halaman menghasilkan
+union kotak dari dua kerangka koordinat berbeda — persegi yang tidak berpadanan
+dengan apa pun di halaman mana pun.
+
+Perbaikannya: `current_page` ditentukan element PERTAMA yang masuk buffer dan
+direset tiap flush; `bbox` hanya menggabungkan element yang berada di halaman
+chunk itu; `page_span` baru mencatat seluruh halaman yang isinya ikut terangkum,
+sehingga informasi itu tidak hilang hanya karena `page_number` bertipe skalar.
+
+**Chunk tabel tidak pernah salah halaman** (cabang Table memakai `page` element
+langsung), **tetapi `chunk_id`-nya ikut bergeser**: ordinal per halaman kini
+memuat chunk teks yang sebelumnya salah dialamatkan.
+
+## Uji migrasi pada skala sebenarnya
+
+Fixture 214 dokumen, 23.914 chunk, 1.300 item gold, 17.907 `chunk_id` bergeser.
+
+| Status | Jumlah | |
+|---|---|---|
+| `identik` | 470 | 36,2% |
+| `pindah` | 800 | 61,5% — lewat `text_sha` |
+| `isi_berubah` | 1 | 0,1% — potongan tabel berheader, lewat jangkar sufiks |
+| `ambigu` | 29 | 2,2% — 861 chunk berisi boilerplate identik |
+| **`hilang`** | **0** | |
+
+**Bug yang ditemukan uji skala ini.** Versi pertama memeriksa `chunk_id` lebih
+dulu, lalu `text_sha`. Saat penomoran diperbaiki, sebuah `chunk_id` lama bisa
+tetap ada di index baru tapi **kini ditempati chunk yang berbeda** — dan
+memetakan gold ke sana menghasilkan rujukan yang salah secara senyap, karena
+id-nya tampak sahih. Terukur: 70 chunk terpetakan `isi_berubah` padahal hanya 1
+yang isinya benar-benar berubah.
+
+Urutan jangkar kini: **`text_sha` dulu** (identitas isi, tahan pergeseran
+penomoran), lalu **sufiks teks** (untuk pengulangan header: teks baru berakhir
+dengan teks lama), lalu **`chunk_id`** sebagai upaya terakhir yang selalu
+ditandai perlu ditinjau.
