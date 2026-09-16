@@ -2334,3 +2334,36 @@ python scripts/migrasi_gold.py --hitung-tabrakan --chunks-lama dump/<run>/chunks
 Tidak menjalankan migrasi dan tidak butuh `--gold`. Yang menentukan bukan angka
 totalnya melainkan pemecahannya: tabrakan **lintas** dokumen terselesaikan
 jangkar pembeda, tabrakan **di dalam** satu dokumen tidak.
+
+## `kualitas_teks` dicabut dari penggerak saran
+
+Heuristiknya mengukur ciri **prosa**. Pada isi tabel arah sinyalnya **terbalik**,
+terukur pada dua contoh nyata dari korpus:
+
+| | no-vokal | terisolasi | kata-fungsi | label |
+|---|---|---|---|---|
+| `"ATATAN ATAS LAPORAN KEUANGAN JUNI 2022 Umuk Tomggal"` — jelas rusak | 0% | 0% | 14% | tampak **sehat** |
+| `"NO. \| IBUKOTA PROVINSI \| KOTA/KABUPATEN TUJUAN \| SATUAN \| BESARAN"` — terbaca sempurna | 0% | 12% | 0% | **dihukum** |
+
+Kerusakan pada contoh pertama adalah **substitusi karakter**
+(`CATATAN`→`ATATAN`, `Untuk`→`Umuk`, `Tanggal`→`Tomggal`). Semua kata itu punya
+vokal, tidak pendek, dan berkapital wajar — tidak satu pun indikator dapat
+melihatnya. Mendeteksinya butuh kamus.
+
+Sebaliknya, sel tabel yang sehat hampir tidak pernah memuat kata fungsi,
+sehingga syarat `rasio_fungsi < 0.08` **selalu** terpenuhi dan setiap chunk
+tabel kehilangan seperempat skornya secara struktural.
+
+Menyetel ulang ambang tidak menolong ketika yang rusak memicu nol indikator dan
+yang sehat memicu dua. Membatasi penilaian ke isi sel juga tidak: indikator yang
+tersisa tetap buta terhadap substitusi karakter.
+
+**Yang berubah:** `kualitas_teks` tidak lagi menggerakkan kolom `saran`. Ia tetap
+ditampilkan sebagai kolom informasi dengan kunci
+`kualitas_teks_TIDAK_SAHIH_UNTUK_TABEL` beserta catatan keterbatasannya.
+
+**Yang TETAP jadi penolak otomatis:** halaman tanpa lapisan teks. Itu bukan
+penilaian kualitas melainkan fakta bahwa isi selnya berasal dari OCR.
+
+Saran kini digerakkan: penolak lapisan teks (keras) → putusan vision → kategori
+sinyal struktural.
