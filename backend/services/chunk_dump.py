@@ -95,6 +95,18 @@ def _node_transformations() -> list[str]:
         return ["<tidak terbaca>"]
 
 
+def _table_adjudication_provenance() -> dict | None:
+    """Konfigurasi adjudikasi tabel, atau None bila fitur mati."""
+    if not config.TABLE_CONTINUATION_VISION:
+        return None
+    try:
+        from backend.services.table_adjudicator import provenance
+        return provenance()
+    except Exception as e:      # manifest tidak boleh menjatuhkan dump
+        logger.warning("table_adjudication_provenance_gagal error=%s", e)
+        return {"error": str(e)}
+
+
 def dump_dir() -> Path | None:
     """Direktori dump, atau None bila CHUNK_DUMP_DIR kosong (perilaku lama)."""
     raw = (config.CHUNK_DUMP_DIR or "").strip()
@@ -379,6 +391,10 @@ def build_manifest(run_id: str, reports: dict[str, dict], n_chunks: int,
             "INDEX_DISABLE_NODE_PARSER": config.INDEX_DISABLE_NODE_PARSER,
             "INDEX_TABLE_CONTINUATION": config.INDEX_TABLE_CONTINUATION,
             "TABLE_CONTINUATION_VISION": config.TABLE_CONTINUATION_VISION,
+            # DPI dan timeout adjudikasi ikut: DPI mengubah biaya DAN
+            # berpotensi mengubah putusan, jadi dua run dengan DPI berbeda
+            # tidak dapat dibandingkan begitu saja.
+            "table_adjudication": _table_adjudication_provenance(),
             "INDEX_STRUCTURAL_METADATA": config.INDEX_STRUCTURAL_METADATA,
             # Tidak diminta eksplisit, tapi WAJIB dicatat: menggeser batas chunk
             # teks di seluruh dokumen, bukan sekadar menambah chunk tabel.

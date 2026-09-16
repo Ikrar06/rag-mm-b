@@ -222,12 +222,114 @@ def _saran(rec: dict, pr, vision) -> tuple[str, str]:
                 f"header yang diulang akan ikut rusak"
             )
     if vision and vision.get("verdict") == "bukan_lanjutan":
-        return "tolak", f"model vision: {vision.get('alasan') or 'tabel berbeda'}"
+        return "tolak", "model vision menilai tabel berbeda (alasan model belum diverifikasi)"
     if rec["kategori"] in _KATEGORI_TERIMA:
         return "terima", "sinyal struktural tegas"
     if vision and vision.get("verdict") == "lanjutan":
-        return "terima", f"model vision: {vision.get('alasan') or 'tabel sama'}"
+        return "terima", "model vision menilai tabel sama (alasan model belum diverifikasi)"
     return "tolak", f"kategori {rec['kategori']!r} tidak tegas"
+
+
+
+def _rekam_vision(h, r) -> dict:
+    """Hasil adjudikasi satu pasangan, dengan penamaan yang jujur.
+
+    Kunci alasannya SENGAJA panjang: terukur di server, model menulis nomor
+    halaman yang dikarang di dalam alasannya walau putusannya benar. Nama kunci
+    yang netral seperti "alasan" akan dibaca sebagai fakta.
+
+    Nomor halaman di berkas ini SELALU dari payload (`r["halaman"]`), tidak
+    pernah dari teks model.
+    """
+    return {
+        "verdict": h.verdict,
+        "keyakinan": h.keyakinan,
+        "alasan_model_BELUM_DIVERIFIKASI": h.alasan,
+        "halaman_dikarang_model": list(h.halaman_dikarang) or None,
+        "peringatan": ("alasan model menyebut halaman yang TIDAK dikirim — "
+                       "perlakukan seluruh kalimatnya sebagai tidak terpercaya"
+                       if h.halaman_dikarang else None),
+        "dari_cache": h.dari_cache,
+        "piksel_dikirim": h.piksel_dikirim,
+        "error": h.error,
+    }
+
+
+def _jalankan_vision(args, semua, nama_berkas) -> dict:
+    """Adjudikasi dengan progres, ETA, dan checkpoint berkala.
+
+    Checkpoint ditulis setelah SETIAP pasangan, bukan di akhir: satu pasangan
+    bisa memakan menit, dan proses yang terputus di tengah tidak boleh
+    mengulang dari nol. Pola yang sama dengan vision_cache — bedanya checkpoint
+    ini juga bekerja saat cache dimatikan.
+    """
+    import time as _t
+    from backend.services.table_adjudicator import adjudikasi, provenance
+
+    pdf_dir = Path(args.pdf_dir)
+    kandidat = [r for r in semua
+                if r["kategori"] != "tabel_berbeda" and r["skor"] >= args.vision_skor_min]
+    dilewati = [r for r in semua
+                if r["kategori"] != "tabel_berbeda" and r["skor"] < args.vision_skor_min]
+    if args.ukur_adjudikasi:
+        kandidat = kandidat[: args.ukur_adjudikasi]
+
+    ckpt = Path(str(args.tulis_keputusan or "adjudikasi") + ".parsial.jsonl")
+    hasil: dict[str, dict] = {}
+    if ckpt.exists():
+        for ln in ckpt.read_text(encoding="utf-8").splitlines():
+            if ln.strip():
+                try:
+                    d = json.loads(ln)
+                    hasil[d["kunci"]] = d["vision"]
+                except (json.JSONDecodeError, KeyError):
+                    continue
+        print(f"\n  Checkpoint: {len(hasil)} pasangan sudah selesai di {ckpt}")
+
+    sisa = [r for r in kandidat if r["kunci"] not in hasil]
+    print(f"\n  Adjudikasi vision: {len(sisa)} dari {len(kandidat)} pasangan"
+          + (f" ({len(dilewati)} dilewati, skor < {args.vision_skor_min})"
+             if dilewati else ""))
+    print(f"  Konfigurasi: {provenance()['render_dpi']} dpi, "
+          f"timeout {provenance()['timeout_detik']:.0f}s")
+
+    t0 = _t.time()
+    waktu: list[float] = []
+    with ckpt.open("a", encoding="utf-8") as f:
+        for i, r in enumerate(sisa, 1):
+            nama = nama_berkas.get(r["document_id"])
+            if not nama:
+                continue
+            t1 = _t.time()
+            h = adjudikasi(pdf_dir / nama, r["halaman"][0], r["bbox_a"],
+                           r["halaman"][1], r["bbox_b"])
+            dt = _t.time() - t1
+            if not h.dari_cache:
+                waktu.append(dt)
+            hasil[r["kunci"]] = _rekam_vision(h, r)
+            f.write(json.dumps({"kunci": r["kunci"], "vision": hasil[r["kunci"]],
+                                "detik": round(dt, 1)}, ensure_ascii=False) + "\n")
+            f.flush()
+
+            rerata = sum(waktu) / len(waktu) if waktu else 0.0
+            sisa_detik = rerata * (len(sisa) - i)
+            print(f"    {i}/{len(sisa)}  {dt:>6.1f}s  {h.piksel_dikirim/1000:>6.0f}k px  "
+                  f"{h.verdict or 'GAGAL'}"
+                  f"{'  [cache]' if h.dari_cache else ''}"
+                  f"{'  [halaman dikarang]' if h.halaman_dikarang else ''}"
+                  f"   sisa ~{sisa_detik/60:.0f} menit")
+
+    if waktu:
+        print(f"\n  Waktu per pasangan: rerata {sum(waktu)/len(waktu):.1f}s, "
+              f"min {min(waktu):.1f}s, maks {max(waktu):.1f}s")
+        print(f"  Total {len(waktu)} panggilan model dalam {(_t.time()-t0)/60:.1f} menit")
+    n_karang = sum(1 for v in hasil.values() if v.get("halaman_dikarang_model"))
+    if n_karang:
+        print(f"  {n_karang} alasan model menyebut halaman yang tidak dikirim.")
+    for r in dilewati:
+        hasil.setdefault(r["kunci"], {"verdict": None,
+                                      "error": "tidak_diadjudikasi (skor di bawah ambang)"})
+    return hasil
 
 
 def _tulis_keputusan(args, semua, profil, nama_berkas, asal) -> None:
@@ -236,22 +338,7 @@ def _tulis_keputusan(args, semua, profil, nama_berkas, asal) -> None:
 
     vision_per_pasangan: dict[str, dict] = {}
     if args.vision:
-        from backend.services.table_adjudicator import adjudikasi
-        pdf_dir = Path(args.pdf_dir)
-        kandidat = [r for r in semua if r["kategori"] != "tabel_berbeda"]
-        print(f"\n  Adjudikasi vision atas {len(kandidat)} pasangan ambigu...")
-        for i, r in enumerate(kandidat, 1):
-            nama = nama_berkas.get(r["document_id"])
-            if not nama:
-                continue
-            h = adjudikasi(pdf_dir / nama, r["halaman"][0], r["bbox_a"],
-                           r["halaman"][1], r["bbox_b"])
-            vision_per_pasangan[r["kunci"]] = {
-                "verdict": h.verdict, "keyakinan": h.keyakinan,
-                "alasan": h.alasan, "dari_cache": h.dari_cache, "error": h.error,
-            }
-            if i % 10 == 0 or i == len(kandidat):
-                print(f"    {i}/{len(kandidat)}")
+        vision_per_pasangan = _jalankan_vision(args, semua, nama_berkas)
 
     pasangan = {}
     for r in semua:
@@ -315,6 +402,13 @@ def main() -> int:
     ap.add_argument("--vision", action="store_true",
                     help="Adjudikasi pasangan ambigu dengan model vision. "
                          "Butuh --pdf-dir dan server vision aktif.")
+    ap.add_argument("--vision-skor-min", type=int, default=0, metavar="N",
+                    help="Adjudikasi HANYA pasangan berskor sinyal >= N. "
+                         "Sisanya ditandai 'tidak_diadjudikasi' untuk tinjauan "
+                         "manual. Pakai bila 175 pasangan terlalu mahal.")
+    ap.add_argument("--ukur-adjudikasi", type=int, default=0, metavar="N",
+                    help="Ukur waktu adjudikasi N pasangan pertama lalu berhenti. "
+                         "Tidak menulis berkas keputusan.")
     ap.add_argument("--pdf-dir", default=None,
                     help="Folder PDF sumber. Tanpa ini, komposisi digital/pindai "
                          "dilewati (payload Qdrant tidak memuat lapisan teks).")
@@ -637,6 +731,15 @@ def main() -> int:
             print(f"    baris-1 A: {r['baris_pertama_a']}")
             print(f"    baris-1 B: {r['baris_pertama_b']}")
             print(f"    sinyal   : {r['sinyal']}")
+
+    # ── Mode ukur: hanya menakar waktu, tidak menulis keputusan ─────────────
+    if args.ukur_adjudikasi:
+        if not args.pdf_dir:
+            print("\nGAGAL: --ukur-adjudikasi butuh --pdf-dir")
+            return 2
+        _jalankan_vision(args, semua, nama_berkas)
+        print("\n  Mode ukur — berkas keputusan TIDAK ditulis.")
+        return 0
 
     # ── Berkas keputusan terkurasi ──────────────────────────────────────────
     if args.tulis_keputusan:

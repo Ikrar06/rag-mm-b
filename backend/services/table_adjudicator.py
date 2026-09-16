@@ -38,9 +38,18 @@ logger = logging.getLogger(__name__)
 
 VARIANT = "table_continuation"
 
-# DPI render potongan tabel. Cukup untuk model membaca angka kecil di tabel
-# keuangan tanpa membengkakkan payload base64.
-RENDER_DPI = 150
+# DPI render potongan tabel. 72 dipilih dari pengukuran di server: pada
+# halaman penuh ia menjawab BENAR sama seperti 110 dan 150 dpi, tetapi 5,6x
+# lebih cepat (110,6 s vs 618,1 s). Menaikkan DPI tidak memperbaiki putusan,
+# hanya memperbesar jumlah token gambar.
+#
+# Dicatat di run_manifest.json lewat provenance(): mengubahnya mengubah biaya
+# DAN berpotensi mengubah putusan, jadi ia bagian konfigurasi eksperimen.
+RENDER_DPI = 72
+
+# Batas waktu satu panggilan model, detik. 90 detik menjamin kegagalan total:
+# terukur di server, bahkan 72 dpi pada halaman penuh butuh 110,6 detik.
+TIMEOUT_DETIK = 600.0
 
 # Tinggi pita pemisah antara dua potongan, dalam piksel.
 TINGGI_PEMISAH = 24
@@ -67,6 +76,30 @@ _PUTUSAN = {
 }
 
 
+_HALAMAN_RE = None      # dikompilasi saat pertama dipakai
+
+
+def halaman_dikarang(alasan: str, halaman_asli) -> tuple[int, ...]:
+    """Nomor halaman yang disebut model tapi TIDAK termasuk yang dikirim.
+
+    Terukur di server: pada ketiga DPI, model menulis "Tabel di gambar kedua
+    (halaman 34)..." padahal yang dikirim halaman 38 dan 39. Putusannya benar,
+    alasannya mengarang.
+
+    Dideteksi, bukan disensor. Menghapus angkanya akan menyembunyikan bahwa
+    alasan model tidak dapat dipercaya; menandainya membuat peninjau tahu
+    persis kalimat mana yang harus diabaikan.
+    """
+    global _HALAMAN_RE
+    if _HALAMAN_RE is None:
+        _HALAMAN_RE = re.compile(r"(?:halaman|hal\.?|page|pg\.?)\s*(\d{1,4})",
+                                 re.IGNORECASE)
+    sah = {int(h) for h in halaman_asli if isinstance(h, int)}
+    return tuple(sorted({
+        int(m) for m in _HALAMAN_RE.findall(alasan or "") if int(m) not in sah
+    }))
+
+
 @dataclass(frozen=True)
 class Putusan:
     """Hasil adjudikasi. Immutable.
@@ -80,6 +113,11 @@ class Putusan:
     alasan: str = ""
     dari_cache: bool = False
     error: str = ""
+    # Nomor halaman yang disebut model tapi tidak termasuk yang dikirim.
+    # Non-kosong berarti alasannya memuat karangan.
+    halaman_dikarang: tuple[int, ...] = ()
+    # Ukuran gambar yang benar-benar dikirim, untuk menakar biaya.
+    piksel_dikirim: int = 0
 
     @property
     def lanjutan(self) -> bool:
@@ -184,7 +222,7 @@ def _tanya_model(png: bytes) -> str | None:
         if RESEARCH_VISION_SEED >= 0:
             payload["seed"] = RESEARCH_VISION_SEED
         url = f"{LLM_BASE_URL}/v1/chat/completions"
-        with httpx.Client(timeout=90.0) as c:
+        with httpx.Client(timeout=TIMEOUT_DETIK) as c:
             data = c.post(url, json=payload).raise_for_status().json()
         pilihan = (data or {}).get("choices") or []
         if not pilihan:
@@ -201,7 +239,7 @@ def _tanya_model(png: bytes) -> str | None:
         options["seed"] = RESEARCH_VISION_SEED
     payload = {"model": VISION_MODEL, "prompt": PROMPT, "images": [b64],
                "stream": False, "options": options}
-    with httpx.Client(timeout=90.0) as c:
+    with httpx.Client(timeout=TIMEOUT_DETIK) as c:
         data = c.post(f"{LLM_BASE_URL}/api/generate", json=payload).raise_for_status().json()
     if not isinstance(data, dict) or "response" not in data:
         logger.error("adjudikasi_bad_response provider=ollama keys=%s",
@@ -224,6 +262,7 @@ def adjudikasi(pdf_path, hal_a: int, bbox_a, hal_b: int, bbox_b) -> Putusan:
     if png is None:
         return Putusan(error="penyusunan gambar gagal")
 
+    piksel = _piksel(png)
     sha = hashlib.sha256(png).hexdigest()
     prov = _provenance()
     kunci = vision_cache.make_key(sha, VARIANT, PROMPT_SHA, prov["digest"])
@@ -231,8 +270,12 @@ def adjudikasi(pdf_path, hal_a: int, bbox_a, hal_b: int, bbox_b) -> Putusan:
     if vision_cache.enabled():
         tersimpan = vision_cache.get(kunci)
         if tersimpan is not None:
-            return Putusan(verdict=tersimpan.verdict,
-                           alasan=tersimpan.description or "", dari_cache=True)
+            alasan = tersimpan.description or ""
+            return Putusan(
+                verdict=tersimpan.verdict, alasan=alasan, dari_cache=True,
+                halaman_dikarang=halaman_dikarang(alasan, (hal_a, hal_b)),
+                piksel_dikirim=piksel,
+            )
 
     try:
         raw = _tanya_model(png)
@@ -243,6 +286,16 @@ def adjudikasi(pdf_path, hal_a: int, bbox_a, hal_b: int, bbox_b) -> Putusan:
         return Putusan(error="model tidak menjawab")
 
     hasil = parse_jawaban(raw)
+    karangan = halaman_dikarang(hasil.alasan, (hal_a, hal_b))
+    if karangan:
+        logger.warning(
+            "adjudikasi_halaman_dikarang dikirim=%s disebut_model=%s — alasan "
+            "model tidak dapat dipercaya sebagai fakta", (hal_a, hal_b), karangan,
+        )
+    hasil = Putusan(
+        verdict=hasil.verdict, keyakinan=hasil.keyakinan, alasan=hasil.alasan,
+        error=hasil.error, halaman_dikarang=karangan, piksel_dikirim=piksel,
+    )
     if hasil.verdict is not None and vision_cache.enabled():
         vision_cache.put(
             kunci, image_sha256=sha, variant=VARIANT, prompt_sha256=PROMPT_SHA,
@@ -252,6 +305,17 @@ def adjudikasi(pdf_path, hal_a: int, bbox_a, hal_b: int, bbox_b) -> Putusan:
     return hasil
 
 
+def _piksel(png: bytes) -> int:
+    """Jumlah piksel gambar yang dikirim. Penakar biaya: waktu model tumbuh
+    seiring jumlah token gambar, dan token gambar tumbuh seiring piksel."""
+    try:
+        from PIL import Image
+        im = Image.open(io.BytesIO(png))
+        return im.width * im.height
+    except Exception:
+        return 0
+
+
 def _provenance() -> dict:
     """Digest model vision, lewat helper image_describer yang sudah ada."""
     try:
@@ -259,3 +323,19 @@ def _provenance() -> dict:
         return {"digest": vision_provenance().get("vision_model_digest")}
     except Exception:
         return {"digest": None}
+
+
+def provenance() -> dict:
+    """Konfigurasi adjudikasi untuk dicatat di run_manifest.json.
+
+    RENDER_DPI ikut karena ia mengubah biaya DAN berpotensi mengubah putusan;
+    dua run dengan DPI berbeda tidak dapat dibandingkan begitu saja.
+    """
+    return {
+        "vision_model": VISION_MODEL,
+        "vision_model_digest": _provenance()["digest"],
+        "prompt_sha256": PROMPT_SHA,
+        "render_dpi": RENDER_DPI,
+        "timeout_detik": TIMEOUT_DETIK,
+        "variant": VARIANT,
+    }

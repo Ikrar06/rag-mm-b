@@ -175,3 +175,104 @@ def test_putusan_sah_diurai_dari_jalur_penuh(tmp_path, monkeypatch):
     monkeypatch.setattr(vision_cache, "enabled", lambda: False)
     h = adjudikasi(path, 1, [0.05, 0.05, 0.95, 0.4], 2, [0.05, 0.05, 0.95, 0.4])
     assert h.lanjutan and h.alasan == "lebar kolom sama" and not h.dari_cache
+
+
+# ─── keandalan alasan model ──────────────────────────────────────────────────
+
+@pytest.mark.unit
+@pytest.mark.parametrize("alasan,dikirim,harapan", [
+    # Kasus nyata dari server: dikirim halaman 38-39, model menulis 34.
+    ("Tabel di gambar kedua (halaman 34) melanjutkan yang pertama", (38, 39), (34,)),
+    ("Tabel di halaman 39 melanjutkan halaman 38", (38, 39), ()),
+    ("The table on page 34 continues", (38, 39), (34,)),
+    ("Kolom sama dan tanpa header", (38, 39), ()),
+    ("hal. 12 dan hal 99 disebut", (38, 39), (12, 99)),
+    ("", (38, 39), ()),
+    (None, (38, 39), ()),
+])
+def test_halaman_dikarang_terdeteksi(alasan, dikirim, harapan):
+    from backend.services.table_adjudicator import halaman_dikarang
+    assert halaman_dikarang(alasan, dikirim) == harapan
+
+
+@pytest.mark.unit
+def test_angka_bukan_halaman_tidak_salah_tangkap():
+    """Nominal rupiah dan angka tabel tidak boleh dibaca sebagai nomor halaman."""
+    from backend.services.table_adjudicator import halaman_dikarang
+    assert halaman_dikarang("Nilai 1.250.000 dan 2.500.000 cocok", (38, 39)) == ()
+
+
+@pytest.mark.unit
+def test_timeout_cukup_untuk_pengukuran_server():
+    """90 detik menjamin kegagalan: 72 dpi halaman penuh terukur 110,6 detik."""
+    from backend.services.table_adjudicator import TIMEOUT_DETIK
+    assert TIMEOUT_DETIK >= 600.0
+
+
+@pytest.mark.unit
+def test_dpi_default_yang_terukur_paling_murah():
+    from backend.services.table_adjudicator import RENDER_DPI
+    assert RENDER_DPI == 72
+
+
+@pytest.mark.unit
+def test_provenance_mencatat_dpi_dan_timeout():
+    """DPI mengubah biaya DAN berpotensi mengubah putusan, jadi ia bagian
+    konfigurasi eksperimen yang wajib tercatat."""
+    from backend.services.table_adjudicator import RENDER_DPI, provenance
+    p = provenance()
+    assert p["render_dpi"] == RENDER_DPI
+    assert p["timeout_detik"] >= 600.0
+    assert p["variant"] == "table_continuation"
+    assert p["prompt_sha256"]
+
+
+@pytest.mark.integration
+def test_render_memotong_ke_bbox_bukan_halaman_penuh(tmp_path):
+    """Pembuktian bahwa _render TIDAK mengirim halaman penuh."""
+    fitz = pytest.importorskip("fitz")
+    pytest.importorskip("PIL.Image")
+    import io as _io
+
+    from PIL import Image
+
+    from backend.services.table_adjudicator import RENDER_DPI, _render
+
+    path = tmp_path / "a.pdf"
+    doc = fitz.open()
+    pg = doc.new_page()                       # A4: 595x842 pt
+    for i in range(10):
+        pg.insert_text((60, 520 + i * 14), f"| Uraian {i} | 1.250.000 |")
+    doc.save(str(path)); doc.close()
+
+    penuh = Image.open(_io.BytesIO(_render(path, 1, [0.0, 0.0, 1.0, 1.0])))
+    potong = Image.open(_io.BytesIO(_render(path, 1, [0.08, 0.57, 0.92, 0.80])))
+
+    assert penuh.height == pytest.approx(842 * RENDER_DPI / 72, rel=0.02)
+    assert potong.height < penuh.height * 0.3
+    assert potong.width * potong.height < penuh.width * penuh.height * 0.25
+
+
+@pytest.mark.integration
+def test_putusan_membawa_ukuran_gambar(tmp_path, monkeypatch):
+    fitz = pytest.importorskip("fitz")
+    pytest.importorskip("PIL.Image")
+    from backend.services import vision_cache as vc
+    from backend.services.table_adjudicator import adjudikasi
+
+    path = tmp_path / "a.pdf"
+    doc = fitz.open()
+    for _ in range(2):
+        doc.new_page().insert_text((72, 100), "Tabel")
+    doc.save(str(path)); doc.close()
+
+    monkeypatch.setattr(
+        "backend.services.table_adjudicator._tanya_model",
+        lambda png: '{"putusan": "LANJUTAN", "alasan": "lihat halaman 34"}',
+    )
+    monkeypatch.setattr(vc, "enabled", lambda: False)
+    # PDF fixture hanya 2 halaman; model tetap menyebut "halaman 34".
+    h = adjudikasi(path, 1, [0.1, 0.5, 0.9, 0.8], 2, [0.1, 0.1, 0.9, 0.4])
+    assert h.lanjutan
+    assert h.piksel_dikirim > 0
+    assert h.halaman_dikarang == (34,)
