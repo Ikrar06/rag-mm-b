@@ -2367,3 +2367,38 @@ penilaian kualitas melainkan fakta bahwa isi selnya berasal dari OCR.
 
 Saran kini digerakkan: penolak lapisan teks (keras) → putusan vision → kategori
 sinyal struktural.
+
+## Kontradiksi `sumber_halaman_tabel` vs penolak per halaman
+
+`sumber_halaman_tabel` adalah putusan **tingkat dokumen**: `"digital"` berarti
+≥ 90% halaman bertabel dokumen itu berlapis teks. Penolak otomatis bekerja
+**per halaman**. Sebuah pasangan bisa berada justru di 10% sisanya — peninjau
+lalu melihat label `"digital"` berdampingan dengan penolakan "tanpa lapisan
+teks", dan mengira ada bug.
+
+Terukur: dokumen 45 halaman tabel, 43 berlapis teks → 95,6% ≥ 90% → `"digital"`,
+sementara halaman 38 dan 39 justru dua yang tidak. Penolaknya benar; labelnya
+yang menyesatkan.
+
+**Perbaikan:** berkas keputusan kini membawa `lapisan_teks_halaman` — status
+per halaman pasangan itu, yaitu nilai yang benar-benar dipakai penolak. Putusan
+tingkat dokumen tetap ada dengan nama yang menyatakan cakupannya,
+`sumber_dokumen_tingkat_dokumen`.
+
+```json
+"sumber_dokumen_tingkat_dokumen": "digital",
+"lapisan_teks_halaman": {"38": false, "39": false}
+```
+
+## `alasan_saran` menyebut SELURUH penolak yang berlaku
+
+Sebelumnya hanya penolak pertama yang disebut, sehingga pasangan yang ditolak
+karena lapisan teks **dan** karena vision hanya menampilkan yang pertama —
+peninjau mengira yang lain tidak berlaku. Alasan kini digabung:
+
+```
+halaman 69, 70 tanpa lapisan teks — ...; model vision menilai tabel BERBEDA (...)
+```
+
+Penolak yang disebut juga menyertakan **nomor halaman mana** yang tidak berlapis
+teks, bukan sekadar "halaman tanpa lapisan teks".
