@@ -25,15 +25,22 @@ from lib.kualitas_teks import Kualitas, nilai_teks  # noqa: E402
 
 
 class Profil:
-    """Profil dokumen palsu dengan kendali penuh atas lapisan teks dan kualitas."""
+    """Profil dokumen palsu.
 
-    def __init__(self, berteks=True, kualitas=None, error=""):
+    `berteks` boleh bool (berlaku untuk semua halaman) atau himpunan halaman
+    yang berlapis teks — yang kedua dipakai menguji kontradiksi dokumen-vs-halaman.
+    """
+
+    def __init__(self, berteks=True, kualitas=None, error="", sumber="digital"):
         self._berteks = berteks
         self.kualitas = kualitas or nilai_teks("kata " * 40)
         self.error = error
+        self.sumber_halaman_tabel = sumber
 
-    def halaman_berlapis_teks(self, _):
-        return self._berteks
+    def halaman_berlapis_teks(self, halaman):
+        if isinstance(self._berteks, bool):
+            return self._berteks
+        return halaman in self._berteks
 
 
 def rec(kategori="lanjutan_kuat", halaman=(35, 36)):
@@ -68,6 +75,54 @@ def test_halaman_tanpa_lapisan_teks_TETAP_menolak():
     """Bukan penilaian kualitas — fakta bahwa isi selnya dari OCR."""
     saran, alasan = analisis._saran(rec(), Profil(berteks=False), None)
     assert saran == "tolak" and "tanpa lapisan teks" in alasan
+    assert "35, 36" in alasan          # menyebut halaman mana
+
+
+@pytest.mark.unit
+def test_dokumen_digital_tapi_halaman_pasangan_tidak_berteks():
+    """Kontradiksi nyata: standar-biaya-2023 hal 38->39.
+
+    Dokumen dilabeli "digital" karena >=90% halaman bertabelnya berlapis teks,
+    tapi justru pasangan ini berada di sisanya."""
+    pr = Profil(berteks={1, 2, 3}, sumber="digital")     # 38 dan 39 tidak
+    r = rec(halaman=(38, 39))
+    assert analisis._lapisan_teks_pasangan(r, pr) == {"38": False, "39": False}
+    saran, alasan = analisis._saran(r, pr, {"verdict": "lanjutan"})
+    assert saran == "tolak" and "38, 39" in alasan
+
+
+@pytest.mark.unit
+def test_hanya_satu_halaman_yang_tidak_berteks():
+    pr = Profil(berteks={38})
+    saran, alasan = analisis._saran(rec(halaman=(38, 39)), pr, None)
+    assert saran == "tolak" and "halaman 39 tanpa" in alasan
+    assert "38, 39" not in alasan
+
+
+@pytest.mark.unit
+def test_alasan_menyebut_SELURUH_penolak_yang_berlaku():
+    """pedoman-penyusunan-laporan-keuangan hal 69->70: lapisan teks DAN vision.
+
+    Menyebut satu saja membuat peninjau mengira yang lain tidak berlaku."""
+    saran, alasan = analisis._saran(
+        rec(kategori="mungkin", halaman=(69, 70)), Profil(berteks=False),
+        {"verdict": "bukan_lanjutan"})
+    assert saran == "tolak"
+    assert "tanpa lapisan teks" in alasan and "vision" in alasan
+    assert ";" in alasan
+
+
+@pytest.mark.unit
+def test_lapisan_teks_halaman_none_bila_profil_bermasalah():
+    assert analisis._lapisan_teks_pasangan(rec(), None) is None
+    assert analisis._lapisan_teks_pasangan(rec(), Profil(error="rusak")) is None
+
+
+@pytest.mark.unit
+def test_vision_gagal_disebut_di_alasan():
+    saran, alasan = analisis._saran(
+        rec(kategori="mungkin"), Profil(), {"verdict": None, "error": "koneksi putus"})
+    assert saran == "tolak" and "koneksi putus" in alasan
 
 
 @pytest.mark.unit
