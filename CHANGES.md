@@ -2402,3 +2402,21 @@ halaman 69, 70 tanpa lapisan teks — ...; model vision menilai tabel BERBEDA (.
 
 Penolak yang disebut juga menyertakan **nomor halaman mana** yang tidak berlapis
 teks, bukan sekadar "halaman tanpa lapisan teks".
+
+## Residu: deteksi dokumen kembar di `scaffold_document_registry`
+
+Korpus memuat dua berkas yang namanya berbeda satu huruf —
+`"...UNIVERSITAS HAANUDDIN.pdf"` dan `"...UNIVERSITAS HASANUDDIN.pdf"` — dengan
+`sha256` berbeda (`1ed4eedc…` dan `406e46d9…`).
+
+`sha256` berbeda **tidak menjamin isinya berbeda**: satu byte metadata PDF,
+stempel waktu, atau hasil re-save sudah cukup mengubahnya. Dua dokumen yang
+isinya sama akan menghasilkan dua `document_id`, dua set `chunk_id`, dan chunk
+kembar di korpus — yang menaikkan recall semu karena jawaban benar dapat
+ditemukan di dua tempat.
+
+**Tidak dikerjakan.** Kalau nanti dibutuhkan, deteksinya bukan lewat nama
+berkas melainkan lewat isi: bandingkan himpunan `text_sha` antar dokumen dan
+laporkan pasangan yang irisannya tinggi. Instrumen untuk itu sudah setengah ada
+— `migrasi_gold.py --hitung-tabrakan` sudah mengelompokkan `text_sha` lintas
+dokumen; yang kurang hanya pelaporan per pasangan dokumen.
