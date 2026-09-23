@@ -47,8 +47,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib.header_tabel import deteksi_header  # noqa: E402
-from lib.tabel_html import urai  # noqa: E402
+from lib.header_tabel import deteksi_header, kepala_rantai  # noqa: E402
+from lib.tabel_html import _Pengurai, urai  # noqa: E402
 
 PEMISAH_MD = re.compile(r"\|[\s:|-]+\|")
 
@@ -81,6 +81,25 @@ def _potong(sel, n=56) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
+def sebab_tak_terurai(html) -> str:
+    """Kenapa text_as_html tidak menghasilkan tabel. Tiga sebab dibedakan
+    karena tindak lanjutnya berbeda."""
+    if not isinstance(html, str) or not html.strip():
+        return "html_kosong"
+    rendah = html.lower()
+    if "<table" not in rendah:
+        return "tanpa_table"
+    p = _Pengurai()
+    try:
+        p.feed(html)
+        p.close()
+    except Exception as e:
+        return f"pengurai_gagal ({type(e).__name__})"
+    if not p.baris:
+        return "table_tanpa_baris" if "<tr" not in rendah else "baris_tanpa_sel"
+    return "tidak_diketahui"
+
+
 def _diagnosa_tak_berubah(a: dict, b: dict) -> str:
     """Kenapa teks B tidak berubah walau pasangannya disetujui."""
     teks_a = a.get("text_content") or ""
@@ -103,6 +122,8 @@ def main() -> int:
     ap.add_argument("--hanya-beda", action="store_true",
                     help="Cetak hanya pasangan yang kedua varian berbeda putusan")
     ap.add_argument("--json", default=None)
+    ap.add_argument("--modal-markup", action="store_true",
+                    help="Ukur juga aturan jumlah-sel=kolom-modal pada markup")
     args = ap.parse_args()
 
     try:
@@ -127,40 +148,66 @@ def main() -> int:
         print(f"Dump v2   : {args.chunks_v2}  ({len(v2)} chunk)")
     print(f"Disetujui : {len(disetujui)} pasangan\n")
 
-    hasil, hilang = [], []
+    pasangan = []
+    hilang = []
     for kunci in sorted(disetujui):
         id_a, _, id_b = kunci.partition("__")
-        a, b = per_id.get(id_a), per_id.get(id_b)
-        if a is None or b is None:
-            hilang.append((kunci, "A" if a is None else "B"))
+        if id_a not in per_id or id_b not in per_id:
+            hilang.append((kunci, "A" if id_a not in per_id else "B"))
             continue
+        pasangan.append((id_a, id_b, kunci))
+    kepala = kepala_rantai([(a, b) for a, b, _ in pasangan])
 
-        t = urai(a.get("text_as_html"))
+    # Putusan header per chunk kepala: dihitung sekali, dipakai seluruh rantai.
+    tabel_cache: dict[str, object] = {}
+
+    def tabel(cid):
+        if cid not in tabel_cache:
+            tabel_cache[cid] = urai(per_id[cid].get("text_as_html"))
+        return tabel_cache[cid]
+
+    def nilai(cid, **kw):
+        t = tabel(cid)
         if t is None:
-            hasil.append({
-                "kunci": kunci, "document_id": id_a.rsplit("_p", 1)[0],
-                "halaman": [a.get("page_number"), b.get("page_number")],
-                "kandidat": None, "tubuh": [],
-                "A": {"header": False, "aturan": "html", "alasan": "text_as_html tidak dapat diurai"},
-                "B": {"header": False, "aturan": "html", "alasan": "text_as_html tidak dapat diurai"},
-                "tak_berubah": None,
-            })
-            continue
+            return None, None
+        return t, deteksi_header(t.baris, t.ada_th, t.ada_thead, **kw)
 
-        pa = deteksi_header(t.baris, t.ada_th, t.ada_thead, pakai_kontras=True)
-        pb = deteksi_header(t.baris, t.ada_th, t.ada_thead, pakai_kontras=False)
+    hasil = []
+    for id_a, id_b, kunci in pasangan:
+        a, b = per_id[id_a], per_id[id_b]
+        t, pa = nilai(id_a, pakai_kontras=True)
+        _, pb = nilai(id_a, pakai_kontras=False)
+        _, pm = nilai(id_a, pakai_kontras=True, modal_untuk_markup=True)
+
+        # Header yang BENAR-BENAR akan diulang: milik kepala rantai.
+        kp = kepala.get(id_a, id_a)
+        tk, pk = nilai(kp, pakai_kontras=True)
+        if tk is None:
+            diulang, sumber = None, f"tidak ada — kepala {kp} tidak terurai"
+        elif not pk.header:
+            diulang, sumber = None, f"tidak ada — kepala {kp} ditolak [{pk.aturan}]"
+        else:
+            diulang = list(tk.baris[0])
+            sumber = "sendiri" if kp == id_a else f"warisan dari {kp}"
+
         tak_berubah = None
         if v2 and b.get("text_sha") in sha_v2:
             tak_berubah = _diagnosa_tak_berubah(a, b)
 
+        def ringkas(p):
+            if p is None:
+                return {"header": False, "aturan": "tak-terurai",
+                        "alasan": sebab_tak_terurai(a.get("text_as_html"))}
+            return {"header": p.header, "aturan": p.aturan, "alasan": p.alasan}
+
         hasil.append({
             "kunci": kunci, "document_id": id_a.rsplit("_p", 1)[0],
             "halaman": [a.get("page_number"), b.get("page_number")],
-            "kandidat": list(t.baris[0]) if t.baris else None,
-            "tubuh": [list(r) for r in t.baris[1:3]],
-            "ada_th": t.ada_th or t.ada_thead,
-            "A": {"header": pa.header, "aturan": pa.aturan, "alasan": pa.alasan},
-            "B": {"header": pb.header, "aturan": pb.aturan, "alasan": pb.alasan},
+            "kandidat": list(t.baris[0]) if t else None,
+            "tubuh": [list(r) for r in t.baris[1:3]] if t else [],
+            "markup": bool(t and (t.ada_th or t.ada_thead)),
+            "A": ringkas(pa), "B": ringkas(pb), "modal": ringkas(pm),
+            "kepala": kp, "diulang": diulang, "sumber_header": sumber,
             "tak_berubah": tak_berubah,
         })
 
@@ -170,13 +217,16 @@ def main() -> int:
     for r in cetak:
         tanda = "  <-- BEDA" if r in beda else ""
         print(f"{r['document_id']}  hal {r['halaman'][0]}->{r['halaman'][1]}{tanda}")
-        print(f"    kandidat : {_potong(r['kandidat'] or ['<tidak terurai>'])}")
+        print(f"    kandidat : {_potong(r['kandidat'] or ['<tidak terurai>'])}"
+              f"{'   [markup]' if r['markup'] else ''}")
         for i, baris in enumerate(r["tubuh"], 1):
             print(f"    tubuh {i}  : {_potong(baris)}")
         print(f"    Varian A : {'HEADER' if r['A']['header'] else 'tolak ':<7} "
               f"[{r['A']['aturan']}] {r['A']['alasan']}")
         print(f"    Varian B : {'HEADER' if r['B']['header'] else 'tolak ':<7} "
               f"[{r['B']['aturan']}] {r['B']['alasan']}")
+        print(f"    DIULANG  : {_potong(r['diulang']) if r['diulang'] else '-'}"
+              f"   ({r['sumber_header']})")
         if r["tak_berubah"]:
             print(f"    butir 6  : {r['tak_berubah']}")
         print()
@@ -204,6 +254,44 @@ def main() -> int:
     print("\n  Per dokumen (header diulang / ditolak), Varian A:")
     for dok, (ya, tidak) in sorted(per_dok.items(), key=lambda kv: -sum(kv[1])):
         print(f"    {dok[:52]:<54}{ya:>4} / {tidak:<4}")
+
+    print("\n  Jalur markup (Varian A):")
+    mk = [r for r in hasil if r["markup"]]
+    print(f"    ber-<th>/<thead>        : {len(mk)}")
+    print(f"    lolos (a1)-(c)          : {sum(1 for r in mk if r['A']['header'])}")
+    for aturan, jml in Counter(r["A"]["aturan"] for r in mk
+                               if not r["A"]["header"]).most_common():
+        print(f"    ditolak {aturan:<18}: {jml}")
+    lolos_mk = [r for r in mk if r["A"]["header"]]
+    if lolos_mk:
+        print("\n  SELURUH header markup yang LOLOS — periksa sisa sampah:")
+        for r in lolos_mk:
+            print(f"    {r['document_id'][:34]:<36}{r['halaman'][0]}->{r['halaman'][1]:<5}"
+                  f"{_potong(r['kandidat'], 60)}")
+
+    if args.modal_markup:
+        ubah = [r for r in mk if r["A"]["header"] and not r["modal"]["header"]]
+        print(f"\n  Aturan modal pada markup AKAN menolak {len(ubah)} header tambahan:")
+        for r in ubah:
+            print(f"    {r['document_id'][:34]:<36}{r['halaman'][0]}->{r['halaman'][1]:<5}"
+                  f"{_potong(r['kandidat'], 44)}  [{r['modal']['alasan']}]")
+
+    warisan = [r for r in hasil if r["sumber_header"].startswith("warisan")]
+    putus = [r for r in hasil if r["sumber_header"].startswith("tidak ada")]
+    print(f"\n  Pewarisan rantai:")
+    print(f"    header sendiri     : {sum(1 for r in hasil if r['sumber_header']=='sendiri')}")
+    print(f"    header warisan     : {len(warisan)}")
+    print(f"    tanpa header       : {len(putus)}")
+    print(f"    TOTAL akan diulang : {sum(1 for r in hasil if r['diulang'])}")
+    for r in warisan[:12]:
+        print(f"      {r['document_id'][:30]:<32}{r['halaman'][0]}->{r['halaman'][1]:<5}"
+              f"<- {r['kepala']}: {_potong(r['diulang'], 40)}")
+
+    tt = [r for r in hasil if r["A"]["aturan"] == "tak-terurai"]
+    if tt:
+        print(f"\n  TIDAK TERURAI: {len(tt)}")
+        for sebab, jml in Counter(r["A"]["alasan"] for r in tt).most_common():
+            print(f"    {jml:>4}  {sebab}")
 
     tb = [r for r in hasil if r["tak_berubah"]]
     if tb:

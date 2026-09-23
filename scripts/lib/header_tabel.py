@@ -69,44 +69,74 @@ class Putusan:
         return self.header
 
 
+def rasio_terisi(sel) -> float:
+    sel = list(sel)
+    return sum(1 for s in sel if str(s).strip()) / len(sel) if sel else 0.0
+
+
 def deteksi_header(baris, ada_th: bool = False, ada_thead: bool = False,
-                   pakai_kontras: bool = True) -> Putusan:
+                   pakai_kontras: bool = True,
+                   modal_untuk_markup: bool = False) -> Putusan:
     """Apakah `baris[0]` header kolom sungguhan? `baris[1:]` tubuh tabel.
 
-    `pakai_kontras=False` memberi Varian B — tanpa aturan (d). Disediakan
-    supaya kedua varian dapat dibandingkan atas data yang sama, bukan supaya
-    dipakai di produksi.
-    """
-    # Markup eksplisit bersifat otoritatif: kalau penghasil HTML menandai
-    # barisnya sebagai header, tidak ada gunanya menebak ulang.
-    if ada_th or ada_thead:
-        return Putusan(True, "markup", "<th>/<thead> eksplisit")
+    Markup `<th>`/`<thead>` BUKAN otoritatif. Terukur di korpus: table
+    transformer menandai baris pertama sebagai `<th>` apa pun isinya — kode akun
+    5341, nomor urut 78, baris kosong, semuanya lolos sebagai "header" bila
+    markup dipercaya begitu saja.
 
+    Urutan aturan, dan kepada siapa berlaku:
+
+        a1  >= 2 sel dan LEBIH dari separuh terisi     markup & non-markup
+        b   tak ada sel terisi yang numerik/tanpa alnum markup & non-markup
+        c   tak ada sel diawali >= 3 digit             markup & non-markup
+        a2  jumlah sel = kolom modal tubuh             non-markup (markup: opsional)
+        d   ada kolom kontras dengan tubuh             non-markup saja
+
+    (d) sengaja TIDAK diterapkan ke markup: header jadwal retensi arsip
+    ("SERIES/JENIS ARSIP | AKTIF | INAKTIF | KETERANGAN") bertubuh teks, dan
+    (d) akan membuang kedelapannya. Markup tetap punya nilai sebagai sinyal —
+    ia menggantikan (d), bukan menggantikan (a1)-(c).
+
+    `pakai_kontras=False` memberi Varian B. `modal_untuk_markup=True` menguji
+    aturan (a2) pada markup; disediakan untuk DIUKUR, bukan dinyalakan.
+    """
+    markup = bool(ada_th or ada_thead)
+    jalur = "markup" if markup else "fallback"
     if not baris:
         return Putusan(False, "bentuk", "tabel kosong")
-    h = list(baris[0])
+    h = [str(s) for s in baris[0]]
 
-    # (a) bentuk baris
+    # (a1) bentuk dan keterisian
     if len(h) < 2:
-        return Putusan(False, "a-bentuk", f"hanya {len(h)} sel — bukan baris berkolom")
-    if any(not str(s).strip() for s in h):
-        return Putusan(False, "a-bentuk", "ada sel kosong")
-    modal = n_kolom_modal(baris)
-    if len(h) != modal:
-        return Putusan(False, "a-bentuk", f"jumlah sel {len(h)} != kolom modal {modal}")
+        return Putusan(False, f"a-bentuk/{jalur}", f"hanya {len(h)} sel — bukan baris berkolom")
+    terisi = [s.strip() for s in h if s.strip()]
+    if len(terisi) * 2 <= len(h):
+        return Putusan(False, f"a-terisi/{jalur}",
+                       f"hanya {len(terisi)} dari {len(h)} sel terisi — tidak lebih dari separuh")
 
-    # (b) dan (c) isi sel
+    # (b) dan (c) isi sel terisi
     for i, s in enumerate(h):
-        t = str(s).strip()
+        t = s.strip()
+        if not t:
+            continue
         if sel_numerik(t):
-            return Putusan(False, "b-numerik", f"sel {i} {t!r} seluruhnya numerik")
+            return Putusan(False, f"b-numerik/{jalur}", f"sel {i} {t!r} seluruhnya numerik")
         if sel_tanpa_alnum(t):
-            return Putusan(False, "b-numerik", f"sel {i} {t!r} tanpa huruf/angka")
+            return Putusan(False, f"b-numerik/{jalur}", f"sel {i} {t!r} tanpa huruf/angka")
         if sel_kode_panjang(t):
-            return Putusan(False, "c-kode", f"sel {i} {t!r} diawali >=3 digit")
+            return Putusan(False, f"c-kode/{jalur}", f"sel {i} {t!r} diawali >=3 digit")
 
+    modal = n_kolom_modal(baris)
+    if markup:
+        if modal_untuk_markup and len(baris) > 1 and len(h) != modal:
+            return Putusan(False, "a-modal/markup", f"jumlah sel {len(h)} != kolom modal {modal}")
+        return Putusan(True, "markup", "<th>/<thead> dan lolos (a1)-(c)")
+
+    # (a2) jumlah sel cocok dengan tubuh
+    if len(h) != modal:
+        return Putusan(False, "a-bentuk/fallback", f"jumlah sel {len(h)} != kolom modal {modal}")
     if not pakai_kontras:
-        return Putusan(True, "b-numerik", "lolos saringan bentuk dan isi sel")
+        return Putusan(True, "b-numerik/fallback", "lolos saringan bentuk dan isi sel")
 
     # (d) kontras dengan tubuh tabel
     tubuh = [list(b) for b in baris[1:]]
@@ -122,3 +152,29 @@ def deteksi_header(baris, ada_th: bool = False, ada_thead: bool = False,
                            f"kolom {j} kontras: header teks, {rasio:.0%} tubuh numerik")
     return Putusan(False, "d-kontras",
                    "tak satu pun kolom kontras — baris pertama sejenis dengan tubuh")
+
+
+def kepala_rantai(pasangan) -> dict[str, str]:
+    """Peta chunk_id -> chunk_id kepala rantainya.
+
+    `pasangan` adalah iterable (a, b) yang disetujui. Rantai A->B->C terbentuk
+    bila B dari satu pasangan adalah A pasangan berikutnya. Header yang diulang
+    ke seluruh rantai diambil dari KEPALA, bukan dari potongan tepat sebelumnya:
+    di jadwal KKN, potongan tengah rantai baris pertamanya kosong karena sudah
+    lanjutan, sementara header aslinya ada di potongan pertama.
+
+    Kepala yang tidak punya header sah berarti SELURUH rantai tidak mewarisi
+    apa pun — kepala tidak digantikan potongan di tengah rantai.
+    """
+    sebelum = {b: a for a, b in pasangan}
+    hasil: dict[str, str] = {}
+    for a, b in pasangan:
+        for cid in (a, b):
+            if cid in hasil:
+                continue
+            kepala, terlihat = cid, set()
+            while kepala in sebelum and kepala not in terlihat:
+                terlihat.add(kepala)
+                kepala = sebelum[kepala]
+            hasil[cid] = kepala
+    return hasil
