@@ -178,6 +178,21 @@ def deteksi_header(baris, ada_th: bool = False, ada_thead: bool = False,
 # baris pertamanya data. "Kepala ditolak" berarti TERBUKTI — baris pertamanya
 # kode akun, nomor urut, atau baris kosong.
 
+# Aturan yang penolakannya MEMBUKTIKAN baris itu data. Penolakan lain — satu sel
+# (a-bentuk), mayoritas kosong (a-terisi), jumlah sel tak cocok modal — hanya
+# membuktikan baris itu BUKAN header, bukan bahwa ia data: di rubrik, "Tahap 1:
+# Pembinaan dan Penyusunan Usulan Konsep Desain" adalah judul tahap satu sel di
+# dalam tabel aktivitas, dan mematikan rantai karenanya membuang header sah
+# "Aktivitas/Subaktivitas | Volume | Menit | Total | Bobot" di potongan berikutnya.
+ATURAN_BUKTI_DATA = frozenset({"b-numerik", "c-kode", "d-kontras", "e-panjang"})
+
+
+def membuktikan_data(putusan) -> bool:
+    """True bila penolakan `putusan` membuktikan baris pertamanya baris data."""
+    return (putusan is not None and not putusan.header
+            and putusan.aturan.split("/")[0] in ATURAN_BUKTI_DATA)
+
+
 STATUS_TIDAK_DIKETAHUI = "tidak_diketahui"
 STATUS_DIKETAHUI = "diketahui"
 STATUS_MATI = "mati"
@@ -196,10 +211,12 @@ def lanjutkan_rantai(keadaan, chunk_id: str, tabel, putusan) -> KeadaanRantai:
     `keadaan` None berarti potongan ini kepala rantai baru. Header yang diulang
     ke potongan BERIKUTNYA adalah `header` dari keadaan yang dikembalikan.
 
-    Aturannya: potongan TERURAI pertama di rantai yang memutuskan. Bila ia
-    lolos kriteria, headernya jadi header rantai; bila ditolak, rantai mati dan
-    tidak mewarisi apa pun sampai ujung. Potongan tak terurai tidak memutuskan
-    apa-apa dan menyerahkan keputusan ke potongan berikutnya.
+    Aturannya: potongan pertama di rantai yang MEMBERI BUKTI yang memutuskan.
+    Lolos kriteria -> headernya jadi header rantai. Ditolak dengan bukti data
+    (ATURAN_BUKTI_DATA) -> rantai mati dan tidak mewarisi apa pun sampai ujung.
+    Potongan tak terurai, atau yang ditolak tanpa bukti data (satu sel,
+    mayoritas kosong), bersifat netral: menyerahkan keputusan ke potongan
+    berikutnya.
 
     Sengaja BUKAN "header sah pertama di mana pun dalam rantai": kalau potongan
     terurai pertama ternyata baris data, header asli tabel itu ada di kepala
@@ -212,7 +229,9 @@ def lanjutkan_rantai(keadaan, chunk_id: str, tabel, putusan) -> KeadaanRantai:
         return keadaan or KeadaanRantai(STATUS_TIDAK_DIKETAHUI)
     if putusan.header:
         return KeadaanRantai(STATUS_DIKETAHUI, tuple(tabel.baris[0]), chunk_id)
-    return KeadaanRantai(STATUS_MATI, None, chunk_id)
+    if membuktikan_data(putusan):
+        return KeadaanRantai(STATUS_MATI, None, chunk_id)
+    return keadaan or KeadaanRantai(STATUS_TIDAK_DIKETAHUI)
 
 
 def kepala_rantai(pasangan) -> dict[str, str]:

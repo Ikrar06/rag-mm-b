@@ -611,10 +611,17 @@ RESEARCH_VERBOSE_RETRIEVAL = os.getenv(
 
 
 # Aturan (e) kriteria header tabel: sel lebih panjang dari ini membuat baris
-# DITOLAK sebagai header. 0 = mati. Batasnya diambil dari celah terukur antara
-# header sungguhan dan baris data yang bocor (validasi_kriteria_header.py
-# mencetaknya), BUKAN dikarang. Mengubahnya mengubah teks chunk tabel.
-TABLE_HEADER_MAX_CELL_CHARS = int(os.getenv("TABLE_HEADER_MAX_CELL_CHARS", "0"))
+# DITOLAK sebagai header. 0 = mati. Mengubahnya mengubah teks chunk tabel, jadi
+# nilainya tercatat di run_manifest.json.
+#
+# 80 berasal dari celah terukur di validasi atas 184 pasangan korpus (v3,
+# kunci termigrasi): sel terpanjang header yang lolos maksimum 38 (kop SOP,
+# sisa risiko yang diterima; header kolom asli maksimum 37), lalu melompat ke
+# 161 (baris data kkn-covid "Mensosialisasikan Pembelajaran ..."). 80 memberi
+# jarak ke kedua sisi. Bukti di atas celah hanya satu baris, tapi arah salahnya
+# aman: yang tertolak hanya sel sangat panjang, dan penolakan hanya membiarkan
+# potongan apa adanya.
+TABLE_HEADER_MAX_CELL_CHARS = int(os.getenv("TABLE_HEADER_MAX_CELL_CHARS", "80"))
 
 
 def research_query_flags() -> dict[str, bool]:

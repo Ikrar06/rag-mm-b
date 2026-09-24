@@ -200,3 +200,21 @@ def test_kunci_menunjuk_chunk_yang_tidak_ada(monkeypatch, tmp_path):
                                         "html_sha_a": "x", "html_sha_b": "y"}}
     t = jalankan(monkeypatch, True, elements(c=C_ROWS), kep, tmp_path)
     assert [c["table_part"] for c in t] == [0, 0, 0]
+
+
+@pytest.mark.integration
+def test_judul_tahap_satu_sel_tidak_membunuh_header_berikutnya(monkeypatch, tmp_path):
+    """rubrik 38->39->40: kepala berisi judul tahap satu sel; header aktivitas
+    di potongan kedua harus diulang ke potongan ketiga."""
+    akt = ["Aktivitas/Subaktivitas", "Volume", "Menit", "Total", "Bobot"]
+    tahap = [["Tahap 1: Pembinaan dan Penyusunan Usulan Konsep Desain"], ["Persiapan awal"]]
+    kedua = [akt, ["Persiapan", "2", "240", "480", "1"]]
+    ketiga = [["Laporan", "1", "60", "60", "1"], ["Evaluasi", "1", "30", "30", "1"]]
+    els = [{"category": "Title", "text": "Rubrik", "page": 38, "metadata": {}},
+           tabel_el(tahap, 38, th=True), tabel_el(kedua, 39, th=True), tabel_el(ketiga, 40)]
+    tanpa = jalankan(monkeypatch, True, els, tmp_path=tmp_path)
+    dengan = jalankan(monkeypatch, True, els, setujui(tanpa, [(0, 1), (1, 2)]), tmp_path)
+    assert dengan[1]["text"] == tanpa[1]["text"], "potongan kedua sudah membawa header"
+    assert "| Aktivitas/Subaktivitas | Volume | Menit | Total | Bobot |" in dengan[2]["text"]
+    assert dengan[2]["table_header_repeated"] is True
+    assert "Tahap 1" not in dengan[2]["text"]

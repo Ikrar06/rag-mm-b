@@ -126,7 +126,8 @@ def main() -> int:
                     help="Cetak hanya pasangan yang kedua varian berbeda putusan")
     ap.add_argument("--json", default=None)
     ap.add_argument("--maks-panjang-sel", type=int, default=None,
-                    help="Terapkan aturan (e) dengan batas ini. Ambil dari celah terukur.")
+                    help="Batas aturan (e). Bawaan: TABLE_HEADER_MAX_CELL_CHARS dari "
+                         "config, sama dengan indexing. 0 = matikan.")
     ap.add_argument("--modal-markup", action="store_true",
                     help="Ukur juga aturan jumlah-sel=kolom-modal pada markup")
     args = ap.parse_args()
@@ -174,7 +175,12 @@ def main() -> int:
             tabel_cache[cid] = urai(per_id[cid].get("text_as_html"))
         return tabel_cache[cid]
 
-    kw = {"maks_panjang_sel": args.maks_panjang_sel}
+    if args.maks_panjang_sel is None:
+        from backend.config import TABLE_HEADER_MAX_CELL_CHARS
+        args.maks_panjang_sel = TABLE_HEADER_MAX_CELL_CHARS
+    kw = {"maks_panjang_sel": args.maks_panjang_sel or None}
+    print(f"Aturan (e) panjang sel: "
+          f"{args.maks_panjang_sel if args.maks_panjang_sel else 'mati'}\n")
 
     def nilai(cid, **ekstra):
         t = tabel(cid)
@@ -211,9 +217,10 @@ def main() -> int:
                 sumber += " — B sudah diawali header itu, tidak digandakan"
                 diulang = None
         elif k is not None and k.status == STATUS_MATI:
-            diulang, sumber = None, f"tidak ada — rantai mati di {k.sumber} (baris data)"
+            diulang, sumber = None, f"tidak ada — rantai mati di {k.sumber} (terbukti baris data)"
         else:
-            diulang, sumber = None, "tidak ada — belum ada potongan terurai sejauh ini"
+            diulang, sumber = None, ("tidak ada — belum ada bukti sejauh ini "
+                                     "(tak terurai / bukan header tanpa bukti data)")
 
         tak_berubah = None
         if v2 and b.get("text_sha") in sha_v2:
@@ -236,6 +243,9 @@ def main() -> int:
             "A": ringkas(pa), "B": ringkas(pb), "modal": ringkas(pm),
             "diulang": diulang, "sumber_header": sumber,
             "panjang_sel": panjang_sel_terpanjang(t.baris[0]) if t and t.baris else 0,
+            "baris1_b": list(tabel(id_b).baris[0]) if tabel(id_b) and tabel(id_b).baris else None,
+            "kategori": (pasangan_keputusan.get(kunci) or {}).get("kategori"),
+            "vision": ((pasangan_keputusan.get(kunci) or {}).get("vision") or {}).get("verdict"),
             "tak_berubah": tak_berubah,
         })
 
@@ -341,7 +351,27 @@ def main() -> int:
     print(f"    TOTAL akan diulang : {sum(1 for r in hasil if r['diulang'])}")
     for r in warisan[:12]:
         print(f"      {r['document_id'][:30]:<32}{r['halaman'][0]}->{r['halaman'][1]:<5}"
-              f"{r['sumber_header'][:40]}: {_potong(r['diulang'], 36)}")
+              f"{r['sumber_header'][:40]}: "
+              f"{_potong(r['diulang'], 36) if r['diulang'] else '(B sudah diawali header)'}")
+
+    # ── Butir 5: pasangan diterima yang kemungkinan dua tabel berbeda ──────
+    #
+    # Baris pertama B hanya satu sel terisi, baris pertama A berkolom >= 3.
+    # Tanda kuat dua tabel berbeda (rubrik 27->28: A tabel jenis kegiatan, B
+    # "Seleksi Tingkat Universitas"). BUKAN penolak: judul tahap satu sel di
+    # dalam tabel ("Tahap 1: Pembinaan ...") berbentuk sama, jadi daftar ini
+    # pasti memuat positif palsu. Untuk ditinjau manusia.
+    curiga = [r for r in hasil
+              if r["kandidat"] and len(r["kandidat"]) >= 3
+              and r["baris1_b"] is not None
+              and sum(1 for c in r["baris1_b"] if str(c).strip()) == 1]
+    print(f"\n  TINJAU: B diawali SATU sel, A berkolom >= 3 — {len(curiga)} pasangan diterima")
+    print("  (bukan penolak otomatis; judul tahap di dalam tabel juga satu sel)")
+    for r in curiga:
+        print(f"    {r['document_id'][:30]:<32}{r['halaman'][0]}->{r['halaman'][1]:<5}"
+              f"kategori={r['kategori'] or '-':<14}vision={r['vision'] or '-'}")
+        print(f"        A: {_potong(r['kandidat'], 70)}")
+        print(f"        B: {_potong(r['baris1_b'], 70)}")
 
     tt = [r for r in hasil if r["A"]["aturan"] == "tak-terurai"]
     if tt:
@@ -363,7 +393,8 @@ def main() -> int:
     if args.json:
         Path(args.json).write_text(
             json.dumps({"n_disetujui": len(disetujui), "hasil": hasil,
-                        "beda": [r["kunci"] for r in beda]},
+                        "beda": [r["kunci"] for r in beda],
+                        "tinjau_satu_sel": [r["kunci"] for r in curiga]},
                        indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"\n  Hasil lengkap: {args.json}")
     return 0

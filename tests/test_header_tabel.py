@@ -271,3 +271,74 @@ def test_aturan_panjang_sel_mati_bawaan_dan_menolak_bila_dinyalakan():
     assert deteksi_header(baris, ada_th=True)
     p = deteksi_header(baris, ada_th=True, maks_panjang_sel=40)
     assert not p and p.aturan == "e-panjang/markup"
+
+
+# ─── hanya penolakan yang membuktikan data yang mematikan rantai ─────────────
+
+from lib.header_tabel import membuktikan_data  # noqa: E402
+
+
+@pytest.mark.unit
+def test_judul_tahap_satu_sel_netral_lalu_header_sah_jadi_header_rantai():
+    """rubrik 39->40: p38_c08 berisi judul tahap satu sel di dalam tabel."""
+    tahap = T([["Tahap 1: Pembinaan dan Penyusunan Usulan Konsep Desain"],
+               ["Persiapan"]], th=True)
+    k = jalankan([("r_p38_c08", tahap), ("r_p39_c00", T(AKTIVITAS)),
+                  ("r_p40_c05", T([["", "", "", "", ""], ["Laporan", "1", "60", "60", "1"]]))])
+    assert k[0].status == STATUS_TIDAK_DIKETAHUI, "satu sel bukan bukti baris data"
+    assert k[1].status == STATUS_DIKETAHUI and k[2].header == tuple(AKTIVITAS[0])
+
+
+@pytest.mark.unit
+def test_mayoritas_kosong_netral():
+    k = jalankan([("x_p1_c00", T([["", "", "Judul", ""], ["a", "b", "c", "d"]])),
+                  ("x_p2_c00", T([["NO.", "PROVINSI", "SATUAN", "RODA 4"], ["1", "a", "b", "2"]]))])
+    assert k[0].status == STATUS_TIDAK_DIKETAHUI and k[1].status == STATUS_DIKETAHUI
+
+
+@pytest.mark.unit
+def test_bagan_akun_4_pendapatan_tetap_mematikan_rantai():
+    """Potongan terurai pertama '4 | | PENDAPATAN' — b-numerik, bukti data."""
+    k = jalankan([("a_p5_c00", None),
+                  ("a_p6_c00", T([["4", "", "PENDAPATAN"], ["41", "", "PENDAPATAN ASLI"]])),
+                  ("a_p7_c00", T([["Kode", "Nama", "Uraian"], ["1", "x", "y"]]))])
+    assert k[1].status == STATUS_MATI and k[2].status == STATUS_MATI
+
+
+@pytest.mark.unit
+def test_kkn_covid_panjang_sel_membuktikan_data_dan_memutus_warisan():
+    """Dengan batas 80, kepala 59->60 (sel 161 karakter) tertolak sebagai data."""
+    kalimat = ("Mensosialisasikan Pembelajaran yang efektif pada Melakukan kegiatan "
+               "pendampingan belajar siswa selama masa pandemi dengan memperhatikan "
+               "protokol kesehatan yang berlaku di lingkungan sekolah")
+    t = T([["", kalimat, "x"], ["1", "a", "b"]])
+    p = deteksi_header(t.baris, t.ada_th, t.ada_thead, maks_panjang_sel=80)
+    assert not p and p.aturan == "e-panjang/markup" and membuktikan_data(p)
+    k = lanjutkan_rantai(None, "kkn_p59_c00", t, p)
+    assert k.status == STATUS_MATI
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("aturan,bukti", [
+    ("b-numerik/markup", True), ("c-kode/fallback", True), ("d-kontras", True),
+    ("e-panjang/markup", True), ("a-bentuk/markup", False), ("a-terisi/fallback", False),
+    ("a-modal/markup", False), ("bentuk", False),
+])
+def test_klasifikasi_bukti_data(aturan, bukti):
+    from lib.header_tabel import Putusan
+    assert membuktikan_data(Putusan(False, aturan)) is bukti
+
+
+@pytest.mark.unit
+def test_header_lolos_tidak_pernah_membuktikan_data():
+    from lib.header_tabel import Putusan
+    assert not membuktikan_data(Putusan(True, "markup")) and not membuktikan_data(None)
+
+
+@pytest.mark.unit
+def test_bawaan_batas_panjang_sel_80():
+    import importlib, os
+    os.environ.pop("TABLE_HEADER_MAX_CELL_CHARS", None)
+    import backend.config as cfg
+    importlib.reload(cfg)
+    assert cfg.TABLE_HEADER_MAX_CELL_CHARS == 80
