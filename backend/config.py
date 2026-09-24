@@ -383,6 +383,13 @@ RESEARCH_EXPECTED_FLAGS: dict[str, object] = {
     "NEIGHBOR_EXPANSION_ENABLED": True,
     "NEIGHBOR_EXPANSION_RADIUS": 2,
     "MAX_EXPANDED_CHUNKS": 30,
+    # Perbaikan tabel lintas halaman. Tanpa keduanya index v4 identik dengan
+    # v3-tanpa-perbaikan, dan tidak ada yang gagal — jadi dibekukan di sini.
+    # TABLE_CONTINUATION_PATH tidak masuk daftar ini karena bergantung lokasi;
+    # berkasnya dijaga indexing._check_table_continuation dan sha256-nya dicatat
+    # di manifest.
+    "INDEX_TABLE_CONTINUATION": True,
+    "TABLE_HEADER_MAX_CELL_CHARS": 80,
 }
 
 # Escape hatch: terima korpus gambar yang TIDAK LENGKAP. Default false.

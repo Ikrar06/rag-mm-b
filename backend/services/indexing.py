@@ -29,6 +29,7 @@ from backend.config import (
     INDEX_EXCLUDE_METADATA_FROM_EMBED,
     INDEX_PERSIST_IMAGES,
     INDEX_STRUCTURAL_METADATA,
+    INDEX_TABLE_CONTINUATION,
     PDF_EXTRACTION_STRATEGY,
     EMBED_EXCLUDED_METADATA_KEYS,
 )
@@ -118,6 +119,20 @@ def print_effective_flags() -> None:
     print(f"  {'QDRANT_URL':<36}{config.QDRANT_URL!r}")
     print(f"  {'VISION_MODEL':<36}{config.VISION_MODEL!r}")
     print("=" * 72)
+
+
+def _check_table_continuation() -> None:
+    """Tolak run bila INDEX_TABLE_CONTINUATION aktif tapi berkas keputusannya
+    tidak dapat dipakai. Berlaku di luar RESEARCH_MODE juga: menyalakan fitur
+    dengan berkas salah SELALU kekeliruan, dan hasilnya — index identik dengan
+    fitur mati — tidak terlihat sampai dibandingkan."""
+    if not INDEX_TABLE_CONTINUATION:
+        return
+    from backend.services.table_continuation import periksa_berkas_keputusan
+    r = periksa_berkas_keputusan()
+    print(f"BERKAS KEPUTUSAN TABEL  {r['path']}")
+    print(f"  sha256 {r['sha256'][:16]}  diterima {r['n_diterima']}  ditolak {r['n_ditolak']}"
+          f"  belum ditinjau {r['n_belum_ditinjau']}  tidak terpetakan {r['tidak_terpetakan']}")
 
 
 def _check_research_mode() -> None:
@@ -487,6 +502,7 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
     _check_image_strategy()
     _check_vision_reachable()
     _check_vision_cache()
+    _check_table_continuation()
 
     target_dir = Path(data_dir or DATA_DIR)
 

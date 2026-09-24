@@ -108,6 +108,17 @@ def _table_adjudication_provenance() -> dict | None:
         return {"error": str(e)}
 
 
+def _table_continuation_provenance() -> dict | None:
+    if not config.INDEX_TABLE_CONTINUATION:
+        return None
+    try:
+        from backend.services.table_continuation import periksa_berkas_keputusan
+        return periksa_berkas_keputusan()
+    except Exception as e:      # manifest tidak boleh menjatuhkan dump
+        logger.warning("table_continuation_provenance_gagal error=%s", e)
+        return {"error": str(e)}
+
+
 def dump_dir() -> Path | None:
     """Direktori dump, atau None bila CHUNK_DUMP_DIR kosong (perilaku lama)."""
     raw = (config.CHUNK_DUMP_DIR or "").strip()
@@ -410,6 +421,10 @@ def build_manifest(run_id: str, reports: dict[str, dict], n_chunks: int,
             "INDEX_MIN_CHUNK_TOKENS": config.INDEX_MIN_CHUNK_TOKENS,
             "INDEX_DISABLE_NODE_PARSER": config.INDEX_DISABLE_NODE_PARSER,
             "INDEX_TABLE_CONTINUATION": config.INDEX_TABLE_CONTINUATION,
+            # Berkas keputusan menentukan teks chunk tabel, jadi ia bagian dari
+            # konfigurasi yang menghasilkan index — dicatat beserta sha256 isinya,
+            # sama seperti vision cache.
+            "table_continuation": _table_continuation_provenance(),
             "TABLE_CONTINUATION_VISION": config.TABLE_CONTINUATION_VISION,
             # DPI dan timeout adjudikasi ikut: DPI mengubah biaya DAN
             # berpotensi mengubah putusan, jadi dua run dengan DPI berbeda

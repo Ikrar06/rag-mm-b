@@ -235,9 +235,12 @@ def muat_keputusan(path=None) -> frozenset[str]:
     lain — termasuk yang ditolak otomatis karena headernya dari OCR — sengaja
     tetap ada di berkas supaya terlihat saat ditinjau, tapi tidak diproses.
 
-    Berkas tidak ada berarti himpunan kosong, bukan galat: menyalakan flag tanpa
-    berkas keputusan menghasilkan perilaku identik dengan flag mati, dan itu
-    aman. Ketiadaannya dicatat sebagai peringatan.
+    Berkas tidak ada berarti himpunan kosong di SINI, supaya _chunk_elements
+    tetap dapat diuji tanpa berkas. Tapi indexing TIDAK pernah sampai ke titik
+    ini dengan berkas yang salah: indexing._check_table_continuation memanggil
+    periksa_berkas_keputusan lebih dulu dan gagal keras. Sikap lama — "flag
+    menyala tanpa berkas = identik flag mati, aman" — ternyata justru kegagalan
+    senyap: index identik tanpa perbaikan, tidak terlihat sampai dibandingkan.
     """
     global _keputusan_cache
     if _keputusan_cache is not None:
@@ -453,3 +456,75 @@ def putuskan_potongan(sebelumnya: "TabelRantai | None", calon_id: str, raw_html,
         alasan=alasan,
         rantai=TabelRantai(calon_id, sid, keadaan, group, part),
     )
+
+
+# ─── Gerbang sebelum indexing ────────────────────────────────────────────────
+
+def periksa_berkas_keputusan(path=None) -> dict:
+    """Pastikan berkas keputusan dapat dipakai. Melempar ValueError bila tidak.
+
+    Menyalakan INDEX_TABLE_CONTINUATION dengan berkas yang salah TIDAK boleh
+    lolos diam-diam. Tiap kondisi di bawah menghasilkan index yang identik
+    dengan fitur mati — berjam-jam indexing yang terlihat berhasil padahal
+    perbaikannya tidak pernah diterapkan:
+
+      - berkas tidak ada atau path salah
+      - JSON rusak, atau tanpa object `pasangan`
+      - nol pasangan diterima
+      - pasangan diterima tanpa sidik html — berkas belum dimigrasi; penjaga
+        sidik di putuskan_potongan akan menolak seluruhnya
+
+    Mengembalikan ringkasan untuk dicetak dan dicatat di manifest, termasuk
+    sha256 isi berkas: keputusan pasangan menentukan teks chunk, jadi berkasnya
+    bagian dari konfigurasi yang menghasilkan index.
+    """
+    import hashlib
+    import json
+    from pathlib import Path
+
+    from backend.config import TABLE_CONTINUATION_PATH
+
+    p = Path(os.path.expanduser(str(path or TABLE_CONTINUATION_PATH)))
+    saran = ("Setel TABLE_CONTINUATION_PATH ke berkas hasil scripts/migrasi_keputusan.py, "
+             "atau matikan INDEX_TABLE_CONTINUATION.")
+    if not p.is_file():
+        raise ValueError(f"INDEX_TABLE_CONTINUATION aktif tapi berkas keputusan tidak ada: {p}\n  {saran}")
+    isi = p.read_bytes()
+    try:
+        raw = json.loads(isi.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as e:
+        raise ValueError(f"Berkas keputusan {p} bukan JSON yang sah: {e}") from e
+    pasangan = raw.get("pasangan") if isinstance(raw, dict) else None
+    if not isinstance(pasangan, dict):
+        raise ValueError(f"Berkas keputusan {p} tidak memuat object 'pasangan'.\n  {saran}")
+
+    nilai = [str((v or {}).get("keputusan", "")).strip().lower()
+             for v in pasangan.values() if isinstance(v, dict)]
+    diterima = {k: v for k, v in pasangan.items() if isinstance(v, dict)
+                and str(v.get("keputusan", "")).strip().lower() == KEPUTUSAN_TERIMA}
+    if not diterima:
+        raise ValueError(
+            f"Berkas keputusan {p} memuat {len(pasangan)} pasangan tapi NOL yang diterima — "
+            f"index akan identik dengan fitur mati.\n  Tinjau kolom 'keputusan', atau {saran}")
+
+    def punya_sidik(v):
+        m = v.get("_migrasi") or {}
+        return bool((v.get("html_sha_a") or m.get("html_sha_a"))
+                    and (v.get("html_sha_b") or m.get("html_sha_b")))
+
+    tanpa = [k for k, v in diterima.items() if not punya_sidik(v)]
+    if tanpa:
+        raise ValueError(
+            f"Berkas keputusan {p}: {len(tanpa)} dari {len(diterima)} pasangan diterima TANPA "
+            f"sidik html (mis. {tanpa[0]}). Penjaga sidik akan menolak semuanya — berkas "
+            f"belum dimigrasi.\n  {saran}")
+
+    return {
+        "path": str(p),
+        "sha256": hashlib.sha256(isi).hexdigest(),
+        "n_pasangan": len(pasangan),
+        "n_diterima": len(diterima),
+        "n_ditolak": nilai.count(KEPUTUSAN_TOLAK),
+        "n_belum_ditinjau": nilai.count(""),
+        "tidak_terpetakan": len((raw.get("tidak_terpetakan") or {})) if isinstance(raw, dict) else 0,
+    }
