@@ -32,6 +32,7 @@ from backend.config import (
     INDEX_PERSIST_IMAGES,
     INDEX_STRUCTURAL_METADATA,
     INDEX_TABLE_CONTINUATION,
+    TABLE_HEADER_MAX_CELL_CHARS,
     INDEX_TABLES_AS_OWN_CHUNKS,
     PDF_EXTRACTION_STRATEGY,
     PDF_EXTRACT_IMAGES, PDF_DESCRIBE_IMAGES,
@@ -806,7 +807,7 @@ def _chunk_elements(
     current_section: str = ""
     # Potongan tabel terakhir yang di-emit: (chunk_id, baris header Markdown).
     # Dipakai mengenali pasangan (A, B) saat INDEX_TABLE_CONTINUATION aktif.
-    tabel_terakhir: tuple[str, str] | None = None
+    tabel_terakhir = None       # table_continuation.TabelRantai | None
     current_buffer: list[str] = []
     # None = buffer kosong, halaman ditentukan element PERTAMA yang masuk.
     #
@@ -1007,44 +1008,44 @@ def _chunk_elements(
                 # splittable=False: memecah Markdown tabel memisahkan baris
                 # header dari baris data, dan relasi baris-kolom itu justru
                 # yang diukur RCAA di lapis 3.
-                teks_tabel = (f"## {current_section}\n\n" if current_section else "") + text
+                prefiks = f"## {current_section}\n\n" if current_section else ""
+                teks_tabel = prefiks + text
+                raw_html_el = (el.get("metadata") or {}).get("raw_html")
                 extra_tabel = {
-                    "raw_html": (el.get("metadata") or {}).get("raw_html"),
+                    "raw_html": raw_html_el,
                     "table_format": (el.get("metadata") or {}).get("table_format"),
                     "bbox": el_bbox,
                 }
 
                 if INDEX_TABLE_CONTINUATION and document_id:
-                    # chunk_id dihitung SEBELUM emit. Ia deterministik dari
-                    # (document_id, segmen halaman, pencacah), jadi pasangan
-                    # dapat dicocokkan ke berkas keputusan tanpa menunggu chunk
-                    # selesai dibuat.
+                    # chunk_id dihitung SEBELUM emit — deterministik dari
+                    # (document_id, segmen halaman, pencacah). Kecocokan kunci
+                    # saja tidak cukup; putuskan_potongan juga memverifikasi
+                    # sidik html kedua sisi. Lihat table_continuation.
                     segmen = _page_segment(page)
                     calon_id = f"{document_id}_{segmen}_c{page_counters.get(segmen, 0):02d}"
-                    if tabel_terakhir is not None:
-                        kunci = table_continuation.kunci_pasangan(
-                            tabel_terakhir[0], calon_id
-                        )
-                        if kunci in table_continuation.muat_keputusan():
-                            teks_tabel = table_continuation.ulangi_header(
-                                tabel_terakhir[1], teks_tabel
-                            )
-                            extra_tabel["table_group_id"] = tabel_terakhir[2]
-                            extra_tabel["table_part"] = tabel_terakhir[3] + 1
-                            extra_tabel["table_header_repeated"] = True
-                            logger.info(
-                                "tabel_lanjutan_digabung a=%s b=%s",
-                                tabel_terakhir[0], calon_id,
-                            )
-                    if "table_group_id" not in extra_tabel:
-                        extra_tabel["table_group_id"] = calon_id
-                        extra_tabel["table_part"] = 0
-                    tabel_terakhir = (
-                        calon_id,
-                        table_continuation.baris_header_markdown(teks_tabel),
-                        extra_tabel["table_group_id"],
-                        extra_tabel["table_part"],
+                    pp = table_continuation.putuskan_potongan(
+                        tabel_terakhir, calon_id, raw_html_el,
+                        table_continuation.muat_keputusan(),
+                        table_continuation.sidik_keputusan(),
+                        maks_panjang_sel=TABLE_HEADER_MAX_CELL_CHARS or None,
                     )
+                    teks_tabel = table_continuation.sisipkan_header(prefiks, pp.header_md, text)
+                    extra_tabel["table_group_id"] = pp.group_id
+                    extra_tabel["table_part"] = pp.part
+                    # True HANYA bila header benar-benar disisipkan. Versi lama
+                    # menandai setiap pasangan disetujui, termasuk yang tidak
+                    # berubah teksnya.
+                    extra_tabel["table_header_repeated"] = bool(pp.header_md)
+                    if pp.lanjutan:
+                        logger.info("tabel_lanjutan a=%s b=%s header_diulang=%s %s",
+                                    tabel_terakhir.chunk_id, calon_id,
+                                    bool(pp.header_md), pp.alasan)
+                    elif pp.alasan:
+                        logger.warning("tabel_lanjutan_ditolak a=%s b=%s alasan=%s",
+                                       tabel_terakhir.chunk_id if tabel_terakhir else None,
+                                       calon_id, pp.alasan)
+                    tabel_terakhir = pp.rantai
 
                 emit(
                     teks_tabel,

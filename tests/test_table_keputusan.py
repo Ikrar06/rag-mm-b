@@ -173,3 +173,16 @@ def test_nilai_tak_dikenali_diperingatkan_bukan_ditebak(tmp_path, caplog):
     pesan = " ".join(r.getMessage() for r in caplog.records)
     assert "tak_dikenali" in pesan and "jumlah=2" in pesan
     assert "'ok'" in pesan or '"ok"' in pesan
+
+
+@pytest.mark.unit
+def test_header_markdown_meloloskan_pipa_dan_sah():
+    h = tc.header_markdown(["NO.", "RODA 6/BUS | SEDANG", ""])
+    assert h == "| NO. | RODA 6/BUS \\| SEDANG |  |\n| --- | --- | --- |"
+    assert tc.baris_header_markdown(h + "\n| 1 | 2 | 3 |") == h
+
+
+@pytest.mark.unit
+def test_sisipkan_header_setelah_prefiks():
+    assert tc.sisipkan_header("## Bab\n\n", "| A |\n| --- |", "| 1 |") == "## Bab\n\n| A |\n| --- |\n| 1 |"
+    assert tc.sisipkan_header("## Bab\n\n", "", "| 1 |") == "## Bab\n\n| 1 |"

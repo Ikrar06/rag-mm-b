@@ -180,6 +180,21 @@ _PEMISAH_RE = None      # diisi saat pertama dipakai, lihat baris_header_markdow
 _keputusan_cache: frozenset | None = None
 
 
+def html_sha(html) -> str:
+    """Sidik isi tabel dari `raw_html`, tahan terhadap perbedaan spasi.
+
+    Dipakai sebagai PENJAGA di samping kunci chunk_id. chunk_id adalah posisi,
+    dan posisi bergeser: perbaikan current_page memindahkan chunk teks ke
+    halaman yang benar, sehingga pencacah per halaman bergeser dan tabel yang
+    sama berganti nama (rubrik_p28_c00 di v2 menjadi rubrik_p28_c01 di v3,
+    sementara rubrik_p28_c00 di v3 kini chunk TEKS). Kunci yang cocok tapi
+    sidiknya tidak berarti berkas keputusan menunjuk tabel lain.
+    """
+    import hashlib
+    norma = " ".join(str(html or "").split())
+    return hashlib.sha256(norma.encode("utf-8")).hexdigest()[:16] if norma else ""
+
+
 def kunci_pasangan(chunk_id_a: str, chunk_id_b: str) -> str:
     """Kunci stabil sebuah pasangan potongan.
 
@@ -296,7 +311,145 @@ def muat_keputusan(path=None) -> frozenset[str]:
     return _keputusan_cache
 
 
+_sidik_cache: dict | None = None
+
+
+def sidik_keputusan(path=None) -> dict[str, tuple[str, str]]:
+    """Kunci pasangan disetujui -> (html_sha_a, html_sha_b) dari berkas.
+
+    String kosong berarti entri itu tidak membawa sidik — berkas lama yang
+    belum dimigrasi. Pemanggil memperlakukannya sebagai TIDAK dapat diverifikasi.
+    """
+    global _sidik_cache
+    if _sidik_cache is not None:
+        return _sidik_cache
+    from backend.config import TABLE_CONTINUATION_PATH
+    import json
+    from pathlib import Path
+
+    p = Path(os.path.expanduser(str(path or TABLE_CONTINUATION_PATH)))
+    hasil: dict[str, tuple[str, str]] = {}
+    try:
+        pasangan = (json.loads(p.read_text(encoding="utf-8")) or {}).get("pasangan") or {}
+    except (OSError, ValueError, AttributeError):
+        pasangan = {}
+    for k in muat_keputusan(path):
+        v = pasangan.get(k) or {}
+        m = v.get("_migrasi") or {}
+        hasil[k] = (str(v.get("html_sha_a") or m.get("html_sha_a") or ""),
+                    str(v.get("html_sha_b") or m.get("html_sha_b") or ""))
+    _sidik_cache = hasil
+    return hasil
+
+
 def reload_keputusan() -> None:
     """Buang cache keputusan. Dipakai uji dan setelah berkas disunting."""
-    global _keputusan_cache
+    global _keputusan_cache, _sidik_cache
     _keputusan_cache = None
+    _sidik_cache = None
+
+
+# ─── Putusan per potongan tabel ──────────────────────────────────────────────
+#
+# Dipisah dari _chunk_elements supaya dapat diuji tanpa pipeline. Tiga hal yang
+# membentuknya, masing-masing dari kegagalan terukur di run v3:
+#
+# 1. Header diambil dari HTML dan HARUS lolos header_tabel.deteksi_header.
+#    Fallback lama "pakai baris pertama" menyalin baris data 921112 ke 8 chunk.
+# 2. Header rantai dibawa EKSPLISIT dari potongan terurai pertama, bukan
+#    diturunkan ulang dari teks gabungan potongan sebelumnya.
+# 3. Kunci chunk_id yang cocok belum cukup: sidik html kedua sisi harus cocok
+#    juga. chunk_id tabel bergeser antara v2 dan v3, sehingga kunci lama bisa
+#    menunjuk tabel lain.
+
+from dataclasses import dataclass as _dataclass
+
+
+@_dataclass(frozen=True)
+class TabelRantai:
+    """Yang dibawa dari satu tabel ke tabel berikutnya dalam dokumen."""
+
+    chunk_id: str
+    sidik: str
+    keadaan: object          # header_tabel.KeadaanRantai
+    group_id: str
+    part: int
+
+
+@_dataclass(frozen=True)
+class PutusanPotongan:
+    header_md: str           # kosong = tidak ada yang diulang
+    group_id: str
+    part: int
+    lanjutan: bool
+    alasan: str
+    rantai: TabelRantai
+
+
+def header_markdown(sel) -> str:
+    """Baris header tabel Markdown yang sah dan berdiri sendiri."""
+    isi = [str(s).strip().replace("|", "\\|") for s in sel]
+    return "| " + " | ".join(isi) + " |\n| " + " | ".join("---" for _ in isi) + " |"
+
+
+def sisipkan_header(prefiks: str, header_md: str, teks_tabel: str) -> str:
+    """Header masuk SETELAH prefiks `## {section}`, bukan sebelumnya.
+
+    Versi lama menempelkan header di depan teks yang sudah berprefiks, sehingga
+    `## 6. Revenues` terdorong ke tengah teks chunk.
+    """
+    if not header_md:
+        return prefiks + teks_tabel
+    return f"{prefiks}{header_md}\n{teks_tabel}"
+
+
+def putuskan_potongan(sebelumnya: "TabelRantai | None", calon_id: str, raw_html,
+                      disetujui: frozenset, sidik: dict,
+                      maks_panjang_sel: int | None = None) -> PutusanPotongan:
+    from backend.services.header_tabel import (
+        STATUS_DIKETAHUI, deteksi_header, lanjutkan_rantai,
+    )
+    from backend.services.tabel_html import urai
+
+    tabel = urai(raw_html)
+    putusan = (deteksi_header(tabel.baris, tabel.ada_th, tabel.ada_thead,
+                              maks_panjang_sel=maks_panjang_sel)
+               if tabel is not None else None)
+    sid = html_sha(raw_html)
+
+    lanjutan, alasan = False, ""
+    if sebelumnya is not None:
+        kunci = kunci_pasangan(sebelumnya.chunk_id, calon_id)
+        if kunci in disetujui:
+            sa, sb = sidik.get(kunci, ("", ""))
+            if not (sa and sb):
+                alasan = ("kunci disetujui tapi berkas keputusan tanpa sidik html — "
+                          "tidak dapat diverifikasi; jalankan scripts/migrasi_keputusan.py")
+            elif sa != sebelumnya.sidik or sb != sid:
+                alasan = "kunci cocok tapi sidik html berbeda — kunci menunjuk tabel lain"
+            else:
+                lanjutan = True
+
+    if lanjutan:
+        k_prev = sebelumnya.keadaan
+        header_md = ""
+        if k_prev.status == STATUS_DIKETAHUI:
+            baris_b = [c.strip() for c in tabel.baris[0]] if tabel and tabel.baris else None
+            if baris_b != [c.strip() for c in k_prev.header]:
+                header_md = header_markdown(k_prev.header)
+            else:
+                alasan = "potongan B sudah diawali header rantai — tidak digandakan"
+        elif k_prev.status != STATUS_DIKETAHUI:
+            alasan = f"rantai tanpa header sah ({k_prev.status})"
+        keadaan = lanjutkan_rantai(k_prev, calon_id, tabel, putusan)
+        group, part = sebelumnya.group_id, sebelumnya.part + 1
+    else:
+        header_md = ""
+        keadaan = lanjutkan_rantai(None, calon_id, tabel, putusan)
+        group, part = calon_id, 0
+
+    return PutusanPotongan(
+        header_md=header_md, group_id=group, part=part, lanjutan=lanjutan,
+        alasan=alasan,
+        rantai=TabelRantai(calon_id, sid, keadaan, group, part),
+    )

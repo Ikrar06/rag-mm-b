@@ -82,6 +82,7 @@ if str(ROOT) not in sys.path:
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lib.pdf_sumber import profil_dari_pdf  # noqa: E402
+from backend.services.table_continuation import html_sha  # noqa: E402
 from lib.tabel_html import (  # noqa: E402
     bandingkan_header, deteksi_sel_terpotong, urai,
 )
@@ -398,6 +399,9 @@ def _tulis_keputusan(args, semua, profil, nama_berkas, asal) -> None:
             "document_id": r["document_id"],
             "file_name": (pr.file_name if pr else nama_berkas.get(r["document_id"])),
             "chunk_id_a": r["chunk_id_a"], "chunk_id_b": r["chunk_id_b"],
+            # Sidik html kedua sisi. Indexing MENOLAK pasangan yang kuncinya
+            # cocok tapi sidiknya tidak — penjaga terhadap chunk_id yang bergeser.
+            "html_sha_a": r.get("html_sha_a", ""), "html_sha_b": r.get("html_sha_b", ""),
             "halaman": r["halaman"], "kategori": r["kategori"],
             "sinyal": r["sinyal"], "kolom": r["kolom"],
             "baris_pertama_a": r["baris_pertama_a"],
@@ -585,6 +589,8 @@ def main() -> int:
                 "document_id": dok, "kategori": kat, "skor": skor,
                 "kunci": f"{a.get('chunk_id')}__{b.get('chunk_id')}",
                 "chunk_id_a": a.get("chunk_id"), "chunk_id_b": b.get("chunk_id"),
+                "html_sha_a": html_sha(a.get("raw_html") or a.get("text_as_html")),
+                "html_sha_b": html_sha(b.get("raw_html") or b.get("text_as_html")),
                 "halaman": [pa, pb], "kolom": [ka, kb],
                 "sinyal": {"kolom_sama": kolom_sama, "header": header,
                            "bawah_atas": bawah_atas, "section_sama": section_sama,

@@ -155,6 +155,13 @@ def _record(doc) -> dict:
         # seluruh chunk. Konsumen yang tidak mengenalnya dapat mengabaikannya
         # tanpa kehilangan apa pun yang dijanjikan skema.
         "page_span": meta.get("page_span"),
+        # Tautan potongan tabel yang berlanjut (INDEX_TABLE_CONTINUATION). Untuk
+        # rekonstruksi offline oleh tim eval: potongan dengan table_group_id
+        # sama adalah satu tabel, diurutkan menurut table_part. Jalur query
+        # tidak memakainya.
+        "table_group_id": meta.get("table_group_id"),
+        "table_part": meta.get("table_part"),
+        "table_header_repeated": meta.get("table_header_repeated"),
         # ── kolom tambahan di luar skema minimum ──
         # image_id menautkan chunk ImageDescription ke barisnya di images.jsonl.
         # Tanpa ini metrik lapis 1 tidak dapat distratifikasi per tipe visual,
@@ -387,6 +394,9 @@ def build_manifest(run_id: str, reports: dict[str, dict], n_chunks: int,
             # dan manifest yang hanya mencatat flag tidak menunjukkan apa pun.
             # ['SentenceSplitter'] saat flag menyala = run itu tidak sahih.
             "node_transformations": _node_transformations(),
+            # Aturan (e) kriteria header tabel; 0 = mati. Mengubahnya mengubah
+            # header mana yang diulang, jadi mengubah teks chunk tabel.
+            "TABLE_HEADER_MAX_CELL_CHARS": config.TABLE_HEADER_MAX_CELL_CHARS,
             # Menentukan apakah metadata element memuat grid sel eksplisit.
             # Disetel kode, bukan shell (table_continuation.siapkan_ekstraksi),
             # supaya nilai efektifnya tercatat di artefak eksperimen.
