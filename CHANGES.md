@@ -2545,3 +2545,28 @@ baris yang tampak sah di tengah rantai lebih mungkin kebetulan lolos.
    peringatan "kunci tidak menunjuk tabel", lalu baca ulang butir 6
 3. Tentukan `TABLE_HEADER_MAX_CELL_CHARS` dari celah terukur, atau biarkan 0
 4. Re-index v4
+
+## Revisi setelah validasi dengan kunci termigrasi
+
+Migrasi keputusan: 158 `id_sama`, 26 `dipetakan`, 0 tidak terpetakan. Tak terurai
+turun dari 17 ke 1 — sebagian besar "tabel tanpa struktur" sebelumnya adalah
+chunk teks yang salah alamat.
+
+**`TABLE_HEADER_MAX_CELL_CHARS = 80` kini bawaan.** Celah terukur 38 → 161: di
+bawahnya header asli (maks. 37) dan kop SOP (38, sisa risiko); di atasnya hanya
+baris data kkn-covid "Mensosialisasikan ...". Bukti di atas celah satu baris,
+tapi arah salahnya aman. Tercatat di manifest (`chunking`).
+
+**Hanya penolakan yang membuktikan data yang mematikan rantai:** `b-numerik`,
+`c-kode`, `d-kontras`, `e-panjang`. Penolakan `a-bentuk` (satu sel) dan
+`a-terisi` (mayoritas kosong) hanya membuktikan baris itu bukan header — kini
+netral seperti tak terurai. Kasus nyata: judul tahap satu sel "Tahap 1:
+Pembinaan dan Penyusunan Usulan Konsep Desain" di rubrik mematikan rantai dan
+membuang header sah "Aktivitas/Subaktivitas | Volume | ..." di potongan berikutnya.
+
+**Vision tidak kebal salah.** Rubrik 27→28 kategori `mungkin`, diterima karena
+vision menilai lanjutan, ternyata dua tabel berbeda — dan header tabel jenis
+kegiatan menjalar ke rantai tabel aktivitas di bawahnya. Validasi kini mencetak
+daftar tinjau: pasangan diterima yang baris pertama B satu sel sementara A
+berkolom ≥ 3. **Bukan penolak otomatis** — judul tahap di dalam tabel berbentuk
+sama.
