@@ -37,8 +37,8 @@ BOCOR_TERTANGKAP = [
     ("laporan-keuangan 17->18",    "Kata | Pengantar | | | | Foreword", "a-terisi"),
     ("laporan-keuangan 38->39",    "| | | | | Lu | | ee |", "a-terisi"),
     ("standar-biaya-2023 18->19",  "| | | |", "a-terisi"),
-    ("standar-biaya-2026 17->18",  "| | | 3", "a-terisi"),
-    ("standar-biaya-2025 20->21",  "| 2 | | 3 4 | |", "a-terisi"),
+    ("standar-biaya-2026 17->18",  "| | | 3", "b-numerik"),
+    ("standar-biaya-2025 20->21",  "| 2 | | 3 4 | |", "b-numerik"),
     ("standar-biaya-2026 31->32",  "| ASIA TIMUR | | | |", "a-terisi"),
     ("kkn-covid 59->60",           "| Mensosialisasikan Pembelajaran", "a-terisi"),
 ]
@@ -342,3 +342,37 @@ def test_bawaan_batas_panjang_sel_80():
     import backend.config as cfg
     importlib.reload(cfg)
     assert cfg.TABLE_HEADER_MAX_CELL_CHARS == 80
+
+
+# ─── urutan: bukti data tidak tertutup penolakan netral ──────────────────────
+
+@pytest.mark.unit
+@pytest.mark.parametrize("markup", [True, False])
+def test_numerik_di_baris_mayoritas_kosong_tetap_bukti_data(markup):
+    """'4 | | | PENDAPATAN': dua dari empat sel terisi. a-terisi akan menyala
+    bila diperiksa lebih dulu dan membuatnya netral — sel '4' tetap bukti data."""
+    baris = [["4", "", "", "PENDAPATAN"], ["41", "", "", "PENDAPATAN ASLI"]]
+    p = deteksi_header(baris, ada_th=markup)
+    assert p.aturan.startswith("b-numerik"), p.aturan
+    assert membuktikan_data(p)
+
+
+@pytest.mark.unit
+def test_rantai_mati_oleh_4_pendapatan_bermayoritas_kosong():
+    k = jalankan([("a_p5_c00", None),
+                  ("a_p6_c00", T([["4", "", "", "PENDAPATAN"], ["41", "", "", "ASLI"]])),
+                  ("a_p7_c00", T([["Kode", "Nama", "Uraian"], ["1", "x", "y"]]))])
+    assert k[1].status == STATUS_MATI and k[2].status == STATUS_MATI
+
+
+@pytest.mark.unit
+def test_satu_sel_numerik_bukti_data_satu_sel_teks_netral():
+    assert deteksi_header([["5"], ["6"]]).aturan.startswith("b-numerik")
+    assert deteksi_header([["Tahap 1: Pembinaan"], ["x"]]).aturan.startswith("a-bentuk")
+
+
+@pytest.mark.unit
+def test_sel_panjang_di_baris_mayoritas_kosong_tetap_bukti_data():
+    p = deteksi_header([["", "", "x" * 120, ""], ["1", "2", "3", "4"]], ada_th=True,
+                       maks_panjang_sel=80)
+    assert p.aturan == "e-panjang/markup" and membuktikan_data(p)

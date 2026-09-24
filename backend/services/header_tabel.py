@@ -89,11 +89,13 @@ def deteksi_header(baris, ada_th: bool = False, ada_thead: bool = False,
     5341, nomor urut 78, baris kosong, semuanya lolos sebagai "header" bila
     markup dipercaya begitu saja.
 
-    Urutan aturan, dan kepada siapa berlaku:
+    Urutan aturan, dan kepada siapa berlaku. Bukti data (b, c, e) diperiksa
+    SEBELUM bentuk (a1) supaya tidak tertutup penolakan netral:
 
-        a1  >= 2 sel dan LEBIH dari separuh terisi     markup & non-markup
         b   tak ada sel terisi yang numerik/tanpa alnum markup & non-markup
         c   tak ada sel diawali >= 3 digit             markup & non-markup
+        e   sel terpanjang <= batas (bila diset)        markup & non-markup
+        a1  >= 2 sel dan LEBIH dari separuh terisi     markup & non-markup
         a2  jumlah sel = kolom modal tubuh             non-markup (markup: opsional)
         d   ada kolom kontras dengan tubuh             non-markup saja
 
@@ -116,15 +118,13 @@ def deteksi_header(baris, ada_th: bool = False, ada_thead: bool = False,
         return Putusan(False, "bentuk", "tabel kosong")
     h = [str(s) for s in baris[0]]
 
-    # (a1) bentuk dan keterisian
-    if len(h) < 2:
-        return Putusan(False, f"a-bentuk/{jalur}", f"hanya {len(h)} sel — bukan baris berkolom")
-    terisi = [s.strip() for s in h if s.strip()]
-    if len(terisi) * 2 <= len(h):
-        return Putusan(False, f"a-terisi/{jalur}",
-                       f"hanya {len(terisi)} dari {len(h)} sel terisi — tidak lebih dari separuh")
-
-    # (b) dan (c) isi sel terisi
+    # ── Bukti DATA lebih dulu, baru bentuk ─────────────────────────────────
+    #
+    # Urutan ini disengaja. (b), (c), (e) membuktikan baris itu data dan
+    # mematikan rantai; (a1) hanya membuktikan bukan header dan bersifat
+    # netral. Bila (a1) diperiksa lebih dulu, "4 | | | PENDAPATAN" (dua dari
+    # empat sel terisi) tertolak a-terisi dan jadi netral, padahal sel "4"
+    # adalah bukti data. Bukti tidak boleh hilang karena urutan pemeriksaan.
     for i, s in enumerate(h):
         t = s.strip()
         if not t:
@@ -142,6 +142,14 @@ def deteksi_header(baris, ada_th: bool = False, ada_thead: bool = False,
         if terpanjang > maks_panjang_sel:
             return Putusan(False, f"e-panjang/{jalur}",
                            f"sel terpanjang {terpanjang} karakter > batas {maks_panjang_sel}")
+
+    # (a1) bentuk dan keterisian — penolakan netral
+    if len(h) < 2:
+        return Putusan(False, f"a-bentuk/{jalur}", f"hanya {len(h)} sel — bukan baris berkolom")
+    terisi = [s.strip() for s in h if s.strip()]
+    if len(terisi) * 2 <= len(h):
+        return Putusan(False, f"a-terisi/{jalur}",
+                       f"hanya {len(terisi)} dari {len(h)} sel terisi — tidak lebih dari separuh")
 
     modal = n_kolom_modal(baris)
     if markup:
