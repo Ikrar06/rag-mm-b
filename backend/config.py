@@ -223,6 +223,14 @@ EMBED_EXCLUDED_METADATA_KEYS = (
     "bbox",
     # Tahap 4 — tautan ke images.jsonl.
     "image_id",
+    # Tahap B dan perbaikan current_page. Keempatnya masuk payload lewat
+    # indexing._STRUCTURAL_METADATA_KEYS; tanpa baris ini mereka ikut
+    # divektorkan — di v3, 2.098 chunk teks membawa "page_span: [n, m]" ke
+    # dalam embedding-nya. Regresi atas perbaikan Tahap 1A.
+    "page_span",
+    "table_group_id",
+    "table_part",
+    "table_header_repeated",
 )
 
 # Nama lama, dipertahankan agar impor yang ada tidak patah.
@@ -600,6 +608,13 @@ RESEARCH_DISABLE_OUTPUT_FILTER = os.getenv(
 RESEARCH_VERBOSE_RETRIEVAL = os.getenv(
     "RESEARCH_VERBOSE_RETRIEVAL", "false"
 ).lower() == "true"
+
+
+# Aturan (e) kriteria header tabel: sel lebih panjang dari ini membuat baris
+# DITOLAK sebagai header. 0 = mati. Batasnya diambil dari celah terukur antara
+# header sungguhan dan baris data yang bocor (validasi_kriteria_header.py
+# mencetaknya), BUKAN dikarang. Mengubahnya mengubah teks chunk tabel.
+TABLE_HEADER_MAX_CELL_CHARS = int(os.getenv("TABLE_HEADER_MAX_CELL_CHARS", "0"))
 
 
 def research_query_flags() -> dict[str, bool]:
