@@ -2420,3 +2420,128 @@ berkas melainkan lewat isi: bandingkan himpunan `text_sha` antar dokumen dan
 laporkan pasangan yang irisannya tinggi. Instrumen untuk itu sudah setengah ada
 — `migrasi_gold.py --hitung-tabrakan` sudah mengelompokkan `text_sha` lintas
 dokumen; yang kurang hanya pelaporan per pasangan dokumen.
+
+---
+
+# TAHAP B — implementasi pengulangan header (revisi setelah run v3)
+
+## Temuan 1: kunci berkas keputusan menunjuk chunk yang salah di v3
+
+Berkas keputusan dibuat dari koleksi **v2**, sebelum perbaikan `current_page`
+(`af85fdc`). Perbaikan itu memindahkan chunk teks ke halamannya yang benar,
+sehingga pencacah per halaman bergeser dan **tabel yang sama berganti nama**:
+
+```
+v2: rubrik_p27_c00[T]  rubrik_p27_c01[t]  rubrik_p28_c00[T]  rubrik_p27_c02[t]  rubrik_p29_c00[T]
+v3: rubrik_p27_c00[T]  rubrik_p28_c00[t]  rubrik_p28_c01[T]  rubrik_p29_c00[t]  rubrik_p29_c01[T]
+```
+
+Kunci v2 `rubrik_p27_c00__rubrik_p28_c00` di v3 menunjuk tabel halaman 27 dan
+sebuah **chunk teks**. Terverifikasi dengan menjalankan `_chunk_elements` versi
+sebelum dan sesudah `af85fdc` atas masukan yang sama.
+
+Rantai sendiri dibentuk lewat `chunk_id` yang sama persis — di validasi maupun di
+produksi — jadi bukan penyambungan lewat halaman. Yang salah adalah identitas
+yang dirujuk kuncinya.
+
+**Dampak yang kemungkinan besar tersamar sebagai hal lain** — harus dipastikan
+ulang setelah migrasi, bukan disimpulkan sekarang:
+
+- Pewarisan mencurigakan rubrik 28→29.
+- Sebagian dari 17 pasangan "tidak terurai".
+- **Butir 6: 16 dari 19 "tidak berubah" dengan `table_format=None` dan HTML
+  kosong.** Itu tanda tangan chunk TEKS, bukan tabel tanpa struktur. **Belum
+  dicatat sebagai keterbatasan** sampai validasi diulang dengan kunci yang sudah
+  dimigrasi.
+- Kepala rantai rubrik p38_c07 dan p40_c04 yang "tidak terurai".
+
+### Perbaikan
+
+**`scripts/migrasi_keputusan.py`** memetakan kunci ke penomoran dump baru dengan
+jangkar (dokumen, halaman, urutan tabel di halaman itu) — ekstraksi tabel tidak
+berubah antar run, yang bergeser hanya chunk teks. Setiap pemetaan diverifikasi
+dengan sidik `text_as_html`; yang sidiknya tidak cocok tidak dipetakan otomatis.
+Berkas asli tidak ditimpa. Kolom tinjauan manusia (`keputusan`,
+`catatan_peninjau`) terbawa apa adanya. Entri yang tidak dapat dipetakan pindah
+ke bagian `tidak_terpetakan`, di luar `pasangan`, jadi tidak pernah dibaca indexing.
+
+**Penjaga sidik di indexing.** Kecocokan kunci kini tidak cukup: sidik html kedua
+sisi (`html_sha_a`, `html_sha_b`) harus cocok dengan tabel yang sedang diproses.
+
+> **Perubahan perilaku yang wajib diketahui fork lain:** berkas keputusan TANPA
+> sidik tidak lagi menggabung apa pun. Ia dilewati dengan peringatan yang
+> menyuruh menjalankan `migrasi_keputusan.py`. Sikap aman: tidak menggabung
+> tidak merusak apa pun, menggabung tabel yang salah merusak secara senyap.
+
+Validasi kini menandai setiap kunci yang tidak menunjuk dua chunk tabel.
+
+## Temuan 2: metadata struktural ikut divektorkan (regresi Tahap 1A)
+
+`page_span`, `table_group_id`, `table_part`, `table_header_repeated` masuk payload
+lewat `indexing._STRUCTURAL_METADATA_KEYS` tapi tidak ada di
+`EMBED_EXCLUDED_METADATA_KEYS`. Di v3, **2.098 chunk teks membawa
+`page_span: [n, m]` ke dalam embedding-nya**. Diperbaiki, dan dikunci dengan uji
+yang membaca kedua daftar — terbukti gagal bila satu kunci dihapus dari eksklusi.
+
+**v3 tidak dapat dipakai untuk perbandingan dengan run lain** karena alasan ini
+saja, terlepas dari soal pengulangan header.
+
+## Kriteria header — final setelah dua putaran validasi data nyata
+
+Modul dipindah ke `backend/services/header_tabel.py` (dan pengurainya ke
+`backend/services/tabel_html.py`) karena indexing memakainya. `scripts/lib/`
+tetap ada sebagai pengalihan.
+
+| aturan | markup `<th>` | fallback |
+|---|---|---|
+| a1 ≥ 2 sel, lebih dari separuh terisi | ✓ | ✓ |
+| b tidak ada sel terisi numerik / tanpa huruf-angka | ✓ | ✓ |
+| c tidak ada sel diawali ≥ 3 digit | ✓ | ✓ |
+| e sel terpanjang ≤ `TABLE_HEADER_MAX_CELL_CHARS` | bila diset | bila diset |
+| a2 jumlah sel = kolom modal | mati | ✓ |
+| d kolom kontras dengan tubuh | tidak | ✓ |
+
+**Markup tidak otoritatif.** Table transformer memberi `<th>` ke baris pertama apa
+pun isinya; 15 dari 51 header markup di validasi pertama ternyata data atau sampah.
+
+**(d) tidak diterapkan ke markup** — delapan header jadwal retensi arsip bertubuh
+teks. **(a2) pada markup mati** — terukur akan membuang sepuluh header asli dan
+tidak menangkap kop SOP yang jadi sasarannya.
+
+**(e) mati bawaan** (`TABLE_HEADER_MAX_CELL_CHARS=0`). Batasnya harus diambil dari
+celah terukur yang dicetak validasi, bukan dikarang. Tercatat di manifest.
+
+**Sisa risiko yang diterima:** kop SOP (`PROGRAM STUDI ... | PROSEDUR`) dan OCR
+sampah (`co & 2 KT MELEE`). Tidak ada aturan yang tidak mengarang untuk keduanya.
+
+## Keadaan rantai: tidak diketahui ≠ terbukti data
+
+| potongan terurai pertama di rantai | akibat |
+|---|---|
+| lolos kriteria | headernya jadi header rantai, diwarisi sampai ujung |
+| ditolak | rantai mati, tidak mewarisi apa pun sampai ujung |
+| (belum ada — semua tak terurai) | keputusan menunggu potongan berikutnya |
+
+Sengaja bukan "header sah pertama di mana pun": bila potongan terurai pertama
+ternyata baris data, header asli tabel itu ada di kepala yang tak terurai, dan
+baris yang tampak sah di tengah rantai lebih mungkin kebetulan lolos.
+
+## Perubahan produksi lain
+
+- Header disisipkan **setelah** prefiks `## {section}`, bukan sebelumnya.
+- `table_header_repeated` bernilai `true` **hanya** bila header benar-benar
+  disisipkan. Versi v3 menandai setiap pasangan disetujui, termasuk yang tidak
+  berubah teksnya.
+- Potongan B yang sudah diawali header rantai tidak digandakan.
+- `table_group_id`, `table_part`, `table_header_repeated` kini ada di
+  `chunks.jsonl`. Di payload Qdrant ketiganya sudah ada sejak v3.
+- Logika putusan per potongan dipisah ke `table_continuation.putuskan_potongan`,
+  fungsi murni yang diuji tanpa pipeline.
+
+## Urutan sebelum v4
+
+1. `migrasi_keputusan.py` atas berkas keputusan (v2 → penomoran v3/v4)
+2. `validasi_kriteria_header.py` dengan berkas hasil migrasi — pastikan nol
+   peringatan "kunci tidak menunjuk tabel", lalu baca ulang butir 6
+3. Tentukan `TABLE_HEADER_MAX_CELL_CHARS` dari celah terukur, atau biarkan 0
+4. Re-index v4
