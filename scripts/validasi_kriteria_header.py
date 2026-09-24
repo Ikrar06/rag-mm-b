@@ -47,7 +47,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib.header_tabel import deteksi_header, kepala_rantai  # noqa: E402
+from lib.header_tabel import (  # noqa: E402
+    STATUS_DIKETAHUI, STATUS_MATI, deteksi_header, lanjutkan_rantai,
+    panjang_sel_terpanjang,
+)
 from lib.tabel_html import _Pengurai, urai  # noqa: E402
 
 PEMISAH_MD = re.compile(r"\|[\s:|-]+\|")
@@ -122,6 +125,8 @@ def main() -> int:
     ap.add_argument("--hanya-beda", action="store_true",
                     help="Cetak hanya pasangan yang kedua varian berbeda putusan")
     ap.add_argument("--json", default=None)
+    ap.add_argument("--maks-panjang-sel", type=int, default=None,
+                    help="Terapkan aturan (e) dengan batas ini. Ambil dari celah terukur.")
     ap.add_argument("--modal-markup", action="store_true",
                     help="Ukur juga aturan jumlah-sel=kolom-modal pada markup")
     args = ap.parse_args()
@@ -156,9 +161,12 @@ def main() -> int:
             hilang.append((kunci, "A" if id_a not in per_id else "B"))
             continue
         pasangan.append((id_a, id_b, kunci))
-    kepala = kepala_rantai([(a, b) for a, b, _ in pasangan])
+    # Kunci yang tidak menunjuk dua chunk TABEL berarti berkas keputusan dibuat
+    # dengan penomoran lain. Dianalisis tetap, tapi ditandai mencolok.
+    bukan_tabel = {k for a_, b_, k in pasangan
+                   if per_id[a_].get("element_type") != "Table"
+                   or per_id[b_].get("element_type") != "Table"}
 
-    # Putusan header per chunk kepala: dihitung sekali, dipakai seluruh rantai.
     tabel_cache: dict[str, object] = {}
 
     def tabel(cid):
@@ -166,11 +174,26 @@ def main() -> int:
             tabel_cache[cid] = urai(per_id[cid].get("text_as_html"))
         return tabel_cache[cid]
 
-    def nilai(cid, **kw):
+    kw = {"maks_panjang_sel": args.maks_panjang_sel}
+
+    def nilai(cid, **ekstra):
         t = tabel(cid)
         if t is None:
             return None, None
-        return t, deteksi_header(t.baris, t.ada_th, t.ada_thead, **kw)
+        return t, deteksi_header(t.baris, t.ada_th, t.ada_thead, **{**kw, **ekstra})
+
+    # Keadaan rantai SETELAH tiap potongan, berjalan dari kepala ke ujung.
+    sesudah = {a_: b_ for a_, b_, _ in pasangan}
+    punya_sebelum = set(sesudah.values())
+    keadaan: dict[str, object] = {}
+    for kepala in (a_ for a_, _, _ in pasangan if a_ not in punya_sebelum):
+        k, cid, terlihat = None, kepala, set()
+        while cid is not None and cid not in terlihat:
+            terlihat.add(cid)
+            t, p = nilai(cid)
+            k = lanjutkan_rantai(k, cid, t, p)
+            keadaan[cid] = k
+            cid = sesudah.get(cid)
 
     hasil = []
     for id_a, id_b, kunci in pasangan:
@@ -179,16 +202,18 @@ def main() -> int:
         _, pb = nilai(id_a, pakai_kontras=False)
         _, pm = nilai(id_a, pakai_kontras=True, modal_untuk_markup=True)
 
-        # Header yang BENAR-BENAR akan diulang: milik kepala rantai.
-        kp = kepala.get(id_a, id_a)
-        tk, pk = nilai(kp, pakai_kontras=True)
-        if tk is None:
-            diulang, sumber = None, f"tidak ada — kepala {kp} tidak terurai"
-        elif not pk.header:
-            diulang, sumber = None, f"tidak ada — kepala {kp} ditolak [{pk.aturan}]"
+        k = keadaan.get(id_a)
+        if k is not None and k.status == STATUS_DIKETAHUI:
+            diulang = list(k.header)
+            sumber = "sendiri" if k.sumber == id_a else f"warisan dari {k.sumber}"
+            tb = tabel(id_b)
+            if tb and tb.baris and [c.strip() for c in tb.baris[0]] == [c.strip() for c in diulang]:
+                sumber += " — B sudah diawali header itu, tidak digandakan"
+                diulang = None
+        elif k is not None and k.status == STATUS_MATI:
+            diulang, sumber = None, f"tidak ada — rantai mati di {k.sumber} (baris data)"
         else:
-            diulang = list(tk.baris[0])
-            sumber = "sendiri" if kp == id_a else f"warisan dari {kp}"
+            diulang, sumber = None, "tidak ada — belum ada potongan terurai sejauh ini"
 
         tak_berubah = None
         if v2 and b.get("text_sha") in sha_v2:
@@ -206,8 +231,11 @@ def main() -> int:
             "kandidat": list(t.baris[0]) if t else None,
             "tubuh": [list(r) for r in t.baris[1:3]] if t else [],
             "markup": bool(t and (t.ada_th or t.ada_thead)),
+            "bukan_tabel": kunci in bukan_tabel,
+            "jenis": [a.get("element_type"), b.get("element_type")],
             "A": ringkas(pa), "B": ringkas(pb), "modal": ringkas(pm),
-            "kepala": kp, "diulang": diulang, "sumber_header": sumber,
+            "diulang": diulang, "sumber_header": sumber,
+            "panjang_sel": panjang_sel_terpanjang(t.baris[0]) if t and t.baris else 0,
             "tak_berubah": tak_berubah,
         })
 
@@ -216,6 +244,8 @@ def main() -> int:
 
     for r in cetak:
         tanda = "  <-- BEDA" if r in beda else ""
+        if r["bukan_tabel"]:
+            tanda += f"  <-- KUNCI TIDAK MENUNJUK TABEL {r['jenis']}"
         print(f"{r['document_id']}  hal {r['halaman'][0]}->{r['halaman'][1]}{tanda}")
         print(f"    kandidat : {_potong(r['kandidat'] or ['<tidak terurai>'])}"
               f"{'   [markup]' if r['markup'] else ''}")
@@ -276,16 +306,42 @@ def main() -> int:
             print(f"    {r['document_id'][:34]:<36}{r['halaman'][0]}->{r['halaman'][1]:<5}"
                   f"{_potong(r['kandidat'], 44)}  [{r['modal']['alasan']}]")
 
+    # ── Butir 2: panjang sel terpanjang, header lolos vs sisanya ───────────
+    if lolos_mk:
+        print("\n  PANJANG SEL TERPANJANG — header markup yang lolos (menurun):")
+        urut = sorted(lolos_mk, key=lambda r: -r["panjang_sel"])
+        for r in urut:
+            print(f"    {r['panjang_sel']:>4}  {r['document_id'][:30]:<32}"
+                  f"{r['halaman'][0]}->{r['halaman'][1]:<5}{_potong(r['kandidat'], 50)}")
+        pj = [r["panjang_sel"] for r in urut]
+        celah = sorted(((pj[i] - pj[i + 1], pj[i + 1], pj[i]) for i in range(len(pj) - 1)),
+                       reverse=True)[:3]
+        print("  Celah terbesar antar-panjang berurutan (lebar, bawah, atas):")
+        for lebar, bawah, atas in celah:
+            print(f"    {lebar:>4}  antara {bawah} dan {atas}")
+        print("  Celah dianggap BERSIH hanya bila semua baris di atasnya baris data dan")
+        print("  semua di bawahnya header sungguhan — periksa baris di sekitar celah.")
+
+    bt = [r for r in hasil if r["bukan_tabel"]]
+    if bt:
+        print(f"\n  PERINGATAN: {len(bt)} kunci tidak menunjuk dua chunk TABEL di dump ini.")
+        print("  Berkas keputusan kemungkinan dibuat dengan penomoran lain — jalankan")
+        print("  scripts/migrasi_keputusan.py dulu, lalu ulangi validasi dengan berkasnya.")
+        for jenis, jml in Counter(tuple(r["jenis"]) for r in bt).most_common():
+            print(f"    {jml:>4}  {jenis}")
+
     warisan = [r for r in hasil if r["sumber_header"].startswith("warisan")]
     putus = [r for r in hasil if r["sumber_header"].startswith("tidak ada")]
+    mati = [r for r in putus if "mati" in r["sumber_header"]]
     print(f"\n  Pewarisan rantai:")
     print(f"    header sendiri     : {sum(1 for r in hasil if r['sumber_header']=='sendiri')}")
     print(f"    header warisan     : {len(warisan)}")
-    print(f"    tanpa header       : {len(putus)}")
+    print(f"    tanpa header       : {len(putus)}  (rantai mati: {len(mati)}, "
+          f"belum diketahui: {len(putus) - len(mati)})")
     print(f"    TOTAL akan diulang : {sum(1 for r in hasil if r['diulang'])}")
     for r in warisan[:12]:
         print(f"      {r['document_id'][:30]:<32}{r['halaman'][0]}->{r['halaman'][1]:<5}"
-              f"<- {r['kepala']}: {_potong(r['diulang'], 40)}")
+              f"{r['sumber_header'][:40]}: {_potong(r['diulang'], 36)}")
 
     tt = [r for r in hasil if r["A"]["aturan"] == "tak-terurai"]
     if tt:

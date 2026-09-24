@@ -188,3 +188,86 @@ def test_putusan_immutable():
     p = deteksi_header([["A", "B"], ["1", "2"]])
     with pytest.raises(Exception):
         p.header = False
+
+
+# ─── keadaan rantai: tidak diketahui vs terbukti data ────────────────────────
+
+from lib.header_tabel import (  # noqa: E402
+    STATUS_DIKETAHUI, STATUS_MATI, STATUS_TIDAK_DIKETAHUI, lanjutkan_rantai,
+)
+from lib.tabel_html import urai  # noqa: E402
+
+
+def T(baris, th=True):
+    h = "<thead><tr>" + "".join(f"<th>{c}</th>" for c in baris[0]) + "</tr></thead>" if th else ""
+    body = baris[1:] if th else baris
+    return urai("<table>" + h + "<tbody>" + "".join(
+        "<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in body) + "</tbody></table>")
+
+
+def jalankan(potongan):
+    """potongan: list (chunk_id, Tabel|None). Kembalikan keadaan setelah tiap potongan."""
+    k, out = None, []
+    for cid, t in potongan:
+        p = deteksi_header(t.baris, t.ada_th, t.ada_thead) if t else None
+        k = lanjutkan_rantai(k, cid, t, p)
+        out.append(k)
+    return out
+
+
+AKTIVITAS = [["Aktivitas/Subaktivitas", "Volume", "Menit", "Total", "Bobot"],
+             ["Persiapan", "2", "240", "480", "1"]]
+
+
+@pytest.mark.unit
+def test_kepala_tak_terurai_lalu_header_sah_menjadi_header_rantai():
+    """rubrik 39->40: kepala p38_c07 tak terurai, header sah ada di potongan kedua."""
+    k = jalankan([("r_p38_c07", None), ("r_p39_c00", T(AKTIVITAS)),
+                  ("r_p40_c00", T([["", "", "", "", ""], ["Laporan", "1", "60", "60", "1"]]))])
+    assert k[0].status == STATUS_TIDAK_DIKETAHUI
+    assert k[1].status == STATUS_DIKETAHUI and k[1].sumber == "r_p39_c00"
+    assert k[2].header == tuple(AKTIVITAS[0])       # diwarisi ke potongan ketiga
+
+
+@pytest.mark.unit
+def test_kepala_tak_terurai_lalu_baris_data_mematikan_rantai():
+    """bagan-akun: kepala tak terurai, potongan terurai pertama 4141 — data."""
+    k = jalankan([("a_p5_c00", None),
+                  ("a_p6_c00", T([["4141", "ALOKASI"], ["4142", "MODAL"]])),
+                  ("a_p7_c00", T([["Kode", "Uraian"], ["1", "x"]]))])   # tampak sah
+    assert k[1].status == STATUS_MATI and k[1].sumber == "a_p6_c00"
+    assert k[2].status == STATUS_MATI, "baris tampak sah di tengah tidak menghidupkan rantai"
+
+
+@pytest.mark.unit
+def test_kepala_ditolak_mematikan_seluruh_rantai():
+    k = jalankan([("d_p1_c00", T([["78", "", "Padang", "Kota", "215.000"], ["1", "", "a", "b", "2"]])),
+                  ("d_p2_c00", T([["NO.", "PROVINSI", "SATUAN"], ["1", "Aceh", "hari"]]))])
+    assert all(x.status == STATUS_MATI for x in k)
+
+
+@pytest.mark.unit
+def test_header_diketahui_tidak_tertimpa_potongan_berikutnya():
+    k = jalankan([("k_p26_c00", T([["HARI/TGL", "JAM", "KEGIATAN", "KETERANGAN"],
+                                   ["Senin", "08.00", "Registrasi", "A"]])),
+                  ("k_p27_c00", T([["", "", "", ""], ["Rabu", "09.00", "Kuliah", "B"]])),
+                  ("k_p28_c00", None)])
+    assert {x.header[0] for x in k} == {"HARI/TGL"}
+
+
+@pytest.mark.unit
+def test_rantai_seluruhnya_tak_terurai_tetap_tidak_diketahui():
+    k = jalankan([("x_p1_c00", None), ("x_p2_c00", None)])
+    assert all(x.status == STATUS_TIDAK_DIKETAHUI and x.header is None for x in k)
+
+
+# ─── aturan (e) panjang sel ──────────────────────────────────────────────────
+
+@pytest.mark.unit
+def test_aturan_panjang_sel_mati_bawaan_dan_menolak_bila_dinyalakan():
+    """kkn-covid 59->60: sel berupa kalimat panjang, lolos markup."""
+    baris = [["No", "Mensosialisasikan Pembelajaran yang efektif pada Melakukan kegiatan"],
+             ["1", "x"]]
+    assert deteksi_header(baris, ada_th=True)
+    p = deteksi_header(baris, ada_th=True, maks_panjang_sel=40)
+    assert not p and p.aturan == "e-panjang/markup"

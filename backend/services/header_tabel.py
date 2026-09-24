@@ -74,9 +74,14 @@ def rasio_terisi(sel) -> float:
     return sum(1 for s in sel if str(s).strip()) / len(sel) if sel else 0.0
 
 
+def panjang_sel_terpanjang(sel) -> int:
+    return max((len(str(s).strip()) for s in sel), default=0)
+
+
 def deteksi_header(baris, ada_th: bool = False, ada_thead: bool = False,
                    pakai_kontras: bool = True,
-                   modal_untuk_markup: bool = False) -> Putusan:
+                   modal_untuk_markup: bool = False,
+                   maks_panjang_sel: int | None = None) -> Putusan:
     """Apakah `baris[0]` header kolom sungguhan? `baris[1:]` tubuh tabel.
 
     Markup `<th>`/`<thead>` BUKAN otoritatif. Terukur di korpus: table
@@ -99,6 +104,11 @@ def deteksi_header(baris, ada_th: bool = False, ada_thead: bool = False,
 
     `pakai_kontras=False` memberi Varian B. `modal_untuk_markup=True` menguji
     aturan (a2) pada markup; disediakan untuk DIUKUR, bukan dinyalakan.
+
+    `maks_panjang_sel` (aturan e) menolak baris yang punya sel lebih panjang
+    dari batas itu — judul kolom pendek, isi sel tubuh bisa berupa kalimat.
+    None berarti mati. Batasnya TIDAK dikarang di sini: ia harus diambil dari
+    celah terukur antara header sungguhan dan baris data yang bocor.
     """
     markup = bool(ada_th or ada_thead)
     jalur = "markup" if markup else "fallback"
@@ -126,6 +136,13 @@ def deteksi_header(baris, ada_th: bool = False, ada_thead: bool = False,
         if sel_kode_panjang(t):
             return Putusan(False, f"c-kode/{jalur}", f"sel {i} {t!r} diawali >=3 digit")
 
+    # (e) panjang sel — hanya bila batasnya sudah diukur
+    if maks_panjang_sel:
+        terpanjang = panjang_sel_terpanjang(h)
+        if terpanjang > maks_panjang_sel:
+            return Putusan(False, f"e-panjang/{jalur}",
+                           f"sel terpanjang {terpanjang} karakter > batas {maks_panjang_sel}")
+
     modal = n_kolom_modal(baris)
     if markup:
         if modal_untuk_markup and len(baris) > 1 and len(h) != modal:
@@ -152,6 +169,50 @@ def deteksi_header(baris, ada_th: bool = False, ada_thead: bool = False,
                            f"kolom {j} kontras: header teks, {rasio:.0%} tubuh numerik")
     return Putusan(False, "d-kontras",
                    "tak satu pun kolom kontras — baris pertama sejenis dengan tubuh")
+
+
+# ─── Keadaan rantai ──────────────────────────────────────────────────────────
+#
+# Tiga keadaan, bukan dua. "Kepala tidak terurai" berarti TIDAK DIKETAHUI, bukan
+# terbukti salah: HTML-nya kosong atau rusak, sehingga tidak ada bukti bahwa
+# baris pertamanya data. "Kepala ditolak" berarti TERBUKTI — baris pertamanya
+# kode akun, nomor urut, atau baris kosong.
+
+STATUS_TIDAK_DIKETAHUI = "tidak_diketahui"
+STATUS_DIKETAHUI = "diketahui"
+STATUS_MATI = "mati"
+
+
+@dataclass(frozen=True)
+class KeadaanRantai:
+    status: str
+    header: tuple[str, ...] | None = None
+    sumber: str | None = None       # chunk_id yang menetapkan keadaan ini
+
+
+def lanjutkan_rantai(keadaan, chunk_id: str, tabel, putusan) -> KeadaanRantai:
+    """Keadaan rantai SETELAH potongan `chunk_id` dinilai.
+
+    `keadaan` None berarti potongan ini kepala rantai baru. Header yang diulang
+    ke potongan BERIKUTNYA adalah `header` dari keadaan yang dikembalikan.
+
+    Aturannya: potongan TERURAI pertama di rantai yang memutuskan. Bila ia
+    lolos kriteria, headernya jadi header rantai; bila ditolak, rantai mati dan
+    tidak mewarisi apa pun sampai ujung. Potongan tak terurai tidak memutuskan
+    apa-apa dan menyerahkan keputusan ke potongan berikutnya.
+
+    Sengaja BUKAN "header sah pertama di mana pun dalam rantai": kalau potongan
+    terurai pertama ternyata baris data, header asli tabel itu ada di kepala
+    yang tak terurai, dan baris yang tampak sah di tengah rantai lebih mungkin
+    kebetulan lolos daripada header sungguhan.
+    """
+    if keadaan is not None and keadaan.status != STATUS_TIDAK_DIKETAHUI:
+        return keadaan
+    if tabel is None or putusan is None:
+        return keadaan or KeadaanRantai(STATUS_TIDAK_DIKETAHUI)
+    if putusan.header:
+        return KeadaanRantai(STATUS_DIKETAHUI, tuple(tabel.baris[0]), chunk_id)
+    return KeadaanRantai(STATUS_MATI, None, chunk_id)
 
 
 def kepala_rantai(pasangan) -> dict[str, str]:
