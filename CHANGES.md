@@ -2122,9 +2122,11 @@ token per chunk — di bawah 0,5% terhadap chunk tabel yang sudah 4.091 token.
 manusia**, dibaca indexing. Pola yang sama dengan `document_registry.json`.
 
 Hanya entri berkeputusan `"terima"` yang diproses. Entri yang ditolak sengaja
-**tetap ada** di berkas supaya terlihat saat ditinjau. Berkas tidak ada atau
+**tetap ada** di berkas supaya terlihat saat ditinjau. ~~Berkas tidak ada atau
 rusak berarti himpunan kosong — menyalakan flag tanpa berkas keputusan
-menghasilkan perilaku identik dengan flag mati.
+menghasilkan perilaku identik dengan flag mati.~~ **Dikoreksi kemudian:** itu
+kegagalan senyap, bukan sikap aman. Indexing kini gagal keras — lihat "Gerbang
+berkas keputusan" di bawah.
 
 ## Wajib identik antar fork
 
@@ -2570,3 +2572,37 @@ kegiatan menjalar ke rantai tabel aktivitas di bawahnya. Validasi kini mencetak
 daftar tinjau: pasangan diterima yang baris pertama B satu sel sementara A
 berkolom ≥ 3. **Bukan penolak otomatis** — judul tahap di dalam tabel berbentuk
 sama.
+
+
+## Gerbang berkas keputusan dan flag tabel dibekukan
+
+**Urutan pemeriksaan kriteria header diubah:** bukti data (b, c, e) diperiksa
+SEBELUM bentuk (a1). Sebelumnya "4 | | | PENDAPATAN" (dua dari empat sel terisi)
+tertolak `a-terisi` lebih dulu dan jadi netral, padahal sel "4" bukti data —
+rantai yang seharusnya mati malah menunda keputusan. Bukti tidak boleh hilang
+karena urutan pemeriksaan. Akibat sampingan: `"| | | 3"` dan `"| 2 | | 3 4 | |"`
+kini tertangkap `b-numerik`, bukan `a-terisi`.
+
+**`INDEX_TABLE_CONTINUATION=true` dan `TABLE_HEADER_MAX_CELL_CHARS=80` masuk
+`RESEARCH_EXPECTED_FLAGS`** dan `.env.research`. Run riset yang lupa menyalakan
+keduanya ditolak `RESEARCH_MODE`.
+
+**Gerbang berkas keputusan** (`indexing._check_table_continuation`), berlaku di
+luar `RESEARCH_MODE` juga. Bila `INDEX_TABLE_CONTINUATION` aktif, indexing gagal
+keras sebelum memproses PDF apa pun bila berkas keputusan:
+
+| kondisi | kenapa gagal keras |
+|---|---|
+| tidak ada / path salah | nol pasangan diproses, index identik fitur mati |
+| JSON rusak atau tanpa `pasangan` | idem |
+| nol pasangan diterima | idem |
+| ada pasangan diterima tanpa sidik html | belum dimigrasi; penjaga sidik menolak semuanya |
+
+Baris terakhir penting karena **nilai bawaan `TABLE_CONTINUATION_PATH` masih
+menunjuk berkas lama berkunci v2** tanpa sidik. Lupa menyetel path tidak lagi
+menghasilkan index tanpa perbaikan secara diam-diam.
+
+**Manifest mencatat berkas keputusan yang dipakai** di `research_flags.table_continuation`:
+path, sha256 isi berkas, jumlah diterima/ditolak/belum ditinjau. Keputusan
+pasangan menentukan teks chunk tabel, jadi berkasnya bagian dari konfigurasi
+yang menghasilkan index — sama seperti vision cache.
