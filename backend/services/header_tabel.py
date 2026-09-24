@@ -89,13 +89,15 @@ def deteksi_header(baris, ada_th: bool = False, ada_thead: bool = False,
     5341, nomor urut 78, baris kosong, semuanya lolos sebagai "header" bila
     markup dipercaya begitu saja.
 
-    Urutan aturan, dan kepada siapa berlaku. Bukti data (b, c, e) diperiksa
-    SEBELUM bentuk (a1) supaya tidak tertutup penolakan netral:
+    Urutan aturan, dan kepada siapa berlaku. Bukti data diperiksa sebelum
+    penolakan netral, KECUALI baris satu sel yang dinyatakan netral sebelum
+    (e) — panjang satu-satunya sel bukan bukti baris data:
 
         b   tak ada sel terisi yang numerik/tanpa alnum markup & non-markup
         c   tak ada sel diawali >= 3 digit             markup & non-markup
+        a1  >= 2 sel (satu sel -> netral)              markup & non-markup
         e   sel terpanjang <= batas (bila diset)        markup & non-markup
-        a1  >= 2 sel dan LEBIH dari separuh terisi     markup & non-markup
+        a1  LEBIH dari separuh sel terisi (netral)     markup & non-markup
         a2  jumlah sel = kolom modal tubuh             non-markup (markup: opsional)
         d   ada kolom kontras dengan tubuh             non-markup saja
 
@@ -136,6 +138,15 @@ def deteksi_header(baris, ada_th: bool = False, ada_thead: bool = False,
         if sel_kode_panjang(t):
             return Putusan(False, f"c-kode/{jalur}", f"sel {i} {t!r} diawali >=3 digit")
 
+    # (a1) satu sel — NETRAL, dan diperiksa SEBELUM panjang sel. Baris satu
+    # sel bukan baris data tabel berkolom, jadi panjangnya tidak membuktikan
+    # apa pun: di rubrik, judul tahap "Tahap 1: Pembinaan dan Penyusunan Usulan
+    # Konsep Desain ..." (99 karakter) tertolak e-panjang, mematikan rantai,
+    # dan membuang header aktivitas yang sah di potongan berikutnya. Satu sel
+    # yang murni angka sudah tertangkap (b) di atas.
+    if len(h) < 2:
+        return Putusan(False, f"a-bentuk/{jalur}", f"hanya {len(h)} sel — bukan baris berkolom")
+
     # (e) panjang sel — hanya bila batasnya sudah diukur
     if maks_panjang_sel:
         terpanjang = panjang_sel_terpanjang(h)
@@ -143,9 +154,7 @@ def deteksi_header(baris, ada_th: bool = False, ada_thead: bool = False,
             return Putusan(False, f"e-panjang/{jalur}",
                            f"sel terpanjang {terpanjang} karakter > batas {maks_panjang_sel}")
 
-    # (a1) bentuk dan keterisian — penolakan netral
-    if len(h) < 2:
-        return Putusan(False, f"a-bentuk/{jalur}", f"hanya {len(h)} sel — bukan baris berkolom")
+    # (a1) keterisian — penolakan netral
     terisi = [s.strip() for s in h if s.strip()]
     if len(terisi) * 2 <= len(h):
         return Putusan(False, f"a-terisi/{jalur}",

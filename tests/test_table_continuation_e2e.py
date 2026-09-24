@@ -207,7 +207,10 @@ def test_judul_tahap_satu_sel_tidak_membunuh_header_berikutnya(monkeypatch, tmp_
     """rubrik 38->39->40: kepala berisi judul tahap satu sel; header aktivitas
     di potongan kedua harus diulang ke potongan ketiga."""
     akt = ["Aktivitas/Subaktivitas", "Volume", "Menit", "Total", "Bobot"]
-    tahap = [["Tahap 1: Pembinaan dan Penyusunan Usulan Konsep Desain"], ["Persiapan awal"]]
+    # 99 karakter seperti di korpus — di atas batas 80, harus tetap netral.
+    tahap = [[("Tahap 1: Pembinaan dan Penyusunan Usulan Konsep Desain Program "
+               "Kerja Mahasiswa Kuliah Kerja Nyata Tematik")[:96] + "..."], ["Persiapan awal"]]
+    assert len(tahap[0][0]) == 99
     kedua = [akt, ["Persiapan", "2", "240", "480", "1"]]
     ketiga = [["Laporan", "1", "60", "60", "1"], ["Evaluasi", "1", "30", "30", "1"]]
     els = [{"category": "Title", "text": "Rubrik", "page": 38, "metadata": {}},

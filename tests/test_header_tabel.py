@@ -376,3 +376,58 @@ def test_sel_panjang_di_baris_mayoritas_kosong_tetap_bukti_data():
     p = deteksi_header([["", "", "x" * 120, ""], ["1", "2", "3", "4"]], ada_th=True,
                        maks_panjang_sel=80)
     assert p.aturan == "e-panjang/markup" and membuktikan_data(p)
+
+
+# ─── rubrik 37->38, 38->39, 39->40: judul tahap satu sel yang PANJANG ────────
+# Uji sebelumnya memakai judul 56 karakter, di bawah batas 80, sehingga tidak
+# pernah menyentuh aturan (e). Panjang di bawah mengikuti korpus.
+
+TAHAP_99 = ("Tahap 1: Pembinaan dan Penyusunan Usulan Konsep Desain Program "
+            "Kerja Mahasiswa Kuliah Kerja Nyata Tematik")[:96] + "..."
+TAHAP_82 = "Tahap 2: Pelaksanaan Kegiatan Lapangan dan Pendampingan Masyarakat Desa Binaan KKN"
+
+
+@pytest.mark.unit
+def test_panjang_judul_tahap_sesuai_korpus():
+    assert len(TAHAP_99) == 99 and len(TAHAP_82) == 82
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("judul", [TAHAP_99, TAHAP_82])
+def test_judul_tahap_satu_sel_panjang_netral_bukan_e_panjang(judul):
+    p = deteksi_header([[judul], ["Persiapan"]], ada_th=True, maks_panjang_sel=80)
+    assert p.aturan == "a-bentuk/markup", p.aturan
+    assert not membuktikan_data(p)
+
+
+@pytest.mark.unit
+def test_rubrik_38_39_40_header_aktivitas_tetap_diwariskan():
+    """38->39: kepala judul tahap 99 karakter; 39->40 harus mengulang header
+    Aktivitas/Subaktivitas yang sah."""
+    def jalan(potongan):
+        k, out = None, []
+        for cid, t in potongan:
+            p = deteksi_header(t.baris, t.ada_th, t.ada_thead, maks_panjang_sel=80) if t else None
+            k = lanjutkan_rantai(k, cid, t, p)
+            out.append(k)
+        return out
+    k = jalan([("rubrik_p37_c00", T([[TAHAP_82], ["Survei"]])),
+               ("rubrik_p38_c08", T([[TAHAP_99], ["Persiapan"]])),
+               ("rubrik_p39_c00", T(AKTIVITAS)),
+               ("rubrik_p40_c05", T([["", "", "", "", ""], ["Laporan", "1", "60", "60", "1"]]))])
+    assert k[0].status == STATUS_TIDAK_DIKETAHUI, "37->38 netral"
+    assert k[1].status == STATUS_TIDAK_DIKETAHUI, "38->39 netral, bukan mati"
+    assert k[2].status == STATUS_DIKETAHUI and k[3].header == tuple(AKTIVITAS[0])
+
+
+@pytest.mark.unit
+def test_satu_sel_angka_tetap_bukti_data_walau_satu_sel_kini_netral():
+    assert deteksi_header([["5"], ["6"]], maks_panjang_sel=80).aturan.startswith("b-numerik")
+
+
+@pytest.mark.unit
+def test_kkn_covid_berkolom_tetap_mati_oleh_e_panjang():
+    kalimat = "Mensosialisasikan Pembelajaran yang efektif pada Melakukan " + "x" * 110
+    p = deteksi_header([["", kalimat, "Keterangan"], ["1", "a", "b"]], ada_th=True,
+                       maks_panjang_sel=80)
+    assert p.aturan == "e-panjang/markup" and membuktikan_data(p)
