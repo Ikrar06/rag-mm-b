@@ -2606,3 +2606,12 @@ menghasilkan index tanpa perbaikan secara diam-diam.
 path, sha256 isi berkas, jumlah diterima/ditolak/belum ditinjau. Keputusan
 pasangan menentukan teks chunk tabel, jadi berkasnya bagian dari konfigurasi
 yang menghasilkan index — sama seperti vision cache.
+
+**Revisi urutan (setelah validasi 8690009):** baris SATU SEL dinyatakan netral
+sebelum aturan (e). Urutan final: b-numerik, c-kode, satu sel (netral),
+e-panjang, a-terisi (netral), lalu a2/d untuk fallback. Judul tahap rubrik
+"Tahap 1: Pembinaan ..." (99 karakter) dan judul 37→38 (82 karakter) sempat
+tertolak e-panjang, mematikan rantai, dan membuang header aktivitas yang sah —
+panjang satu-satunya sel bukan bukti baris data. Satu sel yang murni angka tetap
+tertangkap b-numerik lebih dulu. Uji sebelumnya melewatkannya karena memakai
+judul 56 karakter, di bawah batas; uji baru memakai panjang korpus.
