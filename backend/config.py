@@ -231,6 +231,14 @@ EMBED_EXCLUDED_METADATA_KEYS = (
     "table_group_id",
     "table_part",
     "table_header_repeated",
+    # Tahap T. teks_ocr adalah salinan teks OCR v4 untuk audit — memvektorkannya
+    # berarti chunk tabel diwakili DUA versi teks. Sisanya penanda asal.
+    "teks_ocr",
+    "table_source",
+    "table_origin",
+    "transkripsi_peringatan",
+    "image_content",
+    "render_bbox",
 )
 
 # Nama lama, dipertahankan agar impor yang ada tidak patah.
@@ -390,6 +398,17 @@ RESEARCH_EXPECTED_FLAGS: dict[str, object] = {
     # di manifest.
     "INDEX_TABLE_CONTINUATION": True,
     "TABLE_HEADER_MAX_CELL_CHARS": 80,
+    # Transkripsi tabel oleh vision (Tahap T). Prompt dan digest model dicatat
+    # di manifest (research_flags.table_transcription), bukan di sini.
+    "INDEX_TABLE_TRANSCRIPTION": True,
+    "INDEX_IMAGE_TABLE_TRANSCRIPTION": True,
+    "TABLE_TRANSCRIPTION_DPI": 200,
+    "TABLE_TRANSCRIPTION_NUM_PREDICT": 9000,
+    "TABLE_TRANSCRIPTION_NUM_CTX": 16384,
+    "TABLE_RENDER_SCAN_MARGIN": 0.025,
+    "IMAGE_CLASSIFICATION_DPI": 150,
+    "IMAGE_CLASSIFICATION_SIDE": 1024,
+    "IMAGE_CAP_MIN_OVERLAP": 0.5,
 }
 
 # Escape hatch: terima korpus gambar yang TIDAK LENGKAP. Default false.
@@ -674,3 +693,46 @@ TABLE_CONTINUATION_VISION = os.getenv(
 TABLE_CONTINUATION_PATH = os.getenv(
     "TABLE_CONTINUATION_PATH", "~/rag_mm_b_shared/table_continuation.json"
 )
+
+
+# =============================================================================
+# Transkripsi tabel oleh vision (Tahap T)
+# =============================================================================
+# Default mati: tanpa kedua flag, ekstraksi dan chunking identik dengan v4.
+# Menyalakannya MEWAJIBKAN re-index penuh, migrasi berkas keputusan tabel
+# lanjutan, dan migrasi gold (seluruh teks chunk tabel berubah). Lihat
+# CHANGES.md, bagian "TAHAP T".
+#
+# INDEX_TABLE_TRANSCRIPTION: setiap chunk Table ditranskripsi dari area
+# render-nya; teks OCR disimpan di `teks_ocr`, raw_html TIDAK berubah (sidik).
+INDEX_TABLE_TRANSCRIPTION = os.getenv(
+    "INDEX_TABLE_TRANSCRIPTION", "false"
+).lower() == "true"
+
+# INDEX_IMAGE_TABLE_TRANSCRIPTION: klasifikasi gambar (tabel/cap/lainnya +
+# memuat_tabel_data) lalu perlakuan: buang cap di atas tabel, transkripsi
+# gambar-tabel, narasi+tabel untuk gambar campuran. Dipisah dari flag di atas
+# supaya efek keduanya dapat dibandingkan sendiri-sendiri.
+INDEX_IMAGE_TABLE_TRANSCRIPTION = os.getenv(
+    "INDEX_IMAGE_TABLE_TRANSCRIPTION", "false"
+).lower() == "true"
+
+# 200, bukan 150: akurasi angka di halaman digital identik (median 1,0), di
+# halaman pindai lebih baik (KKN p95: 4 angka tak ditemukan -> 2), biaya +7%.
+TABLE_TRANSCRIPTION_DPI = int(os.getenv("TABLE_TRANSCRIPTION_DPI", "200"))
+# Di atas saran alat ukur (8.821 = rasio token/karakter terbesar x tabel
+# terpanjang x 1,3). Konteks terukur maksimum 4.689 + 9.000 < 16.384.
+TABLE_TRANSCRIPTION_NUM_PREDICT = int(os.getenv("TABLE_TRANSCRIPTION_NUM_PREDICT", "9000"))
+TABLE_TRANSCRIPTION_NUM_CTX = int(os.getenv("TABLE_TRANSCRIPTION_NUM_CTX", "16384"))
+# Margin area render untuk halaman pindai tanpa lapisan teks (tidak ada kata
+# untuk menarik area). p90 kelebihan kata di luar bbox tabel berlapis teks.
+TABLE_RENDER_SCAN_MARGIN = float(os.getenv("TABLE_RENDER_SCAN_MARGIN", "0.025"))
+# Klasifikasi: area gambar dirender 150 dpi lalu diperkecil ke sisi terpanjang
+# 1024. Di 512 logo BSrE pada cap UKT hanya ~20 px dan cap yang sama tergolong
+# tidak konsisten antarhalaman. Nilai ini yang menghasilkan daftar v3 yang
+# disetujui.
+IMAGE_CLASSIFICATION_DPI = int(os.getenv("IMAGE_CLASSIFICATION_DPI", "150"))
+IMAGE_CLASSIFICATION_SIDE = int(os.getenv("IMAGE_CLASSIFICATION_SIDE", "1024"))
+# Cap dibuang hanya bila bagian luasnya di dalam Table >= nilai ini. Lihat
+# klasifikasi_gambar.AMBANG_CAP untuk asal angkanya.
+IMAGE_CAP_MIN_OVERLAP = float(os.getenv("IMAGE_CAP_MIN_OVERLAP", "0.5"))

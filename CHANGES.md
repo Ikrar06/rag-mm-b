@@ -2668,3 +2668,73 @@ Image processor qwen3vl Ollama panic (HTTP 500) bila sisi gambar < `patch_size`
 pengecilan berhenti di batas dan sisanya ditambal putih. 22 dari 1.441 gambar
 terkena pada pengecilan ke 512 px; nol pada ukuran asli, jadi deskripsi v4
 (maksimum 1.280 px) tidak pernah terkena.
+
+## Implementasi produksi (di belakang flag, default mati)
+
+| flag / parameter | nilai riset | asal |
+|---|---|---|
+| `INDEX_TABLE_TRANSCRIPTION` | true | setiap element Table ditranskripsi |
+| `INDEX_IMAGE_TABLE_TRANSCRIPTION` | true | klasifikasi gambar v3 + perlakuan |
+| `TABLE_TRANSCRIPTION_DPI` | 200 | akurasi pindaian lebih baik dari 150, biaya +7% |
+| `TABLE_TRANSCRIPTION_NUM_PREDICT` | 9000 | di atas saran 8.821 |
+| `TABLE_TRANSCRIPTION_NUM_CTX` | 16384 | konteks terukur maks 4.689 + 9.000 |
+| `TABLE_RENDER_SCAN_MARGIN` | 0.025 | p90 kata terpotong tepi bbox |
+| `IMAGE_CLASSIFICATION_DPI` / `_SIDE` | 150 / 1024 | konfigurasi daftar v3 yang disetujui |
+| `IMAGE_CAP_MIN_OVERLAP` | 0.5 | di dalam celah 0,023 → 0,948 |
+
+Semuanya di `RESEARCH_EXPECTED_FLAGS` dan `.env.research`. Manifest
+(`research_flags.table_transcription`) mencatat sha256 ketiga prompt
+(`table_transcription`, `table_transcription_all`, `image_class_v3`), digest
+model, batas ukuran gambar dari `/api/show`, dan hitungan run (ditranskripsi,
+jatuh ke OCR, gagal, terpotong, per perlakuan gambar, cache hit).
+
+Pembuangan cap ada di flag GAMBAR, bukan flag tabel, karena butuh klasifikasi.
+
+### Kontrak kolom untuk tim evaluasi
+
+**Pada v5, `text_content` dan `text_as_html` chunk tabel TIDAK lagi berisi hal
+yang sama.**
+
+| kolom | isi di v5 | dipakai untuk |
+|---|---|---|
+| `text_content` | transkripsi vision (Markdown), yang di-embed | **evaluasi, termasuk RCAA** |
+| `text_as_html` | HTML OCR asli, tidak berubah dari v4 | identitas tabel (sidik) saja |
+| `teks_ocr` | teks chunk versi OCR | audit |
+| `table_source` | `vision_transcription` / `ocr_fallback` | memisahkan tabel yang jatuh ke OCR |
+| `transkripsi_peringatan` | `rujukan=…`, `angka_tak_ditemukan:…`, `baris_berturut_identik:…`, `gagal:…` | penanda, TIDAK pernah mengubah teks |
+| `table_origin` | `image` untuk gambar-tabel | — |
+| `image_content` | `narasi` / `tabel` / `narasi+tabel` | stratifikasi chunk asal gambar |
+| `render_bbox` | area yang dirender (bbox + kata terpotong) | audit area render |
+
+Semua kolom Tahap T dikecualikan dari embedding.
+
+### Perilaku yang perlu diketahui
+
+- **Area render.** bbox Table ditarik ke kata utuh yang beririsan (juga di
+  lapisan OCR pindaian), mengabaikan kata > 3× median tinggi (teks vertikal
+  kalender, sampah OCR) dan kata milik Table atau gambar lain di halaman yang
+  sama. Kata milik chunk TEKS tetap menarik: aturan penuh membuat 349 tabel
+  tetap terpotong (termasuk kolom BESARAN standar-biaya) dan menyentuh 30 item
+  gold, sementara duplikasinya menyentuh 1 item gold. Pindaian tanpa lapisan
+  teks: margin tetap 2,5%.
+- **Tabel lanjutan.** Kriteria header dinilai atas transkripsi (sebagai markup:
+  a2/d dilewati, bukti data b/c/e tetap berlaku). Header rantai MENGGANTI baris
+  header kosong potongan B; baris pertama B yang terisi diturunkan jadi data;
+  jumlah kolom berbeda tidak disisipkan. Sidik tetap dari raw_html OCR.
+- **Gambar-tabel dikecualikan dari rantai** dan dari jangkar posisi migrasi
+  berkas keputusan (`scripts/lib/keputusan_migrasi.posisi_tabel`).
+- **Kegagalan.** Galat 5xx/timeout dicoba ulang 3× (5/15/45 s). Yang tetap gagal,
+  terpotong, atau tak terurai: tabel jatuh ke teks OCR, gambar ke narasi,
+  alasannya di `transkripsi_peringatan`, TIDAK di-cache.
+- **Pengaman ukuran gambar** juga di deskripsi dan adjudikasi. Gambar yang sudah
+  aman dikirim byte demi byte; isi cache v4 tidak berubah.
+- **Pergeseran chunk_id.** Hanya di halaman tempat cap dibuang (UKT p5–p10):
+  chunk SETELAH cap di halaman itu bergeser satu. Gambar-tabel dan narasi+tabel
+  menempati posisi chunk gambarnya, tidak menggeser apa pun.
+
+### Keterbatasan klasifikasi yang diterima
+
+- `pedoman-penyusunan-laporan-keuangan-…-haanuddin_p168_c05` (surat pernyataan
+  syarat dan ketentuan DIPA) tergolong `tabel` dengan `memuat_tabel_data` true,
+  padahal harapannya `lainnya`. Diterima sebagai satu salah klasifikasi yang
+  tercatat: gambar itu ditranskripsi, narasinya tidak dibuat.

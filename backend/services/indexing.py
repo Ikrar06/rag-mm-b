@@ -64,6 +64,15 @@ _STRUCTURAL_METADATA_KEYS = (
     # Hanya ada bila chunk merentang lebih dari satu halaman. Ketiadaannya
     # berarti page_number sudah memerikan seluruh chunk.
     "page_span",
+    # Tahap T — hanya terisi saat INDEX_TABLE_TRANSCRIPTION /
+    # INDEX_IMAGE_TABLE_TRANSCRIPTION aktif. Semuanya dikecualikan dari
+    # embedding (config.EMBED_EXCLUDED_METADATA_KEYS).
+    "teks_ocr",
+    "table_source",
+    "table_origin",
+    "transkripsi_peringatan",
+    "image_content",
+    "render_bbox",
 )
 
 
@@ -135,6 +144,34 @@ def _check_table_continuation() -> None:
           f"  belum ditinjau {r['n_belum_ditinjau']}  tidak terpetakan {r['tidak_terpetakan']}")
 
 
+def _check_table_transcription() -> None:
+    """Tolak run bila transkripsi tabel aktif tapi prasyaratnya tidak ada.
+
+    Dijalankan sebelum PDF pertama: kegagalan yang baru muncul di jam ke-10
+    reindex berarti mengulang semuanya. Berlaku di luar RESEARCH_MODE juga.
+    """
+    from backend.services import table_transcription
+    if not table_transcription.aktif():
+        return
+    masalah = []
+    if config.PDF_EXTRACTION_STRATEGY != "hi_res":
+        masalah.append(f"PDF_EXTRACTION_STRATEGY={config.PDF_EXTRACTION_STRATEGY!r}: element "
+                       "Table dan bbox hanya ada di jalur hi_res")
+    if config.INDEX_IMAGE_TABLE_TRANSCRIPTION and not config.INDEX_PERSIST_IMAGES:
+        masalah.append("INDEX_IMAGE_TABLE_TRANSCRIPTION butuh INDEX_PERSIST_IMAGES: klasifikasi "
+                       "dicatat per image_id di images.jsonl")
+    if config.TABLE_TRANSCRIPTION_NUM_CTX < config.TABLE_TRANSCRIPTION_NUM_PREDICT:
+        masalah.append("TABLE_TRANSCRIPTION_NUM_CTX lebih kecil dari NUM_PREDICT")
+    if masalah:
+        raise ValueError("Transkripsi tabel tidak dapat dijalankan:\n  - " + "\n  - ".join(masalah))
+    from backend.services.vision_io import batas_model
+    b = batas_model()       # RuntimeError bila model tidak terjangkau / tanpa model_info
+    print(f"TRANSKRIPSI TABEL  model={b['model']} ollama={b['ollama']} "
+          f"sisi_min={b['sisi_min']} ({b['patch_size']}x{b['spatial_merge_size']})")
+    for varian, sha in table_transcription.PROMPT_SHA.items():
+        print(f"  prompt {varian:<26}{sha[:16]}")
+
+
 def _check_research_mode() -> None:
     """Tolak run bila RESEARCH_MODE aktif tapi ada flag yang tidak sesuai daftar beku.
 
@@ -193,10 +230,18 @@ def _check_vision_cache() -> None:
     # prompt berbeda dan karenanya prompt_sha256 berbeda. Tanpa penyaringan ini,
     # menyalakan TABLE_CONTINUATION_VISION membuat gerbang ini menolak run
     # dengan alasan "konfigurasi vision asing" — padahal modelnya sama.
+    #
+    # Varian Tahap T (transkripsi dan klasifikasi) diperiksa terhadap prompt
+    # MASING-MASING: prompt transkripsi berbeda dari prompt deskripsi bukan
+    # masalah, tapi dua prompt transkripsi berbeda di satu cache berarti tabel
+    # korpus disalin oleh konfigurasi yang berbeda-beda.
+    from backend.services.table_transcription import PROMPT_SHA as prompt_tahap_t
+    prompt_per_varian = {vision_cache.VARIANT_NARRATIVE: prompt_kini, **prompt_tahap_t}
     asing = [
         c for c in vision_cache.configurations()
-        if c.get("variant") == vision_cache.VARIANT_NARRATIVE
-        and (c["vision_model_digest"] != digest_kini or c["prompt_sha256"] != prompt_kini)
+        if c.get("variant") in prompt_per_varian
+        and (c["vision_model_digest"] != digest_kini
+             or c["prompt_sha256"] != prompt_per_varian[c["variant"]])
     ]
     if not asing:
         return
@@ -503,6 +548,9 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
     _check_vision_reachable()
     _check_vision_cache()
     _check_table_continuation()
+    _check_table_transcription()
+    from backend.services import table_transcription
+    table_transcription.reset_stats()
 
     target_dir = Path(data_dir or DATA_DIR)
 

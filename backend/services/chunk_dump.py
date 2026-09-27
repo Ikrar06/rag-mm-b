@@ -61,6 +61,9 @@ _CSV_COLUMNS = [
     "has_table_html",
     "table_html_chars",
     "table_format",
+    "table_source",
+    "image_content",
+    "transkripsi_peringatan",
     "bbox",
     "section",
     "file_name",
@@ -105,6 +108,15 @@ def _table_adjudication_provenance() -> dict | None:
         return provenance()
     except Exception as e:      # manifest tidak boleh menjatuhkan dump
         logger.warning("table_adjudication_provenance_gagal error=%s", e)
+        return {"error": str(e)}
+
+
+def _table_transcription_provenance() -> dict | None:
+    try:
+        from backend.services.table_transcription import provenance
+        return provenance()
+    except Exception as e:      # manifest tidak boleh menjatuhkan dump
+        logger.warning("table_transcription_provenance_gagal error=%s", e)
         return {"error": str(e)}
 
 
@@ -187,6 +199,18 @@ def _record(doc) -> dict:
         "file_name": meta.get("file_name"),
         "file_hash": meta.get("file_hash"),
         "extraction_strategy": meta.get("extraction_strategy"),
+        # ── Tahap T: transkripsi tabel oleh vision ──
+        # PADA V5 text_content DAN text_as_html CHUNK TABEL TIDAK LAGI BERISI
+        # HAL YANG SAMA. text_content = transkripsi vision (yang di-embed dan
+        # yang dibaca untuk evaluasi RCAA). text_as_html = HTML OCR asli, tetap
+        # ada karena sidiknya menjaga identitas tabel lintas versi. teks_ocr =
+        # teks chunk versi OCR, untuk audit. Lihat CHANGES.md "TAHAP T".
+        "table_source": meta.get("table_source"),
+        "table_origin": meta.get("table_origin"),
+        "image_content": meta.get("image_content"),
+        "transkripsi_peringatan": meta.get("transkripsi_peringatan") or None,
+        "teks_ocr": meta.get("teks_ocr"),
+        "render_bbox": meta.get("render_bbox"),
     }
 
 
@@ -216,6 +240,9 @@ def _row(rec: dict) -> dict:
         "has_table_html": "ya" if html else "",
         "table_html_chars": len(html) if html else "",
         "table_format": rec.get("table_format") or "",
+        "table_source": rec.get("table_source") or "",
+        "image_content": rec.get("image_content") or "",
+        "transkripsi_peringatan": "; ".join(rec.get("transkripsi_peringatan") or []),
         "bbox": ",".join(str(v) for v in bbox) if bbox else "",
         "section": rec.get("section") or "",
         "file_name": rec.get("file_name") or "",
@@ -242,6 +269,8 @@ _IMAGE_CSV_COLUMNS = [
     "has_narrative",
     "narrative_preview",
     "source_file",
+    "perlakuan",
+    "image_content",
     # ── kolom kosong untuk anotasi manusia ──
     "visual_type",
     "verdict",
@@ -272,6 +301,16 @@ def _image_record(img: dict) -> dict:
         "width": img.get("width"),
         "height": img.get("height"),
         "source_file": img.get("source_file"),
+        # ── Tahap T: klasifikasi gambar dan perlakuannya ──
+        # perlakuan: buang (cap BSrE di atas tabel), transkripsi (jadi chunk
+        # Table, table_origin=image), narasi+tabel, narasi. Label klasifikasi
+        # "cap" juga mencakup logo dan kode QR — jangan dipakai membuang gambar
+        # tanpa syarat tumpang tindih (CHANGES.md "TAHAP T").
+        "klasifikasi_jenis": img.get("klasifikasi_jenis"),
+        "memuat_tabel_data": img.get("memuat_tabel_data"),
+        "rasio_tumpang_tabel": img.get("rasio_tumpang_tabel"),
+        "perlakuan": img.get("perlakuan"),
+        "image_content": img.get("image_content"),
     }
 
 
@@ -294,6 +333,8 @@ def _image_row(img: dict) -> dict:
         "has_narrative": "ya" if narrative else "",
         "narrative_preview": " ".join(narrative.split())[:_PREVIEW_CHARS],
         "source_file": img.get("source_file") or "",
+        "perlakuan": img.get("perlakuan") or "",
+        "image_content": img.get("image_content") or "",
         "visual_type": "",
         "verdict": "",
         "catatan_reviewer": "",
@@ -430,6 +471,10 @@ def build_manifest(run_id: str, reports: dict[str, dict], n_chunks: int,
             # berpotensi mengubah putusan, jadi dua run dengan DPI berbeda
             # tidak dapat dibandingkan begitu saja.
             "table_adjudication": _table_adjudication_provenance(),
+            # Prompt (sha256 ketiganya), DPI, num_predict, ambang cap, batas
+            # ukuran gambar model, dan hitungan run: ditranskripsi, jatuh ke
+            # OCR, gagal, terpotong, per perlakuan gambar.
+            "table_transcription": _table_transcription_provenance(),
             "INDEX_STRUCTURAL_METADATA": config.INDEX_STRUCTURAL_METADATA,
             # Tidak diminta eksplisit, tapi WAJIB dicatat: menggeser batas chunk
             # teks di seluruh dokumen, bukan sekadar menambah chunk tabel.
