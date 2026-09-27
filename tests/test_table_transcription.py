@@ -24,7 +24,7 @@ from backend.services import table_transcription as tt  # noqa: E402
 from backend.services import vision_cache, vision_io  # noqa: E402
 from backend.services.klasifikasi_gambar import PROMPT_KLASIFIKASI  # noqa: E402
 from backend.services.transkripsi_murni import (  # noqa: E402
-    PROMPT_TRANSKRIPSI, PROMPT_TRANSKRIPSI_SEMUA,
+    PROMPT_KOREKSI_KOLOM, PROMPT_TRANSKRIPSI, PROMPT_TRANSKRIPSI_SEMUA,
 )
 
 BATAS = {"model": "m", "ollama": "0.13.0", "patch_size": 16, "spatial_merge_size": 2,
@@ -36,12 +36,13 @@ class Model:
     """Model palsu: jawaban per jenis prompt, diambil berurutan."""
 
     def __init__(self):
-        self.jawab = {PROMPT_KLASIFIKASI: [], PROMPT_TRANSKRIPSI: [], PROMPT_TRANSKRIPSI_SEMUA: []}
+        self.jawab = {PROMPT_KLASIFIKASI: [], PROMPT_TRANSKRIPSI: [], PROMPT_TRANSKRIPSI_SEMUA: [],
+                      "koreksi": []}
         self.panggilan = []
 
     def __call__(self, png, prompt, *, num_predict, num_ctx):
         self.panggilan.append((prompt, num_predict))
-        x = self.jawab[prompt].pop(0)
+        x = self.jawab[prompt if prompt in self.jawab else "koreksi"].pop(0)
         if isinstance(x, Exception):
             raise x
         teks, alasan = x if isinstance(x, tuple) else (x, "stop")
@@ -227,7 +228,8 @@ def test_provenance_mencatat_prompt_dan_hitungan(lingkungan, pdf):
     model.jawab[PROMPT_TRANSKRIPSI] = [MD]
     tt.proses([tabel_el()], pdf)
     p = tt.provenance()
-    assert set(p["prompt_sha256"]) == {tt.VARIANT_TABEL, tt.VARIANT_TABEL_SEMUA, tt.VARIANT_KLASIFIKASI}
+    assert set(p["prompt_sha256"]) == {tt.VARIANT_TABEL, tt.VARIANT_TABEL_SEMUA,
+                                       tt.VARIANT_KLASIFIKASI, tt.VARIANT_KOREKSI}
     assert p["render_dpi"] == 72 and p["cap_min_overlap"] == config.IMAGE_CAP_MIN_OVERLAP
     assert p["hitungan"]["tabel_ditranskripsi"] == 1 and p["batas_gambar"] == BATAS
 
@@ -250,3 +252,77 @@ def test_halaman_terpilih_membatasi_pemrosesan(lingkungan, pdf):
     els = [tabel_el(), {**tabel_el(), "page": 2}]
     keluar, _ = tt.proses(els, pdf, halaman_terpilih={2})
     assert keluar == els and model.panggilan == []     # halaman 2 tidak ada di PDF 1 halaman
+
+
+# ─── koreksi kolom: kasus UKT p5 ─────────────────────────────────────────────
+
+KEL = [f"KELROMPOK {r}" for r in ("I", "II", "III", "IV", "V", "VI", "VII", "VIII")]
+NILAI = ["500,000", "1,000,000", "2,000,000", "3,000,000", "4,000,000", "5,000,000",
+         "6,000,000", "8,000,000"]
+DEPAN = ["1", "S1", "Ekonomi Pembangunan", "Ekonomi dan Bisnis", "16,474,000"]
+
+
+def md_dari(header, *data):
+    baris = [header, ["---"] * len(header), *data]
+    return "\n".join("| " + " | ".join(b) + " |" for b in baris)
+
+
+# Transkripsi uji 10 tabel: "UKT PER SEMESTER" jadi kolom sendiri -> header 14, data 13;
+# 500,000 jatuh di bawah "UKT PER SEMESTER", KELROMPOK VIII kosong.
+UKT_SALAH = md_dari(["NO", "JENJANG", "PROGRAM STUDI", "FAKULTAS", "BIAYA KULIAH TUNGGAL",
+                     "UKT PER SEMESTER", *KEL], DEPAN + NILAI)
+UKT_BENAR = md_dari(["NO", "JENJANG", "PROGRAM STUDI", "FAKULTAS", "BIAYA KULIAH TUNGGAL",
+                     *[f"UKT PER SEMESTER {k}" for k in KEL]], DEPAN + NILAI)
+
+
+def test_ukt_p5_kolom_bergeser_dikoreksi(lingkungan, pdf):
+    model, simpanan = lingkungan
+    model.jawab[PROMPT_TRANSKRIPSI] = [UKT_SALAH]
+    model.jawab["koreksi"] = [UKT_BENAR]
+    (el,), _ = tt.proses([tabel_el()], pdf)
+    assert el["text"] == UKT_BENAR
+    assert not any(t.startswith("kolom_tidak_konsisten") for t in el["metadata"]["transkripsi_peringatan"])
+    koreksi = model.panggilan[1][0]
+    assert "header punya 14 sel, tetapi baris data punya 13 sel" in koreksi
+    assert "UKT PER SEMESTER KELOMPOK I" in koreksi
+    h = tt.provenance()["hitungan"]
+    assert h["kolom_tidak_konsisten_awal"] == 1 and h["koreksi_kolom_berhasil"] == 1
+    assert "kolom_tidak_konsisten_akhir" not in h
+    assert "kolom_tidak_konsisten_awal=1" in tt.ringkasan_run()
+    assert "koreksi_kolom_berhasil=1" in tt.ringkasan_run()
+    assert "kolom_tidak_konsisten_akhir=0" in tt.ringkasan_run()
+    assert len(simpanan) == 2                        # kedua jawaban sah di-cache
+    tt.proses([tabel_el()], pdf)
+    assert len(model.panggilan) == 2                 # run ulang: semua dari cache
+
+
+def test_koreksi_gagal_simpan_terbaik_dan_tandai(lingkungan, pdf):
+    model, _ = lingkungan
+    lebih_buruk = md_dari(["A", "B", "C"], ["1", "2"], ["3", "4"])
+    model.jawab[PROMPT_TRANSKRIPSI] = [md_dari(["A", "B", "C"], ["1", "2", "3"], ["4", "5"])]
+    model.jawab["koreksi"] = [lebih_buruk]
+    (el,), _ = tt.proses([tabel_el()], pdf)
+    assert el["text"].endswith("| 4 | 5 |") and "| 1 | 2 | 3 |" in el["text"]   # yang pertama
+    assert el["metadata"]["table_source"] == "vision_transcription"            # bukan OCR
+    assert "kolom_tidak_konsisten:3/2" in el["metadata"]["transkripsi_peringatan"]
+    h = tt.provenance()["hitungan"]
+    assert h["kolom_tidak_konsisten_awal"] == 1 and h["kolom_tidak_konsisten_akhir"] == 1
+
+
+def test_koreksi_gagal_jaringan_tetap_transkripsi_pertama(lingkungan, pdf):
+    model, _ = lingkungan
+    model.jawab[PROMPT_TRANSKRIPSI] = [UKT_SALAH]
+    model.jawab["koreksi"] = [vision_io.GagalVision("4 percobaan")]
+    (el,), _ = tt.proses([tabel_el()], pdf)
+    assert el["text"] == UKT_SALAH and el["metadata"]["table_source"] == "vision_transcription"
+    assert any(t.startswith("kolom_tidak_konsisten:14/13") for t in el["metadata"]["transkripsi_peringatan"])
+
+
+def test_gambar_tabel_juga_dikoreksi(lingkungan, pdf):
+    model, _ = lingkungan
+    model.jawab[PROMPT_KLASIFIKASI] = ['{"jenis": "tabel", "memuat_tabel_data": true}']
+    model.jawab[PROMPT_TRANSKRIPSI] = [UKT_SALAH]
+    model.jawab["koreksi"] = [UKT_BENAR]
+    (el,), _ = tt.proses([gambar_el(BBOX_GAMBAR)], pdf)
+    assert el["category"] == "Table" and el["text"] == UKT_BENAR
+    assert el["metadata"]["transkripsi_peringatan"] == []

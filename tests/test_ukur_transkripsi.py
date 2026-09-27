@@ -604,3 +604,31 @@ def test_label_klasifikasi():
     assert Klasifikasi("lainnya", True).label == "lainnya+tabel"
     assert Klasifikasi("tabel", False).label == "tabel"
     assert Klasifikasi(None, None).label == "None"
+
+
+# ── penanda angka per sel (uji 10 tabel) ────────────────────────────────────
+
+from backend.services.transkripsi_murni import ada_di_rujukan, angka_sel  # noqa: E402
+
+
+def test_nomor_kolom_tidak_tersambung_jadi_angka_palsu():
+    # jadwal-retensi p50: baris nomor kolom -> dulu "angka_tak_ditemukan:123457"
+    baris = (("No.", "SERIES", "AKTIF", "INAKTIF", "KET", "X"), ("1", "2", "3", "4", "5", "7"))
+    assert peringatan(baris, "No. SERIES/JENIS ARSIP AKTIF INAKTIF 1 2 3 4 5") == ()
+    # academic-calendar p10: tanggal 1-9 -> dulu "angka_tak_ditemukan:123456789"
+    kal = (("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"), ("1", "2", "3", "4", "5", "6", "7"),
+           ("8", "9", "10", "11", "12", "13", "14"))
+    assert peringatan(kal, "Sun Mon 1 2 3 4 5 6 7 8 9 10 11 12 13 14") == ()
+
+
+def test_rujukan_ocr_berspasi_tetap_cocok():
+    # bagan-akun p10: lapisan OCR "4 2 6 1 1 1"; laporan-keuangan p23 berspasi per digit
+    assert peringatan((("Kode", "Uraian"), ("426111", "PENDAPATAN APBD")),
+                      "4 2 6 1 1 1 PENDAPATAN APBD PROVINS!") == ()
+    assert ada_di_rujukan("28111676194", "Jumlah 2 8 . 1 1 1 . 6 7 6 . 1 9 4", frozenset())
+    assert not ada_di_rujukan("426111", "4261119 x", frozenset())       # bukan bagian angka lain
+    assert peringatan((("A", "B"), ("426112", "x")), "4 2 6 1 1 1") == ("angka_tak_ditemukan:426112",)
+
+
+def test_angka_sel_tanpa_penyatuan():
+    assert angka_sel("1 2 3 dan 1.500.000") == {"1500000"}

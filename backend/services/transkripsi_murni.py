@@ -43,6 +43,52 @@ tabel data: tombol, menu, paragraf, panah, logo.
 Keluaran HANYA tabel Markdown. Tanpa penjelasan, tanpa pagar kode."""
 
 
+# Prompt koreksi: dipakai SEKALI bila jumlah sel header tidak sama dengan baris
+# data. Terukur di uji 10 tabel: UKT p5 (header induk "UKT PER SEMESTER" jadi
+# kolom sendiri, semua nilai bergeser satu kolom), jadwal-retensi p50 (AKTIF/
+# INAKTIF tidak dipecah, sub-butir a. / 1) jadi sel sendiri), standar-biaya
+# 2025 p9 (kode 1.7. dan huruf a-r jadi kolom sendiri). Templat; {x} dan {y}
+# diisi per tabel. prompt_sha256 di cache dan manifest adalah sha TEMPLAT —
+# nilai x/y ditentukan transkripsi pertama atas gambar yang sama.
+PROMPT_KOREKSI_KOLOM = """Transkripsikan tabel pada gambar ini menjadi SATU tabel Markdown.
+Transkripsi sebelumnya SALAH: baris header punya {x} sel, tetapi baris data punya {y} sel.
+Kolom bergeser sehingga nilai jatuh di bawah judul kolom yang salah. Perbaiki:
+A. Header bertingkat: JANGAN jadikan header induk kolom tersendiri. Gabungkan
+   induk dengan SETIAP anaknya dalam satu sel, dipisah spasi. Contoh: induk
+   "UKT PER SEMESTER" di atas "KELOMPOK I" dan "KELOMPOK II" menjadi dua sel
+   "UKT PER SEMESTER KELOMPOK I" dan "UKT PER SEMESTER KELOMPOK II".
+B. Hierarki butir (1.7., a, 1), -) ditulis di DALAM sel kolom uraiannya,
+   di depan teksnya, BUKAN sebagai kolom tersendiri.
+C. Setiap baris, termasuk header, harus punya jumlah sel yang SAMA. Sel tanpa
+   isi ditulis kosong.
+Aturan lain tetap berlaku:
+1. Salin teks dan angka PERSIS. Jangan menghitung, menjumlah, membulatkan,
+   atau menambah nilai yang tidak terlihat.
+2. Sel gabungan yang berlaku untuk beberapa baris: salin nilainya ke SETIAP baris.
+3. Abaikan cap, logo, stempel, catatan tanda tangan elektronik.
+4. Potongan tabel TANPA baris judul kolom: baris header berisi sel kosong.
+5. Karakter | di dalam sel ditulis \\|.
+Keluaran HANYA tabel Markdown. Tanpa penjelasan, tanpa pagar kode."""
+
+
+def prompt_koreksi_kolom(x: int, ys) -> str:
+    return PROMPT_KOREKSI_KOLOM.format(x=x, y=" atau ".join(str(y) for y in ys))
+
+
+def kolom_tidak_konsisten(baris) -> tuple[int, tuple[int, ...]] | None:
+    """(sel header, jumlah sel baris data yang berbeda) bila tidak konsisten."""
+    if not baris:
+        return None
+    x = len(baris[0])
+    beda = sorted({len(b) for b in baris[1:] if len(b) != x})
+    return (x, tuple(beda)) if beda else None
+
+
+def baris_meleset(baris) -> int:
+    """Jumlah baris data yang jumlah selnya tidak sama dengan header."""
+    return sum(len(b) != len(baris[0]) for b in baris[1:]) if baris else 0
+
+
 _PAGAR = re.compile(r"^\s*```[a-zA-Z]*\s*$")
 _BARIS_PEMISAH = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$")
 _ANGKA = re.compile(r"\d[\d.,]*\d|\d")
@@ -97,26 +143,62 @@ def angka_dalam(teks: str | None) -> frozenset[str]:
     return frozenset(hasil)
 
 
+def angka_sel(teks: str | None) -> frozenset[str]:
+    """Angka >= 2 digit di SATU sel, tanpa menyatukan digit berspasi.
+
+    Digit tunggal di sel berbeda tidak boleh tersambung: nomor kolom "1 | 2 | 3
+    | 4 | 5 | 7" (jadwal-retensi p50) dan tanggal 1-9 (academic-calendar p10)
+    pernah menjadi "123457" dan "123456789" karena sel digabung dulu baru
+    digit tunggal berspasi disatukan.
+    """
+    hasil = set()
+    for m in _ANGKA.findall(teks or ""):
+        digit = re.sub(r"[.,]", "", m)
+        if len(digit) >= 2:
+            hasil.add(digit)
+    return frozenset(hasil)
+
+
+def ada_di_rujukan(angka: str, rujukan: str, rujukan_angka: frozenset[str]) -> bool:
+    """Angka ada di rujukan, dengan spasi dan pemisah antar digit rujukan diabaikan.
+
+    Lapisan OCR pindaian menulis kode 426111 sebagai "4 2 6 1 1 1" (bagan-akun
+    p10) dan 28.111.676.194 sebagai "2 8 1 1 1 6 7 6 1 9 4" (laporan-keuangan
+    p23). Yang dilonggarkan RUJUKANNYA, bukan transkripsinya.
+    """
+    if angka in rujukan_angka:
+        return True
+    pola = r"(?<![\d])" + r"[\s.,]*".join(angka) + r"(?![\d])"
+    return re.search(pola, rujukan or "") is not None
+
+
 def peringatan(baris, teks_rujukan: str) -> tuple[str, ...]:
     """Penanda pengecekan silang. Tidak pernah mengubah transkripsi.
 
-    - angka_tak_ditemukan: angka transkripsi yang tidak ada di teks rujukan.
+    - angka_tak_ditemukan: angka sel transkripsi yang tidak ada di rujukan.
     - baris_berturut_identik: seluruh baris sama berturutan — tanda model
       berulang. (label_berturut_sama dibuang: terukur di standar biaya p9,
       53-54 kemunculan, semuanya sel gabungan yang sah disalin ke tiap baris.)
+    - kolom_tidak_konsisten:x/y: jumlah sel header x, baris data y — nilai
+      bisa berada di bawah judul kolom yang salah.
     """
     if not baris:
         return ()
     data = baris[1:]
-    rujukan = angka_dalam(teks_rujukan)
-    tak_ada = sorted(angka_dalam(" ".join(" ".join(b) for b in baris)) - rujukan)
+    rujukan_angka = angka_sel(teks_rujukan)
+    milik = set().union(*(angka_sel(s) for b in baris for s in b))
+    tak_ada = sorted(n for n in milik if not ada_di_rujukan(n, teks_rujukan, rujukan_angka))
     hasil = []
     if tak_ada:
         hasil.append("angka_tak_ditemukan:" + ",".join(tak_ada[:10]))
     identik = [i for i in range(1, len(data)) if any(data[i]) and data[i] == data[i - 1]]
     if identik:
         hasil.append(f"baris_berturut_identik:{len(identik)}")
+    kolom = kolom_tidak_konsisten(baris)
+    if kolom:
+        hasil.append(f"kolom_tidak_konsisten:{kolom[0]}/{','.join(map(str, kolom[1]))}")
     return tuple(hasil)
+
 
 def _blok_berpipa(raw: str | None) -> list[list[str]]:
     blok: list[list[str]] = []

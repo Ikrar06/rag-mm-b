@@ -685,6 +685,13 @@ def index_documents(data_dir: str | None = None, force: bool = False) -> int:
         logger.warning("no_chunks_produced")
         return 0
 
+    # Hitungan transkripsi dicetak SEBELUM embedding: tabel yang jatuh ke OCR
+    # atau kolomnya tetap tidak konsisten harus terlihat walau embedding gagal.
+    # Angka yang sama tercatat di manifest (research_flags.table_transcription).
+    from backend.services import table_transcription
+    if table_transcription.aktif():
+        print(f"TRANSKRIPSI TABEL  {table_transcription.ringkasan_run()}")
+
     # Step 1b: Dump untuk tinjauan tim evaluasi — SEBELUM embedding, dengan
     # Document yang sama persis yang akan dikirim ke _embed_and_store.
     # Kegagalan menulis dump tidak boleh menjatuhkan indexing.

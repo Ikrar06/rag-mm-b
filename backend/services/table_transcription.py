@@ -33,8 +33,9 @@ from backend.services.klasifikasi_gambar import (
     PROMPT_KLASIFIKASI, Klasifikasi, perlakuan_gambar, urai_klasifikasi,
 )
 from backend.services.transkripsi_murni import (
-    PROMPT_TRANSKRIPSI, PROMPT_TRANSKRIPSI_SEMUA, bersihkan, bersihkan_semua,
-    jenis_halaman, perluas_bbox, peringatan, rasio_tumpang, urai_markdown,
+    PROMPT_KOREKSI_KOLOM, PROMPT_TRANSKRIPSI, PROMPT_TRANSKRIPSI_SEMUA, baris_meleset,
+    bersihkan, bersihkan_semua, jenis_halaman, kolom_tidak_konsisten, perluas_bbox,
+    peringatan, prompt_koreksi_kolom, rasio_tumpang, urai_markdown,
 )
 from backend.services.vision_io import GagalVision, panggil, siapkan_png
 
@@ -43,10 +44,13 @@ logger = logging.getLogger(__name__)
 VARIANT_TABEL = "table_transcription"
 VARIANT_TABEL_SEMUA = "table_transcription_all"
 VARIANT_KLASIFIKASI = "image_class_v3"
+VARIANT_KOREKSI = "table_transcription_fix"
 PROMPT_PER_VARIANT = {
     VARIANT_TABEL: PROMPT_TRANSKRIPSI,
     VARIANT_TABEL_SEMUA: PROMPT_TRANSKRIPSI_SEMUA,
     VARIANT_KLASIFIKASI: PROMPT_KLASIFIKASI,
+    # Templat; sha-nya yang dicatat. Lihat transkripsi_murni.PROMPT_KOREKSI_KOLOM.
+    VARIANT_KOREKSI: PROMPT_KOREKSI_KOLOM,
 }
 PROMPT_SHA = {v: hashlib.sha256(p.encode("utf-8")).hexdigest() for v, p in PROMPT_PER_VARIANT.items()}
 # JSON klasifikasi dua kunci ~20 token.
@@ -57,6 +61,14 @@ _stats: Counter = Counter()
 
 def reset_stats() -> None:
     _stats.clear()
+
+
+def ringkasan_run() -> str:
+    """Satu baris hitungan kunci untuk akhir run."""
+    kunci = ("tabel_ditranskripsi", "tabel_fallback_ocr", "kolom_tidak_konsisten_awal",
+             "koreksi_kolom_berhasil", "kolom_tidak_konsisten_akhir", "gagal_vision",
+             "terpotong", "gambar_buang", "gambar_transkripsi", "gambar_narasi+tabel")
+    return "  ".join(f"{k}={_stats.get(k, 0)}" for k in kunci)
 
 
 def aktif() -> bool:
@@ -94,17 +106,22 @@ def provenance() -> dict | None:
 # ─── Model dengan cache ───────────────────────────────────────────────────────
 
 def _tanya(png: bytes, variant: str, num_predict: int,
-           sah: Callable[[str], bool], verdict: str) -> tuple[str | None, str]:
+           sah: Callable[[str], bool], verdict: str,
+           prompt: str | None = None, kunci_tambahan: str = "") -> tuple[str | None, str]:
     """(jawaban mentah yang sah, alasan gagal). Hanya jawaban sah yang di-cache.
 
     Gagal = galat jaringan setelah coba ulang, terpotong (done_reason=length;
     tabel yang barisnya hilang tanpa jejak lebih buruk daripada teks OCR), atau
     tidak lolos `sah`. Tak satu pun masuk cache, supaya run berikutnya mencoba lagi.
+
+    `prompt`: teks prompt terisi untuk varian bertemplat (koreksi kolom). Kunci
+    cache memakai sha TEMPLAT; `kunci_tambahan` (nilai yang mengisi templat)
+    ikut ke komponen gambar kunci supaya isian berbeda tidak bertukar jawaban.
     """
     from backend.services.image_describer import vision_provenance
     img_sha = hashlib.sha256(png).hexdigest()
     digest = vision_provenance()["vision_model_digest"]
-    key = (vision_cache.make_key(img_sha, variant, PROMPT_SHA[variant], digest)
+    key = (vision_cache.make_key(img_sha + kunci_tambahan, variant, PROMPT_SHA[variant], digest)
            if vision_cache.enabled() else None)
     if key is not None:
         hit = vision_cache.get(key)
@@ -112,7 +129,7 @@ def _tanya(png: bytes, variant: str, num_predict: int,
             _stats["cache_hit"] += 1
             return hit.description, ""
     try:
-        h = panggil(png, PROMPT_PER_VARIANT[variant], num_predict=num_predict,
+        h = panggil(png, prompt or PROMPT_PER_VARIANT[variant], num_predict=num_predict,
                     num_ctx=config.TABLE_TRANSCRIPTION_NUM_CTX)
     except GagalVision as e:
         _stats["gagal_vision"] += 1
@@ -130,6 +147,43 @@ def _tanya(png: bytes, variant: str, num_predict: int,
                          vision_model_digest=digest, verdict=verdict,
                          description=h["response"])
     return h["response"], ""
+
+
+def transkripsi_satu_tabel(png: bytes) -> tuple[str | None, str]:
+    """(markdown, alasan gagal) satu tabel, dengan SATU koreksi kolom.
+
+    Bila jumlah sel header tidak sama dengan baris data, model diminta ulang
+    dengan prompt koreksi yang menyebut angkanya. Yang disimpan hasil dengan
+    baris meleset paling sedikit (seri: yang pertama). Tetap tidak konsisten:
+    TIDAK jatuh ke OCR — di UKT p5 dan standar-biaya OCR-nya lebih buruk;
+    penanda kolom_tidak_konsisten dipasang oleh peringatan().
+    """
+    raw, alasan = _tanya(png, VARIANT_TABEL, config.TABLE_TRANSCRIPTION_NUM_PREDICT,
+                         _tabel_sah, vision_cache.VERDICT_TRANSCRIBED)
+    if raw is None:
+        return None, alasan
+    md = bersihkan(raw)
+    baris = urai_markdown(md)
+    kolom = kolom_tidak_konsisten(baris)
+    if kolom is None:
+        return md, ""
+    _stats["kolom_tidak_konsisten_awal"] += 1
+    raw2, alasan2 = _tanya(png, VARIANT_KOREKSI, config.TABLE_TRANSCRIPTION_NUM_PREDICT,
+                           _tabel_sah, vision_cache.VERDICT_TRANSCRIBED,
+                           prompt=prompt_koreksi_kolom(*kolom),
+                           kunci_tambahan=f":{kolom[0]}:{','.join(map(str, kolom[1]))}")
+    if raw2 is not None:
+        md2 = bersihkan(raw2)
+        baris2 = urai_markdown(md2)
+        if baris_meleset(baris2) < baris_meleset(baris):
+            md, baris = md2, baris2
+    if kolom_tidak_konsisten(baris) is None:
+        _stats["koreksi_kolom_berhasil"] += 1
+    else:
+        _stats["kolom_tidak_konsisten_akhir"] += 1
+        logger.warning("kolom_tidak_konsisten_setelah_koreksi awal=%s koreksi=%s",
+                       kolom, alasan2 or kolom_tidak_konsisten(urai_markdown(bersihkan(raw2 or ""))))
+    return md, ""
 
 
 def _tabel_sah(raw: str) -> bool:
@@ -203,13 +257,13 @@ def transkripsi_tabel(el: dict, hal: _Halaman, milik_lain) -> dict:
                                     "transkripsi_peringatan": ["gagal:tanpa_bbox"]}}
     area = area_render(bbox, hal, milik_lain)
     png = hal.render(area, config.TABLE_TRANSCRIPTION_DPI)
-    raw, alasan = _tanya(png, VARIANT_TABEL, config.TABLE_TRANSCRIPTION_NUM_PREDICT,
-                         _tabel_sah, vision_cache.VERDICT_TRANSCRIBED)
-    if raw is None:
+    md, alasan = transkripsi_satu_tabel(png)
+    if md is None:
         _stats["tabel_fallback_ocr"] += 1
+        logger.warning("tabel_fallback_ocr halaman=%s bbox=%s alasan=%s",
+                       el.get("page"), bbox, alasan)
         return {**el, "metadata": {**meta, "table_source": "ocr_fallback", "render_bbox": area,
                                     "transkripsi_peringatan": [f"gagal:{alasan}"]}}
-    md = bersihkan(raw)
     baris = urai_markdown(md)
     label, teks_rujukan = _rujukan(hal, el.get("text") or "")
     tanda = list(peringatan(baris, teks_rujukan))
@@ -248,14 +302,28 @@ def klasifikasi(el: dict, hal: _Halaman, tabel_sehalaman) -> tuple[Klasifikasi, 
 
 def _transkripsi_gambar(el: dict, hal: _Halaman, semua: bool) -> tuple[str | None, str]:
     """(markdown, alasan gagal). `semua`: prompt setiap tabel untuk narasi+tabel."""
-    variant, sah = ((VARIANT_TABEL_SEMUA, _tabel_semua_sah) if semua
-                    else (VARIANT_TABEL, _tabel_sah))
     png = hal.render(el["metadata"]["bbox"], config.TABLE_TRANSCRIPTION_DPI)
-    raw, alasan = _tanya(png, variant, config.TABLE_TRANSCRIPTION_NUM_PREDICT,
-                         sah, vision_cache.VERDICT_TRANSCRIBED)
+    if not semua:
+        return transkripsi_satu_tabel(png)
+    raw, alasan = _tanya(png, VARIANT_TABEL_SEMUA, config.TABLE_TRANSCRIPTION_NUM_PREDICT,
+                         _tabel_semua_sah, vision_cache.VERDICT_TRANSCRIBED)
     if raw is None:
         return None, alasan
-    return "\n\n".join(bersihkan_semua(raw)) if semua else bersihkan(raw), ""
+    return "\n\n".join(bersihkan_semua(raw)), ""
+
+
+def _tanda_kolom(md: str) -> list[str]:
+    """Penanda kolom_tidak_konsisten per tabel, untuk transkripsi gambar.
+
+    Gambar tidak punya rujukan angka (tak ada lapisan teks di dalam gambar),
+    jadi hanya konsistensi kolom yang dapat diperiksa.
+    """
+    tanda = []
+    for tabel in bersihkan_semua(md) or [md]:
+        k = kolom_tidak_konsisten(urai_markdown(tabel))
+        if k:
+            tanda.append(f"kolom_tidak_konsisten:{k[0]}/{','.join(map(str, k[1]))}")
+    return tanda
 
 
 def perlakukan_gambar(el: dict, hal: _Halaman, tabel_sehalaman) -> tuple[dict | None, dict]:
@@ -279,10 +347,11 @@ def perlakukan_gambar(el: dict, hal: _Halaman, tabel_sehalaman) -> tuple[dict | 
                         "raw_html": "", "table_format": "markdown", "bbox": meta.get("bbox"),
                         "image_id": meta.get("image_id"), "table_origin": "image",
                         "table_source": "vision_transcription", "image_content": "tabel",
-                        "transkripsi_baris": baris, "transkripsi_peringatan": []}},
+                        "transkripsi_baris": baris, "transkripsi_peringatan": _tanda_kolom(md)}},
                     {**info, "image_content": "tabel"})
         return ({**el, "metadata": {**meta, "image_content": "narasi+tabel",
-                                    "transkripsi_tabel": md}},
+                                    "transkripsi_tabel": md,
+                                    "transkripsi_peringatan": _tanda_kolom(md)}},
                 {**info, "image_content": "narasi+tabel"})
     return {**el, "metadata": {**meta, "image_content": "narasi"}}, {**info, "image_content": "narasi"}
 
