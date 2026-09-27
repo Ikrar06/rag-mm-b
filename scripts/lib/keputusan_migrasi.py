@@ -33,10 +33,14 @@ def posisi_tabel(rows) -> tuple[dict, dict]:
     """(chunk_id -> posisi, posisi -> chunk_id) untuk chunk tabel.
 
     posisi = (dokumen, halaman, urutan tabel di halaman menurut chunk_index).
+
+    Gambar-tabel (table_origin="image", v5) TIDAK dihitung: di dump sebelumnya
+    ia chunk ImageDescription, jadi menghitungnya menggeser urutan tabel OCR di
+    halaman yang sama dan memetakan kunci ke tabel yang salah.
     """
     per_hal: dict[tuple, list] = {}
     for r in rows:
-        if r.get("element_type") != "Table":
+        if r.get("element_type") != "Table" or r.get("table_origin") == "image":
             continue
         cid = r.get("chunk_id")
         dok = _slug(cid)

@@ -39,7 +39,7 @@ from backend.config import (
     PDF_EXTRACT_TABLES, PDF_TABLE_MAX_CHARS,
     LLM_SUPPORTS_VISION,
 )
-from backend.services import table_continuation
+from backend.services import table_continuation, table_transcription
 
 logger = logging.getLogger(__name__)
 
@@ -575,6 +575,12 @@ def _persist_image_elements(
 
 # ─── Image description (panggil vision LLM) ───────────────────────────────────
 
+# Metadata gambar dari table_transcription yang harus bertahan melewati deskripsi.
+_KUNCI_GAMBAR_TAHAP_T = ("image_content", "transkripsi_tabel", "transkripsi_peringatan")
+# Metadata element Table dari table_transcription yang masuk ke chunk.
+_KUNCI_TABEL_TAHAP_T = ("teks_ocr", "table_source", "table_origin", "transkripsi_peringatan",
+                        "image_id", "image_content", "render_bbox")
+
 def _describe_image_elements(elements: list[dict]) -> list[dict]:
     """Untuk setiap element Image, panggil vision LLM untuk deskripsi.
 
@@ -607,11 +613,19 @@ def _describe_image_elements(elements: list[dict]) -> list[dict]:
             continue
 
         description = describe_image(image_bytes)
-        if not description:
+        tabel_gambar = el["metadata"].get("transkripsi_tabel")
+        if not description and not tabel_gambar:
             continue  # skip dekoratif atau error
 
+        # Tahap T: kunci transkripsi ikut diteruskan. Gambar narasi+tabel yang
+        # narasinya gagal tetap membawa tabelnya — isinya tidak boleh hilang
+        # karena satu dari dua panggilan gagal.
+        tahap_t = {k: el["metadata"][k] for k in _KUNCI_GAMBAR_TAHAP_T if k in el["metadata"]}
+        if not description:
+            tahap_t["transkripsi_peringatan"] = [
+                *tahap_t.get("transkripsi_peringatan", []), "gagal:narasi"]
         output.append({
-            "text": description,
+            "text": description or "",
             "category": "ImageDescription",
             "page": el["page"],
             # bbox diteruskan; image_base64 tetap dibuang di sini (gambar belum
@@ -619,6 +633,7 @@ def _describe_image_elements(elements: list[dict]) -> list[dict]:
             "metadata": {
                 "bbox": el["metadata"].get("bbox"),
                 "image_id": el["metadata"].get("image_id"),
+                **tahap_t,
             },
         })
 
@@ -1010,14 +1025,26 @@ def _chunk_elements(
                 # yang diukur RCAA di lapis 3.
                 prefiks = f"## {current_section}\n\n" if current_section else ""
                 teks_tabel = prefiks + text
-                raw_html_el = (el.get("metadata") or {}).get("raw_html")
+                meta_el = el.get("metadata") or {}
+                raw_html_el = meta_el.get("raw_html")
                 extra_tabel = {
                     "raw_html": raw_html_el,
-                    "table_format": (el.get("metadata") or {}).get("table_format"),
+                    "table_format": meta_el.get("table_format"),
                     "bbox": el_bbox,
+                    **{k: meta_el[k] for k in _KUNCI_TABEL_TAHAP_T if k in meta_el},
                 }
+                # Hasil transkripsi (Tahap T): isi yang BENAR-BENAR masuk chunk.
+                # Kriteria header dan header rantai dinilai atasnya.
+                baris_tr = meta_el.get("transkripsi_baris")
+                tabel_tr = (table_continuation.tabel_transkripsi(baris_tr)
+                            if baris_tr else None)
 
-                if INDEX_TABLE_CONTINUATION and document_id:
+                # Gambar-tabel dikecualikan dari rantai: di v4 ia chunk
+                # ImageDescription, jadi pasangan di berkas keputusan tidak
+                # pernah melibatkannya, dan menyisipkannya ke rantai memutus
+                # pasangan A->B yang mengapitnya.
+                if (INDEX_TABLE_CONTINUATION and document_id
+                        and meta_el.get("table_origin") != "image"):
                     # chunk_id dihitung SEBELUM emit — deterministik dari
                     # (document_id, segmen halaman, pencacah). Kecocokan kunci
                     # saja tidak cukup; putuskan_potongan juga memverifikasi
@@ -1029,14 +1056,24 @@ def _chunk_elements(
                         table_continuation.muat_keputusan(),
                         table_continuation.sidik_keputusan(),
                         maks_panjang_sel=TABLE_HEADER_MAX_CELL_CHARS or None,
+                        tabel_pengganti=tabel_tr,
                     )
-                    teks_tabel = table_continuation.sisipkan_header(prefiks, pp.header_md, text)
+                    diulang = bool(pp.header_md)
+                    if tabel_tr is not None and pp.header_sel:
+                        teks_tabel, gagal_sisip = table_continuation.sisipkan_header_transkripsi(
+                            prefiks, pp.header_sel, tabel_tr.baris)
+                        if gagal_sisip:
+                            diulang = False
+                            logger.warning("header_transkripsi_tidak_disisipkan b=%s alasan=%s",
+                                           calon_id, gagal_sisip)
+                    else:
+                        teks_tabel = table_continuation.sisipkan_header(prefiks, pp.header_md, text)
                     extra_tabel["table_group_id"] = pp.group_id
                     extra_tabel["table_part"] = pp.part
                     # True HANYA bila header benar-benar disisipkan. Versi lama
                     # menandai setiap pasangan disetujui, termasuk yang tidak
                     # berubah teksnya.
-                    extra_tabel["table_header_repeated"] = bool(pp.header_md)
+                    extra_tabel["table_header_repeated"] = diulang
                     if pp.lanjutan:
                         logger.info("tabel_lanjutan a=%s b=%s header_diulang=%s %s",
                                     tabel_terakhir.chunk_id, calon_id,
@@ -1077,14 +1114,22 @@ def _chunk_elements(
             # splittable=False: satu deskripsi = satu gambar. Memecahnya merusak
             # relasi narrative_summary <-> image_id. Praktisnya tidak pernah
             # terpicu karena image_describer.py:150 membatasi max_tokens=300.
+            meta_el = el.get("metadata") or {}
+            isi = f"[Deskripsi Gambar] {text}" if text else ""
+            # narasi+tabel (Tahap T): narasi dulu, lalu tabel yang tersalin.
+            if meta_el.get("transkripsi_tabel"):
+                isi = "\n\n".join(x for x in (isi, "[Tabel dalam Gambar]\n"
+                                                + meta_el["transkripsi_tabel"]) if x)
             emit(
-                (f"## {current_section}\n\n" if current_section else "") + f"[Deskripsi Gambar] {text}",
+                (f"## {current_section}\n\n" if current_section else "") + isi,
                 page,
                 "ImageDescription",
                 splittable=False,
                 extra={
                     "bbox": el_bbox,
-                    "image_id": (el.get("metadata") or {}).get("image_id"),
+                    "image_id": meta_el.get("image_id"),
+                    "image_content": meta_el.get("image_content"),
+                    "transkripsi_peringatan": meta_el.get("transkripsi_peringatan"),
                 },
             )
 
@@ -1163,6 +1208,12 @@ def extract_from_pdf(pdf_path: str | Path, document_id: str | None = None) -> di
         elements, image_records = _persist_image_elements(
             elements, document_id, pdf_path.name
         )
+        # Tahap T, di antara penyimpanan gambar dan deskripsi: gambar yang
+        # dibuang (cap di atas tabel) tetap tersimpan di disk dan images.jsonl.
+        elements, info_gambar = table_transcription.proses(elements, pdf_path)
+        for rec in image_records:
+            if rec["image_id"] in info_gambar:
+                rec.update(info_gambar[rec["image_id"]])
         elements = _describe_image_elements(elements)
         # Deskripsi yang berhasil ditautkan balik ke record gambarnya.
         by_id = {r["image_id"]: r for r in image_records}

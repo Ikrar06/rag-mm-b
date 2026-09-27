@@ -120,3 +120,12 @@ def test_skrip_menolak_menimpa_berkas_asli(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["x", "--keputusan", str(kep), "--chunks-lama", str(kep),
                                       "--chunks-baru", str(kep), "--keluar", str(kep)])
     assert m.main() == 2
+
+
+def test_gambar_tabel_tidak_menggeser_posisi_tabel_ocr():
+    """v5: gambar-tabel di depan tabel OCR sehalaman tidak boleh jadi tabel ke-0."""
+    baru = rows([("rubrik_p28_c00", "Table", 28, 0, None),     # gambar-tabel
+                 ("rubrik_p28_c01", "Table", 28, 1, "<table>B</table>")])
+    baru[0]["table_origin"] = "image"
+    _, dari_pos = posisi_tabel(baru)
+    assert dari_pos == {("rubrik", 28, 0): "rubrik_p28_c01"}

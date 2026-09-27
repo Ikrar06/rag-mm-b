@@ -68,9 +68,16 @@ VERDICT_LANJUTAN = "lanjutan"
 VERDICT_BUKAN_LANJUTAN = "bukan_lanjutan"
 VERDICT_TIDAK_JELAS = "tidak_jelas"
 
+# Transkripsi tabel dan klasifikasi gambar (Tahap T). Hanya hasil yang SAH yang
+# disimpan: transkripsi terpotong (done_reason=length), tak terurai, atau gagal
+# jaringan tidak pernah sampai ke put(), supaya run berikutnya mencoba lagi.
+VERDICT_TRANSCRIBED = "transcribed"
+VERDICT_CLASSIFIED = "classified"
+
 CACHEABLE_VERDICTS = (
     VERDICT_DESCRIBED, VERDICT_DECORATIVE, VERDICT_UNCLEAR,
     VERDICT_LANJUTAN, VERDICT_BUKAN_LANJUTAN, VERDICT_TIDAK_JELAS,
+    VERDICT_TRANSCRIBED, VERDICT_CLASSIFIED,
 )
 
 VARIANT_NARRATIVE = "narrative"

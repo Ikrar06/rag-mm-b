@@ -387,6 +387,10 @@ class PutusanPotongan:
     lanjutan: bool
     alasan: str
     rantai: TabelRantai
+    # Sel header rantai yang diulang (sama dengan header_md, belum dirender).
+    # Dipakai jalur transkripsi, yang MENGGANTI baris header kosong potongan B
+    # alih-alih menumpuk dua baris header.
+    header_sel: tuple = ()
 
 
 def header_markdown(sel) -> str:
@@ -408,13 +412,22 @@ def sisipkan_header(prefiks: str, header_md: str, teks_tabel: str) -> str:
 
 def putuskan_potongan(sebelumnya: "TabelRantai | None", calon_id: str, raw_html,
                       disetujui: frozenset, sidik: dict,
-                      maks_panjang_sel: int | None = None) -> PutusanPotongan:
+                      maks_panjang_sel: int | None = None,
+                      tabel_pengganti=None) -> PutusanPotongan:
+    """Putuskan apakah potongan `calon_id` lanjutan tabel sebelumnya.
+
+    `tabel_pengganti` (tabel_html.Tabel): isi tabel yang DIPAKAI chunk, bila
+    bukan raw_html — yaitu hasil transkripsi vision. Kriteria header dan header
+    rantai lalu dinilai atas teks yang benar-benar masuk chunk. Identitas
+    (sidik) tetap dari raw_html OCR, yang tidak berubah antar versi, sehingga
+    berkas keputusan tetap dapat diverifikasi.
+    """
     from backend.services.header_tabel import (
         STATUS_DIKETAHUI, deteksi_header, lanjutkan_rantai,
     )
     from backend.services.tabel_html import urai
 
-    tabel = urai(raw_html)
+    tabel = tabel_pengganti if tabel_pengganti is not None else urai(raw_html)
     putusan = (deteksi_header(tabel.baris, tabel.ada_th, tabel.ada_thead,
                               maks_panjang_sel=maks_panjang_sel)
                if tabel is not None else None)
@@ -433,6 +446,7 @@ def putuskan_potongan(sebelumnya: "TabelRantai | None", calon_id: str, raw_html,
             else:
                 lanjutan = True
 
+    header_sel: tuple = ()
     if lanjutan:
         k_prev = sebelumnya.keadaan
         header_md = ""
@@ -440,6 +454,7 @@ def putuskan_potongan(sebelumnya: "TabelRantai | None", calon_id: str, raw_html,
             baris_b = [c.strip() for c in tabel.baris[0]] if tabel and tabel.baris else None
             if baris_b != [c.strip() for c in k_prev.header]:
                 header_md = header_markdown(k_prev.header)
+                header_sel = tuple(k_prev.header)
             else:
                 alasan = "potongan B sudah diawali header rantai — tidak digandakan"
         elif k_prev.status != STATUS_DIKETAHUI:
@@ -455,7 +470,41 @@ def putuskan_potongan(sebelumnya: "TabelRantai | None", calon_id: str, raw_html,
         header_md=header_md, group_id=group, part=part, lanjutan=lanjutan,
         alasan=alasan,
         rantai=TabelRantai(calon_id, sid, keadaan, group, part),
+        header_sel=header_sel,
     )
+
+
+def tabel_transkripsi(baris):
+    """tabel_html.Tabel dari baris sel hasil transkripsi.
+
+    Baris header Markdown ditetapkan model, jadi diperlakukan seperti markup
+    (<th>/<thead>): kriteria bentuk-tubuh (a2, d) dilewati. Markup tetap BUKAN
+    otoritatif — bukti data (b, c, e) tetap menolak baris data yang tertulis
+    sebagai header, dan baris header kosong (aturan 6 prompt) netral.
+    """
+    from backend.services.tabel_html import Tabel
+    return Tabel(tuple(tuple(b) for b in baris), True, True)
+
+
+def sisipkan_header_transkripsi(prefiks: str, header_sel, baris) -> tuple[str, str]:
+    """Teks chunk potongan B hasil transkripsi, dengan header rantai. -> (teks, alasan).
+
+    Potongan tanpa judul kolom ditranskripsi dengan baris header KOSONG
+    (aturan 6 prompt). Baris itu DIGANTI header rantai. Bila model tetap mengisi
+    baris pertama, baris itu diperlakukan sebagai data dan header rantai
+    ditaruh di atasnya — satu baris header, bukan dua. Jumlah kolom berbeda:
+    header tidak disisipkan dan alasannya dikembalikan.
+    """
+    from backend.services.transkripsi_murni import markdown_dari_baris
+
+    if not header_sel:
+        return prefiks + markdown_dari_baris(baris), ""
+    if len(header_sel) != len(baris[0]):
+        return (prefiks + markdown_dari_baris(baris),
+                f"jumlah kolom header rantai {len(header_sel)} != transkripsi {len(baris[0])}")
+    kosong = not any(str(c).strip() for c in baris[0])
+    data = baris[1:] if kosong else baris
+    return prefiks + markdown_dari_baris((tuple(header_sel), *data)), ""
 
 
 # ─── Gerbang sebelum indexing ────────────────────────────────────────────────
