@@ -27,16 +27,32 @@ PROMPT_TRANSKRIPSI = """Transkripsikan tabel pada gambar ini menjadi SATU tabel 
 7. Sel kosong ditulis kosong. Karakter | di dalam sel ditulis \\|.
 Keluaran HANYA tabel Markdown. Tanpa penjelasan, tanpa pagar kode."""
 
-# Condong ke tabel: salah ke arah tabel hanya menambah satu panggilan
-# transkripsi (lalu jatuh ke deskripsi bila tak terurai); salah ke arah bukan
-# tabel membuat tabel dinarasikan.
-PROMPT_KLASIFIKASI = """Apakah gambar ini berisi TABEL (data tersusun dalam baris dan kolom)?
-Jika ragu, jawab tabel.
-Jawab HANYA dengan JSON satu baris: {"tabel": true} atau {"tabel": false}"""
+# Tiga jenis dalam satu panggilan. Condong ke tabel antara tabel/lainnya:
+# salah ke arah tabel hanya menambah satu transkripsi (lalu jatuh ke deskripsi
+# bila tak terurai). "cap" didahulukan karena potongan cap BSrE di UKT memuat
+# baris tabel di belakangnya dan tanpa aturan ini terjawab "tabel".
+PROMPT_KLASIFIKASI = """Gambar ini diambil dari dokumen PDF. Tentukan jenisnya:
+- "cap": cap atau segel tanda tangan elektronik (misalnya logo Balai Sertifikasi
+  Elektronik / BSrE) atau catatan "dokumen ini telah ditandatangani secara
+  elektronik". Jawab cap bila unsur itu terlihat, walaupun ada potongan tabel
+  di belakangnya.
+- "tabel": gambar yang HAMPIR SELURUHNYA berupa tabel data (baris dan kolom),
+  termasuk tabel hasil pindai.
+- "lainnya": selain itu, termasuk tangkapan layar aplikasi, halaman berisi
+  paragraf dan tabel sekaligus, diagram, bagan alir, foto, dan logo lembaga.
+Jika ragu antara tabel dan lainnya, jawab tabel.
+Jawab HANYA dengan JSON satu baris: {"jenis": "tabel"}, {"jenis": "cap"}, atau {"jenis": "lainnya"}"""
+
+JENIS_GAMBAR = ("tabel", "cap", "lainnya")
+_JENIS_RE = re.compile(r'"jenis"\s*:\s*"([a-z]+)"')
 
 _PAGAR = re.compile(r"^\s*```[a-zA-Z]*\s*$")
 _BARIS_PEMISAH = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$")
 _ANGKA = re.compile(r"\d[\d.,]*\d|\d")
+# Lapisan OCR pada halaman pindai kerap memberi spasi antardigit: kode akun
+# 426111 terbaca "4 2 6 1 1 1" (bagan-akun p10). Deret digit tunggal berspasi
+# disatukan sebelum angka diekstrak.
+_DIGIT_BERSPASI = re.compile(r"(?<![\d.,])\d(?: \d(?![\d.,])){2,}")
 _ORDINAL = re.compile(r"_c(\d+)$")
 
 
@@ -85,7 +101,8 @@ def urai_markdown(md: str) -> tuple[tuple[str, ...], ...] | None:
 def angka_dalam(teks: str | None) -> frozenset[str]:
     """Angka >= 2 digit, pemisah ribuan/desimal dibuang (1.500.000 -> 1500000)."""
     hasil = set()
-    for m in _ANGKA.findall(teks or ""):
+    teks = _DIGIT_BERSPASI.sub(lambda m: m.group(0).replace(" ", ""), teks or "")
+    for m in _ANGKA.findall(teks):
         digit = re.sub(r"[.,]", "", m)
         if len(digit) >= 2:
             hasil.add(digit)
@@ -96,11 +113,9 @@ def peringatan(baris, teks_rujukan: str) -> tuple[str, ...]:
     """Penanda pengecekan silang. Tidak pernah mengubah transkripsi.
 
     - angka_tak_ditemukan: angka transkripsi yang tidak ada di teks rujukan.
-    - label_berturut_sama: kolom pertama sama pada baris berturutan. Aturan 2
-      prompt (sel gabungan disalin) membuatnya SAH pada tabel bersel gabungan,
-      jadi frekuensinya diukur dulu sebelum dipakai.
     - baris_berturut_identik: seluruh baris sama berturutan — tanda model
-      berulang, bukan sel gabungan.
+      berulang. (label_berturut_sama dibuang: terukur di standar biaya p9,
+      53-54 kemunculan, semuanya sel gabungan yang sah disalin ke tiap baris.)
     """
     if not baris:
         return ()
@@ -110,10 +125,6 @@ def peringatan(baris, teks_rujukan: str) -> tuple[str, ...]:
     hasil = []
     if tak_ada:
         hasil.append("angka_tak_ditemukan:" + ",".join(tak_ada[:10]))
-    label = [i for i in range(1, len(data))
-             if data[i] and data[i][0] and data[i][0] == data[i - 1][0]]
-    if label:
-        hasil.append(f"label_berturut_sama:{len(label)}")
     identik = [i for i in range(1, len(data)) if any(data[i]) and data[i] == data[i - 1]]
     if identik:
         hasil.append(f"baris_berturut_identik:{len(identik)}")
@@ -228,3 +239,37 @@ def median(nilai: list[float]) -> float | None:
         return None
     t = len(urut) // 2
     return urut[t] if len(urut) % 2 else (urut[t - 1] + urut[t]) / 2
+
+
+def urai_klasifikasi(raw: str | None) -> str | None:
+    """Jawaban klasifikasi -> "tabel" | "cap" | "lainnya". None bila tak dikenali."""
+    m = _JENIS_RE.search((raw or "").lower())
+    return m.group(1) if m and m.group(1) in JENIS_GAMBAR else None
+
+
+def jenis_halaman(ada_kata: bool, rasio_gambar_terbesar: float) -> str:
+    """Asal lapisan teks halaman.
+
+    Halaman yang tertutup satu gambar >= 90% luasnya adalah pindaian; lapisan
+    teksnya (bila ada) hasil OCR yang tak terlihat, bukan teks asli. Angka dari
+    lapisan itu bukan rujukan kebenaran: di laporan-keuangan p23 lapisan OCR
+    kehilangan baris JUMLAH EKUITAS yang dibaca model dengan benar.
+    """
+    if not ada_kata:
+        return "pindai_tanpa_lapisan"
+    return "pindai_lapisan_ocr" if rasio_gambar_terbesar >= 0.9 else "digital_asli"
+
+
+def perluas_bbox(bbox, kata_bbox, margin: float = 0.0) -> list[float]:
+    """Perluas bbox ke kata lapisan teks yang BERIRISAN dengannya, lalu margin.
+
+    Kata yang terpotong tepi bbox ditarik utuh: di ukt p5 kolom KELOMPOK VIII
+    (x 0,92-0,97) terpotong di 0,95. Hanya kata yang beririsan, bukan paragraf
+    di sekitarnya. Koordinat ternormalisasi, dijepit ke [0, 1].
+    """
+    x0, y0, x1, y1 = bbox
+    for k in kata_bbox:
+        if k[0] < x1 and k[2] > x0 and k[1] < y1 and k[3] > y0:
+            x0, y0, x1, y1 = min(x0, k[0]), min(y0, k[1]), max(x1, k[2]), max(y1, k[3])
+    return [max(0.0, x0 - margin), max(0.0, y0 - margin),
+            min(1.0, x1 + margin), min(1.0, y1 + margin)]

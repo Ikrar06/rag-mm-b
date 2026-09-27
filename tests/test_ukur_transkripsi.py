@@ -11,8 +11,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from lib.transkripsi_ukur import (  # noqa: E402
     angka_dalam, bersihkan, cakupan_angka, celah_terbesar, dampak_serapan,
-    ketepatan_angka, median, peringatan, rasio_tumpang, regresi_linear,
-    sebaran_tumpang, urai_markdown,
+    jenis_halaman, ketepatan_angka, median, peringatan, perluas_bbox,
+    rasio_tumpang, regresi_linear, sebaran_tumpang, urai_klasifikasi,
+    urai_markdown,
 )
 
 MD = "| No | Uraian | Biaya |\n|---|---|---|\n| 1 | UKT I | 1.500.000 |\n| 2 | UKT II | 2.400.000 |"
@@ -54,15 +55,24 @@ def test_angka_dinormalkan():
     assert angka_dalam("Rp1.500.000 dan 2,5 serta 7") == {"1500000", "25"}
 
 
+def test_digit_berspasi_lapisan_ocr_disatukan():
+    # bagan-akun p10: kode 426111 di lapisan OCR terbaca "4 2 6 1 1 1".
+    assert angka_dalam("4 2 6 1 1 1 PENDAPATAN APBD") == {"426111"}
+    # laporan-keuangan p23: 28.111.676.194 berspasi per digit.
+    assert angka_dalam("2 8 1 1 1 6 7 6 1 9 4") == {"28111676194"}
+    # Dua digit tunggal tidak disatukan; angka bertitik tidak disentuh.
+    assert angka_dalam("kolom 1 2 dan 1.500.000 3") == {"1500000"}
+
+
 class TestPeringatan:
     def test_angka_karangan_ditandai(self):
         p = peringatan(urai_markdown(MD), "UKT I 1.500.000 UKT II 2.400.001")
         assert p == ("angka_tak_ditemukan:2400000",)
 
-    def test_label_dan_baris_berulang(self):
+    def test_hanya_baris_identik_yang_ditandai(self):
+        # Label sama berturut (sel gabungan disalin) SAH, tidak ditandai.
         md = "| a | b |\n|---|---|\n| X | 1 |\n| X | 2 |\n| Y | 3 |\n| Y | 3 |"
-        p = peringatan(urai_markdown(md), "")
-        assert "label_berturut_sama:2" in p and "baris_berturut_identik:1" in p
+        assert peringatan(urai_markdown(md), "") == ("baris_berturut_identik:1",)
 
     def test_bersih(self):
         assert peringatan(urai_markdown(MD), "1.500.000 2.400.000") == ()
@@ -154,7 +164,7 @@ def test_alur_penuh_model_palsu(korpus, monkeypatch, capsys):
 
     def palsu(png, prompt, num_predict):
         panggilan.append((prompt[:12], num_predict))
-        jawab = '{"tabel": true}' if "Apakah" in prompt else f"```markdown\n{MD}\n```"
+        jawab = '{"jenis": "tabel"}' if "jenisnya" in prompt else f"```markdown\n{MD}\n```"
         return {"detik": 20.0, "response": jawab, "prompt_eval_count": 1500,
                 "eval_count": 60, "done_reason": "stop"}
 
@@ -162,8 +172,7 @@ def test_alur_penuh_model_palsu(korpus, monkeypatch, capsys):
     out = tmp / "out"
     monkeypatch.setattr(sys, "argv", [
         "x", "--chunks", str(chunks), "--pdf-dir", str(tmp), "--sampel", "3",
-        "--dpi", "72,100", "--pilih", "ukt_p2_c01,tidak_ada", "--klasifikasi", "1",
-        "--out", str(out)])
+        "--dpi", "72,100", "--pilih", "ukt_p2_c01,tidak_ada", "--out", str(out)])
     uk.main()
     lap = json.loads((out / "laporan.json").read_text())
     recs = lap["transkripsi"]
@@ -177,7 +186,6 @@ def test_alur_penuh_model_palsu(korpus, monkeypatch, capsys):
     assert (out / "ukt_p1_c00_72dpi.md").read_text().count("## Teks v4 (OCR)") == 1
     ring = lap["ringkas"]["per_dpi"]["72"]
     assert ring["median_detik"] == 20.0 and ring["terpotong"] == 0
-    assert lap["klasifikasi"]["jumlah_gambar_dideskripsi"] == 1
     assert "tidak ada di dump" in capsys.readouterr().out
 
 
@@ -189,3 +197,117 @@ def test_hanya_dampak_tanpa_pdf(korpus, monkeypatch):
     uk.main()
     lap = json.loads((tmp / "o" / "laporan.json").read_text())
     assert lap["dampak"]["n_gambar"] == 1 and "transkripsi" not in lap
+
+
+# ── klasifikasi, jenis halaman, perluasan area ──────────────────────────────
+
+@pytest.mark.parametrize("raw,jenis", [
+    ('{"jenis": "tabel"}', "tabel"), ('```json\n{"jenis": "Cap"}\n```', "cap"),
+    ('{"jenis":"lainnya"}', "lainnya"), ('{"jenis": "foto"}', None), ("", None), (None, None)])
+def test_urai_klasifikasi(raw, jenis):
+    assert urai_klasifikasi(raw) == jenis
+
+
+def test_jenis_halaman():
+    assert jenis_halaman(False, 1.0) == "pindai_tanpa_lapisan"
+    assert jenis_halaman(True, 0.95) == "pindai_lapisan_ocr"
+    assert jenis_halaman(True, 0.3) == "digital_asli"
+
+
+def test_perluas_bbox_menarik_kata_terpotong_saja():
+    # ukt p5: kolom terakhir x 0,92-0,971 terpotong bbox di 0,9499.
+    bbox = [0.03, 0.28, 0.9499, 0.7491]
+    kata = [(0.92, 0.40, 0.971, 0.42),      # beririsan -> ditarik
+            (0.975, 0.40, 0.99, 0.42),      # di luar, tidak beririsan
+            (0.10, 0.80, 0.30, 0.82)]       # paragraf di bawah
+    assert perluas_bbox(bbox, kata) == [0.03, 0.28, 0.971, 0.7491]
+    assert perluas_bbox([0.01, 0.5, 0.99, 0.6], [], 0.025) == pytest.approx([0, 0.475, 1, 0.625])
+
+
+def test_buka_area_kata_utuh_dan_lapisan_ocr(tmp_path):
+    from lib.ukur_io import buka_area
+    doc = fitz.open()
+    hal = doc.new_page()
+    hal.insert_text((400, 100), "8,000,000")
+    pix = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 10, 10), 0)
+    pindai = doc.new_page()
+    pindai.insert_image(pindai.rect, pixmap=pix)
+    pindai.insert_text((72, 100), "4 2 6 1 1 1")
+    r = doc[0].rect
+    doc.save(tmp_path / "a.pdf")
+    # bbox berakhir di tengah angka: klip karakter memotongnya, kata utuh tidak.
+    a = buka_area(tmp_path / "a.pdf", 1, [0, 0, 440 / r.width, 0.5], 36)
+    assert "8,000,000" in a.teks_area and a.jenis_halaman == "digital_asli" and a.png
+    b = buka_area(tmp_path / "a.pdf", 2, [0, 0, 1, 1], None)
+    assert b.jenis_halaman == "pindai_lapisan_ocr" and b.png == b""
+
+
+def test_perluas_lewat_cli(korpus, monkeypatch):
+    tmp, _ = korpus
+    r = {"file_name": "ukt.pdf", "page_number": 1, "bbox": [0.1, 0.1, 0.2, 0.2]}
+    diperluas = uk.area_render(tmp / "ukt.pdf", r, True)
+    assert diperluas[0] < 0.1 or diperluas[2] > 0.2
+    assert uk.area_render(tmp / "ukt.pdf", r, False) == [0.1, 0.1, 0.2, 0.2]
+    pindai = {"file_name": "ukt.pdf", "page_number": 2, "bbox": [0.1, 0.1, 0.2, 0.2]}
+    assert uk.area_render(tmp / "ukt.pdf", pindai, True) == pytest.approx(
+        [0.075, 0.075, 0.225, 0.225])
+
+
+def test_hanya_dampak_menampilkan_deskripsi_rasio_tinggi(tmp_path, monkeypatch, capsys):
+    rows = TestTumpang().rows()
+    rows[1]["text_content"] = "logo Balai Sertifikasi Elektronik"
+    c = tmp_path / "c.jsonl"
+    c.write_text("\n".join(json.dumps(r) for r in rows))
+    monkeypatch.setattr(sys, "argv", ["x", "--chunks", str(c), "--hanya-dampak", "--out", str(tmp_path)])
+    uk.main()
+    assert "Balai Sertifikasi Elektronik" in capsys.readouterr().out
+
+
+import klasifikasi_gambar as kg  # noqa: E402
+
+
+def test_klasifikasi_penuh_dan_lanjut(korpus, monkeypatch):
+    tmp, chunks = korpus
+    rows = [json.loads(l) for l in chunks.read_text().splitlines()]
+    rows.append({**rows[2], "chunk_id": "ukt_p1_c05", "page_number": 1,
+                 "bbox": [0.05, 0.1, 0.6, 0.3]})          # bertumpang tabel p1
+    chunks.write_text("\n".join(json.dumps(r) for r in rows))
+    jawab = {"ukt_p1_c05": '{"jenis": "cap"}', "ukt_p2_c01": "tidak tahu"}
+    dipanggil = []
+
+    def palsu(png, prompt, num_predict):
+        dipanggil.append(num_predict)
+        cid = getattr(kg, "_kini", None)
+        return {"detik": 3.0, "response": jawab.get(cid, '{"jenis": "tabel"}'),
+                "prompt_eval_count": 200, "eval_count": 5, "done_reason": "stop"}
+
+    asli = kg.klasifikasi_satu
+
+    def dengan_id(r, pdf_dir, sisi):
+        kg._kini = r["chunk_id"]
+        return asli(r, pdf_dir, sisi)
+
+    monkeypatch.setattr(kg, "_kini", None, raising=False)
+    monkeypatch.setattr(kg, "panggil", palsu)
+    monkeypatch.setattr(kg, "klasifikasi_satu", dengan_id)
+    out = tmp / "k"
+    argv = ["x", "--chunks", str(chunks), "--pdf-dir", str(tmp), "--out", str(out)]
+    monkeypatch.setattr(sys, "argv", argv + ["--batas", "1"])
+    kg.main()
+    monkeypatch.setattr(sys, "argv", argv)
+    kg.main()
+    hasil = [json.loads(l) for l in (out / "klasifikasi.jsonl").read_text().splitlines()]
+    assert [h["chunk_id"] for h in hasil] == ["ukt_p1_c05", "ukt_p2_c01"]   # tanpa ulang
+    assert [h["jenis"] for h in hasil] == ["cap", None]
+    ring = json.loads((out / "ringkasan.json").read_text())
+    assert ring["per_jenis"] == {"cap": 1, "TAK_DIKENALI": 1}
+    assert ring["cap_tanpa_tumpang_tabel"] == 0
+    tinjau = (out / "klasifikasi_tinjau.csv").read_text().splitlines()
+    assert tinjau[1].startswith("cap,ukt_p1_c05") and "ukt_p1_c00" in tinjau[1]
+    assert (out / "gambar" / "ukt_p1_c05.png").is_file()
+
+
+def test_klasifikasi_menolak_campur_prompt(tmp_path):
+    with pytest.raises(SystemExit, match="prompt lain"):
+        kg.sudah_selesai([{"chunk_id": "a", "prompt_sha256": "lama"}])
+    assert kg.sudah_selesai([{"chunk_id": "a", "prompt_sha256": kg.PROMPT_SHA}]) == {"a"}
