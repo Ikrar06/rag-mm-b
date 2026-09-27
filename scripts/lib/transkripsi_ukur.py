@@ -27,39 +27,6 @@ PROMPT_TRANSKRIPSI = """Transkripsikan tabel pada gambar ini menjadi SATU tabel 
 7. Sel kosong ditulis kosong. Karakter | di dalam sel ditulis \\|.
 Keluaran HANYA tabel Markdown. Tanpa penjelasan, tanpa pagar kode."""
 
-# Tiga jenis dalam satu panggilan. Versi 2, setelah tinjauan 1.441 gambar:
-# - "jika ragu" kini ke LAINNYA. Salah ke arah tabel tidak aman: tangkapan
-#   layar, flowchart bersiku, dan matriks logo berbentuk kisi sehingga
-#   transkripsi menghasilkan tabel yang tampak sah dan isinya (alur, petunjuk
-#   antarmuka) hilang. Salah ke arah lainnya hanya mempertahankan narasi v4.
-# - cap didahulukan walau ada baris tabel di belakangnya (ukt p5_c02 lolos
-#   sebagai tabel di versi 1, padahal cap yang sama di p6-p10 tertangkap).
-PROMPT_KLASIFIKASI = """Gambar ini diambil dari dokumen PDF. Tentukan jenisnya.
-
-"cap": cap atau segel tanda tangan elektronik, yaitu logo Balai Sertifikasi
-Elektronik (BSrE) bersama catatan "Dokumen ini telah ditandatangani secara
-elektronik". Tetap jawab cap walaupun sebagian besar gambar berisi baris tabel
-di belakangnya. Contoh: potongan tabel biaya UKT yang di tengahnya ada logo
-BSrE dan catatan UU ITE adalah cap.
-
-"tabel": HANYA tabel data, yaitu baris dan kolom berisi teks atau angka yang
-dibaca sebagai data: tabel biaya, daftar kode dan uraian, rekap angka, jadwal,
-termasuk tabel hasil pindai.
-
-"lainnya": semua yang lain, WALAUPUN berbentuk kisi atau memuat tabel di
-dalamnya:
-- tangkapan layar aplikasi, situs web, atau formulir online
-- flowchart, bagan alir, dan bagan bersiku kolom (swimlane)
-- panduan logo, matriks logo, dan kumpulan ikon
-- surat, pernyataan, atau halaman teks yang memiliki garis kotak
-- halaman berisi paragraf dan tabel sekaligus
-- diagram, foto, logo lembaga, dan kode QR
-
-Jika ragu, jawab lainnya.
-Jawab HANYA dengan JSON satu baris: {"jenis": "tabel"}, {"jenis": "cap"}, atau {"jenis": "lainnya"}"""
-
-JENIS_GAMBAR = ("tabel", "cap", "lainnya")
-_JENIS_RE = re.compile(r'"jenis"\s*:\s*"([a-z]+)"')
 
 _PAGAR = re.compile(r"^\s*```[a-zA-Z]*\s*$")
 _BARIS_PEMISAH = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$")
@@ -257,12 +224,6 @@ def median(nilai: list[float]) -> float | None:
         return None
     t = len(urut) // 2
     return urut[t] if len(urut) % 2 else (urut[t - 1] + urut[t]) / 2
-
-
-def urai_klasifikasi(raw: str | None) -> str | None:
-    """Jawaban klasifikasi -> "tabel" | "cap" | "lainnya". None bila tak dikenali."""
-    m = _JENIS_RE.search((raw or "").lower())
-    return m.group(1) if m and m.group(1) in JENIS_GAMBAR else None
 
 
 def jenis_halaman(ada_kata: bool, rasio_gambar_terbesar: float) -> str:

@@ -28,8 +28,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from lib.klasifikasi import PROMPT_KLASIFIKASI  # noqa: E402
 from lib.transkripsi_ukur import (  # noqa: E402
-    PROMPT_KLASIFIKASI, PROMPT_TRANSKRIPSI, bersihkan, cakupan_angka,
+    PROMPT_TRANSKRIPSI, bersihkan, cakupan_angka,
     celah_terbesar, dampak_serapan, ketepatan_angka, median, perluas_bbox,
     peringatan, regresi_linear, sebaran_tumpang, urai_markdown,
 )

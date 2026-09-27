@@ -39,18 +39,22 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib.transkripsi_ukur import (  # noqa: E402
-    PROMPT_KLASIFIKASI, median, sebaran_tumpang, urai_klasifikasi,
+from lib.klasifikasi import (  # noqa: E402
+    AMBANG_CAP, PROMPT_KLASIFIKASI, Klasifikasi, perlakuan_gambar, urai_klasifikasi,
 )
+from lib.transkripsi_ukur import celah_terbesar, median, sebaran_tumpang  # noqa: E402
 from lib.ukur_io import (  # noqa: E402
     GagalVision, batas_model, buka_area, panggil, png_pemanasan, siapkan_png,
 )
 
 PROMPT_SHA = hashlib.sha256(PROMPT_KLASIFIKASI.encode("utf-8")).hexdigest()
 DPI_RENDER = 150
-NUM_PREDICT = 20
-KOLOM_TINJAU = ("jenis", "chunk_id", "image_id", "halaman", "rasio_tumpang_tabel",
-                "tabel_induk", "detik", "jawaban_mentah", "deskripsi_v4")
+# JSON dua kunci ~20 token; 40 memberi ruang tanpa memotong jawaban.
+NUM_PREDICT = 40
+# Detik per transkripsi untuk menaksir biaya (rentang terukur 15-30 s).
+DETIK_TRANSKRIPSI = (15, 30)
+KOLOM_TINJAU = ("perlakuan", "jenis", "memuat_tabel_data", "chunk_id", "image_id", "halaman",
+                "rasio_tumpang_tabel", "tabel_induk", "detik", "jawaban_mentah", "deskripsi_v4")
 
 
 def baca_jsonl(path: Path) -> list[dict]:
@@ -81,24 +85,39 @@ def klasifikasi_satu(r: dict, pdf_dir: Path, sisi: int) -> tuple[dict, bytes]:
     a = buka_area(pdf_dir / r["file_name"], r["page_number"], r["bbox"], DPI_RENDER)
     kecil, _ = siapkan_png(a.png, sisi)
     h = panggil(kecil, PROMPT_KLASIFIKASI, NUM_PREDICT)
+    k = urai_klasifikasi(h["response"])
     return {"chunk_id": r["chunk_id"], "image_id": r.get("image_id"),
             "document_id": r.get("document_id"), "halaman": r.get("page_number"),
-            "jenis": urai_klasifikasi(h["response"]), "jawaban_mentah": h["response"].strip(),
+            "jenis": k.jenis, "memuat_tabel_data": k.memuat_tabel_data,
+            "jawaban_mentah": h["response"].strip(),
             "detik": h["detik"], "prompt_eval_count": h["prompt_eval_count"],
             "percobaan": h.get("percobaan", 1), "dipadding": h.get("dipadding", False),
             "sisi": sisi, "prompt_sha256": PROMPT_SHA}, kecil
 
 
+def _klas(h: dict) -> Klasifikasi:
+    return Klasifikasi(h.get("jenis"), h.get("memuat_tabel_data"))
+
+
+def perlakuan_semua(hasil: list[dict], rows: list[dict]) -> dict[str, str]:
+    tumpang = {t.image_chunk: t.rasio for t in sebaran_tumpang(rows)}
+    return {h["chunk_id"]: perlakuan_gambar(_klas(h), tumpang.get(h["chunk_id"], 0.0))
+            for h in hasil}
+
+
 def baris_tinjau(hasil: list[dict], rows: list[dict]) -> list[dict]:
     per_id = {r["chunk_id"]: r for r in rows}
     tumpang = {t.image_chunk: t for t in sebaran_tumpang(rows)}
-    urutan = {"cap": 0, "tabel": 1, None: 2, "lainnya": 3}
+    perlakuan = perlakuan_semua(hasil, rows)
+    urutan = {"buang": 0, "transkripsi": 1, "narasi+tabel": 2, "narasi": 3}
     keluar = []
-    for h in sorted(hasil, key=lambda h: (urutan.get(h["jenis"], 2), h["chunk_id"])):
+    for h in sorted(hasil, key=lambda h: (urutan[perlakuan[h["chunk_id"]]], h["chunk_id"])):
         t = tumpang.get(h["chunk_id"])
         teks = " ".join((per_id.get(h["chunk_id"], {}).get("text_content") or "").split())
         keluar.append({
+            "perlakuan": perlakuan[h["chunk_id"]],
             "jenis": h["jenis"] or "TAK_DIKENALI", "chunk_id": h["chunk_id"],
+            "memuat_tabel_data": h.get("memuat_tabel_data"),
             "image_id": h.get("image_id") or "", "halaman": h.get("halaman"),
             "rasio_tumpang_tabel": f"{t.rasio:.3f}" if t else "",
             "tabel_induk": t.table_chunk if t else "", "detik": h["detik"],
@@ -112,10 +131,23 @@ def ringkasan(hasil: list[dict], rows: list[dict], gagal: list[dict]) -> dict:
     selesai = {h["chunk_id"] for h in hasil}
     belum = {g["chunk_id"]: g["alasan"] for g in gagal if g["chunk_id"] not in selesai}
     jenis = Counter(h["jenis"] or "TAK_DIKENALI" for h in hasil)
+    label = Counter(_klas(h).label for h in hasil)
+    perlakuan = Counter(perlakuan_semua(hasil, rows).values())
+    rasio = {t.image_chunk: t.rasio for t in sebaran_tumpang(rows)}
+    cap = sorted((round(rasio[h["chunk_id"]], 3), h["chunk_id"]) for h in hasil
+                 if h["jenis"] == "cap" and h["chunk_id"] in rasio)
+    n_transkripsi = perlakuan["transkripsi"] + perlakuan["narasi+tabel"]
     detik = [h["detik"] for h in hasil]
     return {
-        "jumlah": len(hasil), "per_jenis": dict(jenis),
+        "jumlah": len(hasil), "per_jenis": dict(jenis), "per_label": dict(label),
+        "per_perlakuan": dict(perlakuan),
+        "taksiran_jam_transkripsi_gambar": [n_transkripsi * d / 3600 for d in DETIK_TRANSKRIPSI],
+        # Sebaran rasio SELURUH cap yang bertumpang Table, untuk menetapkan AMBANG_CAP.
+        "ambang_cap": AMBANG_CAP,
+        "rasio_cap_bertumpang": cap,
+        "celah_rasio_cap": celah_terbesar([r for r, _ in cap]),
         "median_detik": median(detik), "total_jam": sum(detik) / 3600,
+        "jawaban_tanpa_memuat_tabel_data": sum(1 for h in hasil if h.get("memuat_tabel_data") is None),
         # Dua kasus yang aturannya belum diputuskan:
         "cap_tanpa_tumpang_tabel": sum(1 for h in hasil if h["jenis"] == "cap"
                                        and h["chunk_id"] not in tumpang),

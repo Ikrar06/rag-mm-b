@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from lib.transkripsi_ukur import (  # noqa: E402
     angka_dalam, bersihkan, cakupan_angka, celah_terbesar, dampak_serapan,
     jenis_halaman, ketepatan_angka, median, peringatan, perluas_bbox,
-    rasio_tumpang, regresi_linear, sebaran_tumpang, urai_klasifikasi,
+    rasio_tumpang, regresi_linear, sebaran_tumpang,
     urai_markdown,
 )
 
@@ -135,6 +135,7 @@ def test_celah_regresi_median():
 fitz = pytest.importorskip("fitz")
 import ukur_transkripsi as uk  # noqa: E402
 from lib import ukur_io  # noqa: E402
+from lib.klasifikasi import Klasifikasi, urai_klasifikasi  # noqa: E402
 
 # Fungsi asli, diambil sebelum fixture autouse menimpanya.
 _BATAS_ASLI = ukur_io.batas_model.__wrapped__
@@ -214,11 +215,14 @@ def test_hanya_dampak_tanpa_pdf(korpus, monkeypatch):
 
 # ── klasifikasi, jenis halaman, perluasan area ──────────────────────────────
 
-@pytest.mark.parametrize("raw,jenis", [
-    ('{"jenis": "tabel"}', "tabel"), ('```json\n{"jenis": "Cap"}\n```', "cap"),
-    ('{"jenis":"lainnya"}', "lainnya"), ('{"jenis": "foto"}', None), ("", None), (None, None)])
-def test_urai_klasifikasi(raw, jenis):
-    assert urai_klasifikasi(raw) == jenis
+@pytest.mark.parametrize("raw,jenis,memuat", [
+    ('{"jenis": "tabel", "memuat_tabel_data": true}', "tabel", True),
+    ('```json\n{"jenis": "Cap", "memuat_tabel_data": false}\n```', "cap", False),
+    ('{"jenis":"lainnya","memuat_tabel_data":true}', "lainnya", True),
+    ('{"jenis": "lainnya"}', "lainnya", None),
+    ('{"jenis": "foto", "memuat_tabel_data": true}', None, True), ("", None, None), (None, None, None)])
+def test_urai_klasifikasi(raw, jenis, memuat):
+    assert urai_klasifikasi(raw) == Klasifikasi(jenis, memuat)
 
 
 def test_jenis_halaman():
@@ -317,7 +321,9 @@ def test_klasifikasi_penuh_dan_lanjut(korpus, monkeypatch):
     assert ring["per_jenis"] == {"cap": 1, "TAK_DIKENALI": 1}
     assert ring["cap_tanpa_tumpang_tabel"] == 0
     tinjau = (out / "klasifikasi_tinjau.csv").read_text().splitlines()
-    assert tinjau[1].startswith("cap,ukt_p1_c05") and "ukt_p1_c00" in tinjau[1]
+    assert tinjau[1].startswith("buang,cap,,ukt_p1_c05") and "ukt_p1_c00" in tinjau[1]
+    assert ring["per_perlakuan"] == {"buang": 1, "narasi": 1}
+    assert ring["rasio_cap_bertumpang"] == [[1.0, "ukt_p1_c05"]]
     assert (out / "gambar" / "ukt_p1_c05.png").is_file()
 
 
@@ -508,13 +514,14 @@ def test_perluas_mengabaikan_kata_raksasa():
 # ── klasifikasi versi 2 dan pembanding ──────────────────────────────────────
 
 import bandingkan_klasifikasi as bk  # noqa: E402
-from lib.transkripsi_ukur import PROMPT_KLASIFIKASI  # noqa: E402
-
-
-def test_prompt_v2_ragu_ke_lainnya_dan_daftar_bukan_tabel():
+from lib.klasifikasi import (  # noqa: E402
+    PROMPT_KLASIFIKASI, Klasifikasi, perlakuan_gambar, urai_klasifikasi,
+)
+def test_prompt_v3_dua_jawaban():
     assert "Jika ragu, jawab lainnya." in PROMPT_KLASIFIKASI
-    assert "jawab tabel" not in PROMPT_KLASIFIKASI.split("Jika ragu")[1]
-    for frasa in ("tangkapan layar", "swimlane", "matriks logo", "garis kotak", "BSrE", "UKT"):
+    assert '"memuat_tabel_data"' in PROMPT_KLASIFIKASI and "APA PUN jenisnya" in PROMPT_KLASIFIKASI
+    for frasa in ("tangkapan layar", "swimlane", "matriks logo", "garis kotak", "BSrE", "UKT",
+                  "lajur swimlane", "tabel SWOT", "tanpa garis"):
         assert frasa in PROMPT_KLASIFIKASI
 
 
@@ -536,21 +543,33 @@ def test_cocokkan_awalan_dan_persis():
 def test_bandingkan_melaporkan_perpindahan_dan_harapan(tmp_path, monkeypatch, capsys):
     lama = [{"chunk_id": "ukt-tahun-2025_p5_c02", "jenis": "tabel"},
             {"chunk_id": "manual_p16_c00", "jenis": "tabel"},
-            {"chunk_id": "rubrik-2024_p50_c02", "jenis": "tabel"}]
-    baru = [{"chunk_id": "ukt-tahun-2025_p5_c02", "jenis": "cap"},
-            {"chunk_id": "manual_p16_c00", "jenis": "lainnya"},
-            {"chunk_id": "rubrik-2024_p50_c02", "jenis": "lainnya", "jawaban_mentah": "x"}]
+            {"chunk_id": "rubrik-2024_p50_c02", "jenis": "tabel"},
+            {"chunk_id": "v2-sop-evaluasi-empat-semester-3e_p6_c02", "jenis": "tabel"},
+            {"chunk_id": "sop-final-project-x_p7_c01", "jenis": "tabel"}]
+    baru = [{"chunk_id": "ukt-tahun-2025_p5_c02", "jenis": "cap", "memuat_tabel_data": True},
+            {"chunk_id": "manual_p16_c00", "jenis": "lainnya", "memuat_tabel_data": True},
+            {"chunk_id": "rubrik-2024_p50_c02", "jenis": "lainnya", "jawaban_mentah": "x"},
+            {"chunk_id": "v2-sop-evaluasi-empat-semester-3e_p6_c02", "jenis": "lainnya",
+             "memuat_tabel_data": True},
+            {"chunk_id": "sop-final-project-x_p7_c01", "jenis": "lainnya", "memuat_tabel_data": True}]
+    (tmp_path / "c").write_text(json.dumps({"chunk_id": "manual_p16_c00", "text_content": "layar  login"}))
     for nama, isi in (("l", lama), ("b", baru)):
         (tmp_path / nama).write_text("\n".join(json.dumps(x) for x in isi))
     monkeypatch.setattr(sys, "argv", ["x", "--lama", str(tmp_path / "l"), "--baru", str(tmp_path / "b"),
-                                      "--out", str(tmp_path / "o.csv")])
+                                      "--out", str(tmp_path / "o.csv"), "--chunks", str(tmp_path / "c")])
     with pytest.raises(SystemExit) as e:
         bk.main()
     keluar = capsys.readouterr().out
     assert e.value.code == 1
-    assert "OK       harap cap" in keluar and "MELESET  harap tabel    dapat lainnya" in keluar
+    baris = {l.split()[-1]: l for l in keluar.splitlines() if l.startswith("  OK") or l.startswith("  MELESET")}
+    assert baris["ukt-tahun-2025_p5_c02"].startswith("  OK")                 # cap+tabel diterima
+    assert baris["manual_p16_c00"].startswith("  OK")                        # lainnya+tabel diterima
+    assert baris["sop-final-project-x_p7_c01"].startswith("  OK")            # tabel via narasi+tabel
+    assert baris["rubrik-2024_p50_c02"].startswith("  MELESET")              # tabel hilang
+    assert baris["v2-sop-evaluasi-empat-semester-3e_p6_c02"].startswith("  MELESET")  # flowchart
     assert "0 kecocokan" in keluar
-    assert (tmp_path / "o.csv").read_text().count("\n") == 4
+    csv_isi = (tmp_path / "o.csv").read_text()
+    assert csv_isi.count("\n") == 6 and "tabel,lainnya+tabel,,layar login" in csv_isi
 
 
 def test_perluas_tidak_menarik_kata_milik_elemen_lain():
@@ -560,3 +579,28 @@ def test_perluas_tidak_menarik_kata_milik_elemen_lain():
     assert perluas_bbox(tabel, kata)[3] == pytest.approx(0.80)
     assert perluas_bbox(tabel, kata, milik_lain=[[0.15, 0.785, 0.7, 0.84]]) == tabel
     assert perluas_bbox(tabel, kata, milik_lain=[None, [0, 0, 0.05, 0.05]])[3] == pytest.approx(0.80)
+
+
+@pytest.mark.parametrize("jenis,memuat,rasio,harap", [
+    ("cap", False, 0.966, "buang"),          # cap BSrE di atas tabel UKT
+    ("cap", True, 0.948, "buang"),
+    ("cap", False, 0.023, "narasi"),         # pengelolaan-dana p9: tidak menutupi tabel
+    ("cap", True, 0.0, "narasi+tabel"),      # cap berdiri sendiri yang memuat tabel
+    ("cap", False, 0.0, "narasi"),
+    ("tabel", True, 0.3, "narasi"),          # bertumpang Table: tetap narasi seperti v4
+    ("lainnya", True, 0.9, "narasi"),
+    ("tabel", True, 0.0, "transkripsi"),
+    ("tabel", False, 0.0, "transkripsi"),
+    ("lainnya", True, 0.0, "narasi+tabel"),  # tangkapan layar berisi tabel data
+    ("lainnya", False, 0.0, "narasi"),       # flowchart
+    ("lainnya", None, 0.0, "narasi"),
+    (None, True, 0.0, "narasi"),             # jawaban tak dikenali
+])
+def test_perlakuan_gambar(jenis, memuat, rasio, harap):
+    assert perlakuan_gambar(Klasifikasi(jenis, memuat), rasio) == harap
+
+
+def test_label_klasifikasi():
+    assert Klasifikasi("lainnya", True).label == "lainnya+tabel"
+    assert Klasifikasi("tabel", False).label == "tabel"
+    assert Klasifikasi(None, None).label == "None"
