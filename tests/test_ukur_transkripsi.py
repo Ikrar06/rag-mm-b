@@ -323,8 +323,9 @@ def test_klasifikasi_penuh_dan_lanjut(korpus, monkeypatch):
 
 def test_klasifikasi_menolak_campur_prompt(tmp_path):
     with pytest.raises(SystemExit, match="prompt lain"):
-        kg.sudah_selesai([{"chunk_id": "a", "prompt_sha256": "lama"}])
-    assert kg.sudah_selesai([{"chunk_id": "a", "prompt_sha256": kg.PROMPT_SHA}]) == {"a"}
+        kg.sudah_selesai([{"chunk_id": "a", "prompt_sha256": "lama"}], 1024)
+    assert kg.sudah_selesai([{"chunk_id": "a", "prompt_sha256": kg.PROMPT_SHA,
+                              "sisi": 1024}], 1024) == {"a"}
 
 
 # ── batas ukuran gambar dan ketahanan panggilan ─────────────────────────────
@@ -502,3 +503,60 @@ def test_perluas_mengabaikan_kata_raksasa():
     assert perluas_bbox([0.1, 0.1, 0.5, 0.35], biasa + [raksasa]) == [0.1, 0.1, 0.5, 0.35]
     assert perluas_bbox([0.1, 0.1, 0.5, 0.35], biasa) == [0.1, 0.1, 0.5, 0.35]
     assert perluas_bbox([0.1, 0.1, 0.5, 0.41], biasa)[3] == pytest.approx(0.415)
+
+
+# ── klasifikasi versi 2 dan pembanding ──────────────────────────────────────
+
+import bandingkan_klasifikasi as bk  # noqa: E402
+from lib.transkripsi_ukur import PROMPT_KLASIFIKASI  # noqa: E402
+
+
+def test_prompt_v2_ragu_ke_lainnya_dan_daftar_bukan_tabel():
+    assert "Jika ragu, jawab lainnya." in PROMPT_KLASIFIKASI
+    assert "jawab tabel" not in PROMPT_KLASIFIKASI.split("Jika ragu")[1]
+    for frasa in ("tangkapan layar", "swimlane", "matriks logo", "garis kotak", "BSrE", "UKT"):
+        assert frasa in PROMPT_KLASIFIKASI
+
+
+def test_resume_menolak_sisi_berbeda():
+    with pytest.raises(SystemExit, match="--sisi"):
+        kg.sudah_selesai([{"chunk_id": "a", "prompt_sha256": kg.PROMPT_SHA, "sisi": 512}], 1024)
+
+
+def test_cocokkan_awalan_dan_persis():
+    ids = ["manual_p16_c00", "manual-dosen_p16_c00", "draft-panduan-teknis-kkn-covid_p89_c01",
+           bk.LK.rstrip("$") + "_p23_c00",
+           "pedoman-penyusunan-laporan-keuangan-perguruan-tinggi-negeri-badan-hukum-universitas-hasanuddin_p23_c00"]
+    assert bk.cocokkan(ids, "manual$", "_p16_c00") == ["manual_p16_c00"]
+    assert bk.cocokkan(ids, "draft-panduan-teknis-kkn", "_p89_c01") == [ids[2]]
+    assert bk.cocokkan(ids, bk.LK, "_p23_c00") == [ids[3]]
+    assert len(bk.cocokkan(ids, "pedoman-penyusunan-laporan-keuangan", "_p23_c00")) == 2
+
+
+def test_bandingkan_melaporkan_perpindahan_dan_harapan(tmp_path, monkeypatch, capsys):
+    lama = [{"chunk_id": "ukt-tahun-2025_p5_c02", "jenis": "tabel"},
+            {"chunk_id": "manual_p16_c00", "jenis": "tabel"},
+            {"chunk_id": "rubrik-2024_p50_c02", "jenis": "tabel"}]
+    baru = [{"chunk_id": "ukt-tahun-2025_p5_c02", "jenis": "cap"},
+            {"chunk_id": "manual_p16_c00", "jenis": "lainnya"},
+            {"chunk_id": "rubrik-2024_p50_c02", "jenis": "lainnya", "jawaban_mentah": "x"}]
+    for nama, isi in (("l", lama), ("b", baru)):
+        (tmp_path / nama).write_text("\n".join(json.dumps(x) for x in isi))
+    monkeypatch.setattr(sys, "argv", ["x", "--lama", str(tmp_path / "l"), "--baru", str(tmp_path / "b"),
+                                      "--out", str(tmp_path / "o.csv")])
+    with pytest.raises(SystemExit) as e:
+        bk.main()
+    keluar = capsys.readouterr().out
+    assert e.value.code == 1
+    assert "OK       harap cap" in keluar and "MELESET  harap tabel    dapat lainnya" in keluar
+    assert "0 kecocokan" in keluar
+    assert (tmp_path / "o.csv").read_text().count("\n") == 4
+
+
+def test_perluas_tidak_menarik_kata_milik_elemen_lain():
+    # bagan-akun p6: baris kode di bawah tabel tersimpan sebagai chunk teks.
+    kata = [(0.2, 0.78, 0.6, 0.80)]                 # memotong tepi bawah tabel
+    tabel = [0.1, 0.1, 0.9, 0.79]
+    assert perluas_bbox(tabel, kata)[3] == pytest.approx(0.80)
+    assert perluas_bbox(tabel, kata, milik_lain=[[0.15, 0.785, 0.7, 0.84]]) == tabel
+    assert perluas_bbox(tabel, kata, milik_lain=[None, [0, 0, 0.05, 0.05]])[3] == pytest.approx(0.80)

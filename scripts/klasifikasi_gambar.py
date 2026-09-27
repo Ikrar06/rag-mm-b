@@ -3,7 +3,7 @@ yang dideskripsikan, untuk DITINJAU sebelum reindex v5.
 
 Read-only terhadap koleksi, cache, dan dump. Satu panggilan per chunk
 ImageDescription: area bbox dirender 150 dpi lalu diperkecil ke sisi
-terpanjang --sisi px (menentukan jenis tidak butuh detail sel).
+terpanjang --sisi px (bawaan 1024).
 
 Hasil ditulis per baris ke klasifikasi.jsonl begitu tiap gambar selesai, jadi
 run yang terputus dilanjutkan dengan perintah yang sama. Melanjutkan dengan
@@ -64,11 +64,15 @@ def gambar_dideskripsi(rows: list[dict]) -> list[dict]:
                   key=lambda r: r["chunk_id"])
 
 
-def sudah_selesai(hasil_lama: list[dict]) -> set[str]:
-    """chunk_id yang sudah diklasifikasi. Menolak berkas dari prompt lain."""
+def sudah_selesai(hasil_lama: list[dict], sisi: int) -> set[str]:
+    """chunk_id yang sudah diklasifikasi. Menolak berkas dari prompt atau sisi lain."""
     lain = {h.get("prompt_sha256") for h in hasil_lama} - {PROMPT_SHA}
     if lain:
         raise SystemExit(f"klasifikasi.jsonl berisi jawaban prompt lain {sorted(lain)}; "
+                         "pakai --out baru")
+    sisi_lain = {h.get("sisi") for h in hasil_lama} - {sisi}
+    if sisi_lain:
+        raise SystemExit(f"klasifikasi.jsonl dibuat dengan --sisi {sorted(sisi_lain)}; "
                          "pakai --out baru")
     return {h["chunk_id"] for h in hasil_lama}
 
@@ -130,14 +134,17 @@ def main() -> None:
     ap.add_argument("--chunks", type=Path, required=True)
     ap.add_argument("--pdf-dir", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--sisi", type=int, default=512)
+    # 1024, bukan 512: di 512 px logo BSrE pada potongan cap UKT hanya ~20 px
+    # dan catatan UU ITE tak terbaca, sehingga cap yang sama tergolong tidak
+    # konsisten antarhalaman. Tangkapan layar pun lebih mudah dibedakan.
+    ap.add_argument("--sisi", type=int, default=1024)
     ap.add_argument("--batas", type=int, default=0, help="0 = semua gambar")
     a = ap.parse_args()
 
     rows = baca_jsonl(a.chunks)
     (a.out / "gambar").mkdir(parents=True, exist_ok=True)
     berkas = a.out / "klasifikasi.jsonl"
-    selesai = sudah_selesai(baca_jsonl(berkas))
+    selesai = sudah_selesai(baca_jsonl(berkas), a.sisi)
     antre = [r for r in gambar_dideskripsi(rows) if r["chunk_id"] not in selesai]
     if a.batas:
         antre = antre[:a.batas]

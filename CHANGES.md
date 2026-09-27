@@ -2615,3 +2615,56 @@ tertolak e-panjang, mematikan rantai, dan membuang header aktivitas yang sah —
 panjang satu-satunya sel bukan bukti baris data. Satu sel yang murni angka tetap
 tertangkap b-numerik lebih dulu. Uji sebelumnya melewatkannya karena memakai
 judul 56 karakter, di bawah batas; uji baru memakai panjang korpus.
+
+---
+
+# TAHAP T — transkripsi tabel oleh vision (pengukuran; produksi belum diubah)
+
+Alat ukur read-only: `scripts/ukur_transkripsi.py`, `scripts/klasifikasi_gambar.py`,
+`scripts/bandingkan_klasifikasi.py`. Keputusan yang sudah diambil dari hasil ukur:
+DPI 200, `num_predict` 9000, `num_ctx` 16384, penanda `baris_berturut_identik`
+(bukan `label_berturut_sama`: di standar-biaya p9 muncul 53–54 kali, semuanya sel
+gabungan yang sah disalin ke tiap baris).
+
+## Penanda berujukan lapisan OCR banyak yang palsu
+
+Halaman yang tertutup satu gambar ≥ 90% luasnya adalah pindaian; lapisan teksnya
+hasil OCR tersembunyi, bukan teks asli. Di korpus: 857 tabel `digital_asli`, 150
+`pindai_lapisan_ocr`, 153 `pindai_tanpa_lapisan`. Angka dari lapisan OCR bukan
+kebenaran:
+
+- laporan-keuangan p23: `angka_tak_ditemukan` untuk 28.111.676.194,
+  2.114.173.500.035, 2.337.808.161.490. Ketiganya BENAR, terbukti dari
+  penjumlahan baris di tabel yang sama. Lapisan OCR kehilangan baris JUMLAH
+  EKUITAS dan memecah 28.111.676.194 menjadi 11 digit tunggal.
+- bagan-akun p10–11: kode 426111, 429111, 429112 terbaca benar oleh model;
+  lapisan OCR menulisnya `4 2 6 1 1 1` dst.
+
+Karena itu setiap penanda mencatat sumber rujukannya (`rujukan=lapisan_teks`,
+`rujukan=lapisan_ocr`, atau teks OCR Unstructured). **Penanda berujukan
+`lapisan_ocr` harus dibaca sebagai petunjuk lemah, bukan bukti salah baca.**
+
+## Label `cap` pada klasifikasi gambar
+
+Label `cap` dari klasifikasi tiga jenis mencakup lebih dari cap BSrE: logo Unhas
+berbentuk perisai, logo universitas lain, kode QR (pedoman-penulisan-skripsi
+p3_c06), dan "Contoh cap dinas" di tata-naskah p153–p154. Label ini **hanya**
+dipakai untuk membuang gambar yang juga bertumpang dengan chunk Table (cap BSrE
+di atas tabel UKT). **Jangan pakai label `cap` untuk membuang gambar tanpa syarat
+tumpang tindih**: yang terbuang akan termasuk logo dan kode QR yang sah.
+
+## Aturan rasio tumpang tindih ditolak
+
+79 gambar bertumpang dengan tabel; tidak ada celah bersih (celah terbesar
+0,532 → 0,594). Rentang yang sama memuat cap BSrE (UKT p5–p10, 0,948–0,987)
+yang harus dibuang dan tangkapan layar di sel tabel (manual-dosen p31 0,963)
+yang harus dipertahankan. Diganti aturan isi (label `cap` + tumpang tindih).
+
+## Batas ukuran gambar model vision
+
+Image processor qwen3vl Ollama panic (HTTP 500) bila sisi gambar < `patch_size`
+× `spatial_merge_size` atau rasio sisi > 200. Klasifikasi berhenti di gambar
+543/1.441 (manual_p23_c03 2087×118 → 512×29). Batas dibaca dari `/api/show`;
+pengecilan berhenti di batas dan sisanya ditambal putih. 22 dari 1.441 gambar
+terkena pada pengecilan ke 512 px; nol pada ukuran asli, jadi deskripsi v4
+(maksimum 1.280 px) tidak pernah terkena.

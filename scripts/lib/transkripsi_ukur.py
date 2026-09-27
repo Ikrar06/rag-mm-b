@@ -27,20 +27,35 @@ PROMPT_TRANSKRIPSI = """Transkripsikan tabel pada gambar ini menjadi SATU tabel 
 7. Sel kosong ditulis kosong. Karakter | di dalam sel ditulis \\|.
 Keluaran HANYA tabel Markdown. Tanpa penjelasan, tanpa pagar kode."""
 
-# Tiga jenis dalam satu panggilan. Condong ke tabel antara tabel/lainnya:
-# salah ke arah tabel hanya menambah satu transkripsi (lalu jatuh ke deskripsi
-# bila tak terurai). "cap" didahulukan karena potongan cap BSrE di UKT memuat
-# baris tabel di belakangnya dan tanpa aturan ini terjawab "tabel".
-PROMPT_KLASIFIKASI = """Gambar ini diambil dari dokumen PDF. Tentukan jenisnya:
-- "cap": cap atau segel tanda tangan elektronik (misalnya logo Balai Sertifikasi
-  Elektronik / BSrE) atau catatan "dokumen ini telah ditandatangani secara
-  elektronik". Jawab cap bila unsur itu terlihat, walaupun ada potongan tabel
-  di belakangnya.
-- "tabel": gambar yang HAMPIR SELURUHNYA berupa tabel data (baris dan kolom),
-  termasuk tabel hasil pindai.
-- "lainnya": selain itu, termasuk tangkapan layar aplikasi, halaman berisi
-  paragraf dan tabel sekaligus, diagram, bagan alir, foto, dan logo lembaga.
-Jika ragu antara tabel dan lainnya, jawab tabel.
+# Tiga jenis dalam satu panggilan. Versi 2, setelah tinjauan 1.441 gambar:
+# - "jika ragu" kini ke LAINNYA. Salah ke arah tabel tidak aman: tangkapan
+#   layar, flowchart bersiku, dan matriks logo berbentuk kisi sehingga
+#   transkripsi menghasilkan tabel yang tampak sah dan isinya (alur, petunjuk
+#   antarmuka) hilang. Salah ke arah lainnya hanya mempertahankan narasi v4.
+# - cap didahulukan walau ada baris tabel di belakangnya (ukt p5_c02 lolos
+#   sebagai tabel di versi 1, padahal cap yang sama di p6-p10 tertangkap).
+PROMPT_KLASIFIKASI = """Gambar ini diambil dari dokumen PDF. Tentukan jenisnya.
+
+"cap": cap atau segel tanda tangan elektronik, yaitu logo Balai Sertifikasi
+Elektronik (BSrE) bersama catatan "Dokumen ini telah ditandatangani secara
+elektronik". Tetap jawab cap walaupun sebagian besar gambar berisi baris tabel
+di belakangnya. Contoh: potongan tabel biaya UKT yang di tengahnya ada logo
+BSrE dan catatan UU ITE adalah cap.
+
+"tabel": HANYA tabel data, yaitu baris dan kolom berisi teks atau angka yang
+dibaca sebagai data: tabel biaya, daftar kode dan uraian, rekap angka, jadwal,
+termasuk tabel hasil pindai.
+
+"lainnya": semua yang lain, WALAUPUN berbentuk kisi atau memuat tabel di
+dalamnya:
+- tangkapan layar aplikasi, situs web, atau formulir online
+- flowchart, bagan alir, dan bagan bersiku kolom (swimlane)
+- panduan logo, matriks logo, dan kumpulan ikon
+- surat, pernyataan, atau halaman teks yang memiliki garis kotak
+- halaman berisi paragraf dan tabel sekaligus
+- diagram, foto, logo lembaga, dan kode QR
+
+Jika ragu, jawab lainnya.
 Jawab HANYA dengan JSON satu baris: {"jenis": "tabel"}, {"jenis": "cap"}, atau {"jenis": "lainnya"}"""
 
 JENIS_GAMBAR = ("tabel", "cap", "lainnya")
@@ -263,7 +278,7 @@ def jenis_halaman(ada_kata: bool, rasio_gambar_terbesar: float) -> str:
     return "pindai_lapisan_ocr" if rasio_gambar_terbesar >= 0.9 else "digital_asli"
 
 
-def perluas_bbox(bbox, kata_bbox, margin: float = 0.0) -> list[float]:
+def perluas_bbox(bbox, kata_bbox, margin: float = 0.0, milik_lain=()) -> list[float]:
     """Perluas bbox ke kata lapisan teks yang BERIRISAN dengannya, lalu margin.
 
     Kata yang terpotong tepi bbox ditarik utuh: di ukt p5 kolom KELOMPOK VIII
@@ -272,13 +287,22 @@ def perluas_bbox(bbox, kata_bbox, margin: float = 0.0) -> list[float]:
     """
     x0, y0, x1, y1 = bbox
     tinggi = median([k[3] - k[1] for k in kata_bbox])
+    # Kata yang titik tengahnya di dalam bbox elemen LAIN (tabel lain, chunk
+    # teks, gambar) sudah dimiliki elemen itu. Menariknya menggandakan isi:
+    # bagan-akun p6, baris kode di bawah tabel tersimpan sebagai chunk teks.
+    lain = [b for b in milik_lain if b and len(b) == 4]
+
+    def dimiliki(k) -> bool:
+        cx, cy = (k[0] + k[2]) / 2, (k[1] + k[3]) / 2
+        return any(b[0] <= cx <= b[2] and b[1] <= cy <= b[3] for b in lain)
+
     for k in kata_bbox:
         # Kata jauh lebih tinggi dari kata biasa bukan isi sel: teks vertikal
         # raksasa ("February" di academic-calendar p10, menarik 34% halaman)
         # atau kotak sampah lapisan OCR (bagan-akun p6).
         if tinggi and k[3] - k[1] > TINGGI_KATA_MAKS * tinggi:
             continue
-        if k[0] < x1 and k[2] > x0 and k[1] < y1 and k[3] > y0:
+        if k[0] < x1 and k[2] > x0 and k[1] < y1 and k[3] > y0 and not dimiliki(k):
             x0, y0, x1, y1 = min(x0, k[0]), min(y0, k[1]), max(x1, k[2]), max(y1, k[3])
     return [max(0.0, x0 - margin), max(0.0, y0 - margin),
             min(1.0, x1 + margin), min(1.0, y1 + margin)]
