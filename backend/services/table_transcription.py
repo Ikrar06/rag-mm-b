@@ -289,8 +289,14 @@ def perlakukan_gambar(el: dict, hal: _Halaman, tabel_sehalaman) -> tuple[dict | 
 
 # ─── Satu dokumen ─────────────────────────────────────────────────────────────
 
-def proses(elements: list[dict], pdf_path: Path) -> tuple[list[dict], dict[str, dict]]:
-    """(element baru, info per image_id). Urutan element dipertahankan."""
+def proses(elements: list[dict], pdf_path: Path,
+           halaman_terpilih: set[int] | None = None) -> tuple[list[dict], dict[str, dict]]:
+    """(element baru, info per image_id). Urutan element dipertahankan.
+
+    `halaman_terpilih`: hanya element di halaman ini yang diproses; sisanya
+    persis seperti flag mati. Untuk uji sampel lewat jalur pipeline tanpa
+    mentranskripsi seluruh dokumen — indexing tidak pernah mengisinya.
+    """
     if not aktif():
         return elements, {}
     import fitz
@@ -316,6 +322,9 @@ def proses(elements: list[dict], pdf_path: Path) -> tuple[list[dict], dict[str, 
 
         for el in elements:
             kat, h = el.get("category"), hal(el.get("page"))
+            if halaman_terpilih is not None and el.get("page") not in halaman_terpilih:
+                keluar.append(el)
+                continue
             if kat == "Table" and config.INDEX_TABLE_TRANSCRIPTION and h is not None:
                 b = (el.get("metadata") or {}).get("bbox")
                 lain = [x for x in tabel_per_hal.get(el.get("page"), []) if x is not b]

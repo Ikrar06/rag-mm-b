@@ -243,3 +243,10 @@ def test_halaman_pindai_tanpa_lapisan_memakai_margin(lingkungan, tmp_path):
         [0.1 - 0.025, 0.1 - 0.025, 0.72 + 0.025, 0.2 + 0.025])
     # rujukan teks OCR: 8000000 tidak ada di teks OCR -> ditandai
     assert el["metadata"]["transkripsi_peringatan"][0] == "rujukan=teks_ocr"
+
+
+def test_halaman_terpilih_membatasi_pemrosesan(lingkungan, pdf):
+    model, _ = lingkungan
+    els = [tabel_el(), {**tabel_el(), "page": 2}]
+    keluar, _ = tt.proses(els, pdf, halaman_terpilih={2})
+    assert keluar == els and model.panggilan == []     # halaman 2 tidak ada di PDF 1 halaman
