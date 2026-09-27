@@ -33,7 +33,7 @@ from lib.transkripsi_ukur import (  # noqa: E402
     celah_terbesar, dampak_serapan, ketepatan_angka, median, perluas_bbox,
     peringatan, regresi_linear, sebaran_tumpang, urai_markdown,
 )
-from lib.ukur_io import buka_area, panggil, png_pemanasan  # noqa: E402
+from lib.ukur_io import GagalVision, buka_area, panggil, png_pemanasan  # noqa: E402
 
 AMBANG_CALON = (0.5, 0.8, 0.95, 0.99)
 AMBANG_TAMPIL_DESKRIPSI = 0.9
@@ -207,16 +207,24 @@ def ringkas_transkripsi(recs: list[dict], rows: list[dict]) -> dict:
 def ukur_semua(rows: list[dict], a, pilih: list[str]) -> dict:
     sampel = pilih_sampel(rows, a.pdf_dir, a.sampel, pilih)
     print(f"\n== Transkripsi {len(sampel)} sampel{' (area diperluas)' if a.perluas else ''} ==")
-    recs = []
+    recs, gagal = [], []
     for dpi in [int(d) for d in a.dpi.split(",")]:
         for label, r in sampel:
-            rec = ukur_satu(label, r, a.pdf_dir, dpi, a.num_predict, a.out, a.perluas)
+            try:
+                rec = ukur_satu(label, r, a.pdf_dir, dpi, a.num_predict, a.out, a.perluas)
+            except GagalVision as e:
+                # Di produksi: jatuh ke teks OCR. Di sini: dicatat, lanjut.
+                gagal.append({"chunk_id": r["chunk_id"], "dpi": dpi, "alasan": str(e)})
+                print(f"  {dpi}dpi GAGAL {r['chunk_id']}: {e}")
+                continue
             recs.append(rec)
             print(f"  {dpi}dpi {rec['detik']:6.1f}s in={rec['prompt_eval_count']} "
                   f"out={rec['eval_count']} {rec['done_reason']} "
                   f"baris={rec['jumlah_baris']} cak={rec['cakupan_angka']} "
                   f"{rec['jenis_halaman']} {label:10s} {r['chunk_id']} {rec['peringatan']}")
-    hasil = {"transkripsi": recs, "ringkas": ringkas_transkripsi(recs, rows)}
+    hasil = {"transkripsi": recs, "gagal": gagal,
+             "ringkas": ringkas_transkripsi(recs, rows) if recs else {}}
+    print(f"gagal: {len(gagal)}")
     print(json.dumps(hasil["ringkas"], indent=1))
     return hasil
 

@@ -134,6 +134,19 @@ def test_celah_regresi_median():
 
 fitz = pytest.importorskip("fitz")
 import ukur_transkripsi as uk  # noqa: E402
+from lib import ukur_io  # noqa: E402
+
+# Fungsi asli, diambil sebelum fixture autouse menimpanya.
+_BATAS_ASLI = ukur_io.batas_model.__wrapped__
+
+BATAS = {"model": "qwen3-vl:8b-instruct", "ollama": "0.13.0", "patch_size": 16,
+         "spatial_merge_size": 2, "sisi_min": 32, "rasio_maks": 200}
+
+
+@pytest.fixture(autouse=True)
+def batas_tetap(monkeypatch):
+    """Tanpa server: batas model dipatok seperti qwen3-vl (16 x 2)."""
+    monkeypatch.setattr(ukur_io, "batas_model", lambda: BATAS)
 
 
 @pytest.fixture
@@ -288,6 +301,7 @@ def test_klasifikasi_penuh_dan_lanjut(korpus, monkeypatch):
         return asli(r, pdf_dir, sisi)
 
     monkeypatch.setattr(kg, "_kini", None, raising=False)
+    monkeypatch.setattr(kg, "batas_model", lambda: BATAS)
     monkeypatch.setattr(kg, "panggil", palsu)
     monkeypatch.setattr(kg, "klasifikasi_satu", dengan_id)
     out = tmp / "k"
@@ -311,3 +325,170 @@ def test_klasifikasi_menolak_campur_prompt(tmp_path):
     with pytest.raises(SystemExit, match="prompt lain"):
         kg.sudah_selesai([{"chunk_id": "a", "prompt_sha256": "lama"}])
     assert kg.sudah_selesai([{"chunk_id": "a", "prompt_sha256": kg.PROMPT_SHA}]) == {"a"}
+
+
+# ── batas ukuran gambar dan ketahanan panggilan ─────────────────────────────
+
+from lib.transkripsi_ukur import rencana_ukuran  # noqa: E402
+
+
+class TestRencanaUkuran:
+    def test_manual_p23_tidak_dikecilkan_di_bawah_batas(self):
+        # 2087x118 -> 512 px memberi tinggi 29 (< 32, Ollama 500).
+        r = rencana_ukuran(2087, 118, 512, 32, 200)
+        assert r.tinggi == 32 and r.lebar == 566 and not r.dipadding
+
+    def test_gambar_kecil_ditambal_bukan_diregangkan(self):
+        r = rencana_ukuran(20, 10, None, 32, 200)
+        assert (r.lebar, r.tinggi, r.kanvas_lebar, r.kanvas_tinggi) == (20, 10, 32, 32)
+        assert r.dipadding
+
+    def test_rasio_ekstrem_ditambal_sampai_batas_rasio(self):
+        r = rencana_ukuran(7000, 33, None, 32, 200)
+        assert (r.kanvas_lebar, r.kanvas_tinggi) == (7000, 35)
+        assert r.kanvas_lebar // r.kanvas_tinggi <= 200
+
+    def test_gambar_aman_tidak_berubah(self):
+        r = rencana_ukuran(800, 600, None, 32, 200)
+        assert (r.kanvas_lebar, r.kanvas_tinggi) == (800, 600) and not r.dipadding
+        r = rencana_ukuran(2000, 1000, 512, 32, 200)
+        assert (r.lebar, r.tinggi) == (512, 256)
+
+
+def _png(w, h, warna="black"):
+    from PIL import Image
+    import io
+    buf = io.BytesIO()
+    Image.new("RGB", (w, h), warna).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_siapkan_png_menambal_di_tengah_dengan_putih():
+    from PIL import Image
+    import io
+    asli = _png(10, 10)
+    assert ukur_io.siapkan_png(_png(100, 100)) == (_png(100, 100), False)
+    hasil, dipadding = ukur_io.siapkan_png(asli)
+    img = Image.open(io.BytesIO(hasil)).convert("RGB")
+    assert dipadding and img.size == (32, 32)
+    assert img.getpixel((0, 0)) == (255, 255, 255) and img.getpixel((16, 16)) == (0, 0, 0)
+    kecil, _ = ukur_io.siapkan_png(_png(2087, 118), 512)
+    assert Image.open(io.BytesIO(kecil)).size == (566, 32)
+
+
+class TestPanggil:
+    @pytest.fixture(autouse=True)
+    def lingkungan(self, monkeypatch):
+        import backend.config as cfg
+        monkeypatch.setattr(cfg, "LLM_PROVIDER", "ollama")
+        self.jeda = []
+        monkeypatch.setattr(ukur_io.time, "sleep", self.jeda.append)
+
+    def galat(self, kode):
+        import httpx
+        req = httpx.Request("POST", "http://x/api/generate")
+        return httpx.HTTPStatusError("x", request=req, response=httpx.Response(kode, request=req))
+
+    def test_5xx_dicoba_ulang_lalu_berhasil(self, monkeypatch):
+        urutan = [self.galat(500), self.galat(503), {"response": "ok", "eval_count": 1}]
+
+        def kirim(payload):
+            x = urutan.pop(0)
+            if isinstance(x, Exception):
+                raise x
+            return x
+
+        monkeypatch.setattr(ukur_io, "_kirim", kirim)
+        h = ukur_io.panggil(_png(10, 10), "p", 5)
+        assert h["response"] == "ok" and h["percobaan"] == 3 and h["dipadding"]
+        assert self.jeda == [5.0, 15.0]
+
+    def test_tetap_gagal_setelah_tiga_ulang(self, monkeypatch):
+        import httpx
+
+        def kirim(payload):
+            raise httpx.ReadTimeout("lambat")
+
+        monkeypatch.setattr(ukur_io, "_kirim", kirim)
+        with pytest.raises(ukur_io.GagalVision, match="4 percobaan; terakhir ReadTimeout"):
+            ukur_io.panggil(_png(64, 64), "p", 5)
+        assert self.jeda == [5.0, 15.0, 45.0]
+
+    def test_4xx_tidak_diulang(self, monkeypatch):
+        def kirim(payload):
+            raise self.galat(400)
+
+        monkeypatch.setattr(ukur_io, "_kirim", kirim)
+        with pytest.raises(ukur_io.GagalVision, match="1 percobaan"):
+            ukur_io.panggil(_png(64, 64), "p", 5)
+        assert self.jeda == []
+
+
+class TestBatasModel:
+    def klien(self, monkeypatch, info):
+        import httpx
+
+        class Jawab:
+            def __init__(self, d):
+                self.d = d
+
+            def raise_for_status(self):
+                return self
+
+            def json(self):
+                return self.d
+
+        class Klien:
+            def __init__(self, *a, **k):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def post(self, url, json):
+                return Jawab({"model_info": info})
+
+            def get(self, url):
+                return Jawab({"version": "0.13.0"})
+
+        monkeypatch.setattr(httpx, "Client", Klien)
+
+    def test_dibaca_dari_model_info(self, monkeypatch):
+        self.klien(monkeypatch, {"qwen3vl.vision.patch_size": 16,
+                                 "qwen3vl.vision.spatial_merge_size": 2})
+        b = _BATAS_ASLI()
+        assert b["sisi_min"] == 32 and b["ollama"] == "0.13.0"
+
+    def test_tanpa_kunci_berhenti(self, monkeypatch):
+        self.klien(monkeypatch, {"general.architecture": "qwen3vl"})
+        with pytest.raises(SystemExit, match="tidak dapat dipastikan"):
+            _BATAS_ASLI()
+
+
+def test_klasifikasi_gagal_dicatat_lalu_dicoba_lagi(korpus, monkeypatch):
+    tmp, chunks = korpus
+    percobaan = {"n": 0}
+
+    def palsu(png, prompt, num_predict):
+        if num_predict == kg.NUM_PREDICT:       # bukan panggilan pemanasan
+            percobaan["n"] += 1
+            if percobaan["n"] == 1:
+                raise kg.GagalVision("4 percobaan; terakhir HTTPStatusError: 500")
+        return {"detik": 1.0, "response": '{"jenis": "lainnya"}', "prompt_eval_count": 9,
+                "eval_count": 3, "done_reason": "stop", "percobaan": 1, "dipadding": False}
+
+    monkeypatch.setattr(kg, "panggil", palsu)
+    monkeypatch.setattr(kg, "batas_model", lambda: BATAS)
+    out = tmp / "k"
+    monkeypatch.setattr(sys, "argv", ["x", "--chunks", str(chunks), "--pdf-dir", str(tmp),
+                                      "--out", str(out)])
+    kg.main()
+    ring = json.loads((out / "ringkasan.json").read_text())
+    assert ring["gagal_belum_terklasifikasi"] == 1 and ring["jumlah"] == 0
+    assert not (out / "klasifikasi.jsonl").read_text().strip()
+    kg.main()
+    ring = json.loads((out / "ringkasan.json").read_text())
+    assert ring["gagal_belum_terklasifikasi"] == 0 and ring["jumlah"] == 1

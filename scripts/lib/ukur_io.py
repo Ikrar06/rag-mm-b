@@ -2,6 +2,10 @@
 
 Dipakai scripts/ukur_transkripsi.py dan scripts/klasifikasi_gambar.py. Tidak
 menulis ke koleksi, cache, atau dump.
+
+Setiap gambar yang dikirim ke model lewat `panggil` diamankan ukurannya
+(lihat `batas_model` dan `rencana_ukuran`), dan kegagalan 5xx/timeout dicoba
+ulang dengan jeda bertahap sebelum dilaporkan sebagai `GagalVision`.
 """
 
 from __future__ import annotations
@@ -10,13 +14,22 @@ import base64
 import io
 import time
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
-from lib.transkripsi_ukur import jenis_halaman
+from lib.transkripsi_ukur import jenis_halaman, rencana_ukuran
 
 NUM_CTX = 16384
 SEED = 1337
 TIMEOUT_DETIK = 1800.0
+# Tiga kali coba ulang setelah percobaan pertama, jeda bertahap (detik).
+JEDA_COBA_ULANG = (5.0, 15.0, 45.0)
+# Batas rasio SmartResize Ollama: panic bila max(sisi) // min(sisi) > 200.
+RASIO_MAKS = 200
+
+
+class GagalVision(Exception):
+    """Model tidak menjawab setelah semua percobaan. Pesannya alasan kegagalan."""
 
 
 @dataclass(frozen=True)
@@ -60,38 +73,102 @@ def buka_area(pdf: Path, halaman: int, bbox, dpi: int | None) -> Area:
         )
 
 
-def perkecil(png: bytes, sisi: int) -> bytes:
-    """Perkecil ke sisi terpanjang `sisi` px; gambar yang lebih kecil dibiarkan."""
+@lru_cache(maxsize=1)
+def batas_model() -> dict:
+    """Sisi minimum gambar untuk model vision, dibaca dari Ollama, bukan ditebak.
+
+    Image processor qwen3vl Ollama (model/models/qwen3vl/imageprocessor.go):
+    factor = vision.patch_size * vision.spatial_merge_size, dan SmartResize
+    panic bila tinggi atau lebar < factor. Kedua nilai diambil dari
+    model_info /api/show model yang sedang dipakai. Bila tidak ada, run
+    berhenti: menebak di sini berarti memilih antara 28 dan 32.
+    """
+    import httpx
+    from backend.config import LLM_BASE_URL, VISION_MODEL
+    with httpx.Client(timeout=60.0) as c:
+        info = c.post(f"{LLM_BASE_URL}/api/show", json={"model": VISION_MODEL}
+                      ).raise_for_status().json().get("model_info") or {}
+        versi = c.get(f"{LLM_BASE_URL}/api/version").json().get("version")
+    patch = next((v for k, v in info.items() if k.endswith(".vision.patch_size")), None)
+    gabung = next((v for k, v in info.items() if k.endswith(".vision.spatial_merge_size")), None)
+    if not patch or not gabung:
+        raise SystemExit(f"model_info {VISION_MODEL} tidak memuat vision.patch_size / "
+                         "vision.spatial_merge_size; sisi minimum tidak dapat dipastikan")
+    return {"model": VISION_MODEL, "ollama": versi, "patch_size": int(patch),
+            "spatial_merge_size": int(gabung), "sisi_min": int(patch) * int(gabung),
+            "rasio_maks": RASIO_MAKS}
+
+
+def siapkan_png(png: bytes, sisi_maks: int | None = None) -> tuple[bytes, bool]:
+    """Perkecil (opsional) lalu tambal putih sampai aman bagi model.
+
+    Mengembalikan (png, dipadding). Gambar yang sudah aman dan tidak perlu
+    diperkecil dikirim apa adanya, byte demi byte.
+    """
     from PIL import Image
-    img = Image.open(io.BytesIO(png)).convert("RGB")
-    skala = sisi / max(img.size)
-    if skala < 1:
-        img = img.resize((max(1, round(img.width * skala)), max(1, round(img.height * skala))))
+    b = batas_model()
+    img = Image.open(io.BytesIO(png))
+    rencana = rencana_ukuran(img.width, img.height, sisi_maks, b["sisi_min"], b["rasio_maks"])
+    if (rencana.kanvas_lebar, rencana.kanvas_tinggi) == img.size:
+        return png, False
+    img = img.convert("RGB")
+    if (rencana.lebar, rencana.tinggi) != img.size:
+        img = img.resize((rencana.lebar, rencana.tinggi))
+    if rencana.dipadding:
+        kanvas = Image.new("RGB", (rencana.kanvas_lebar, rencana.kanvas_tinggi), "white")
+        kanvas.paste(img, ((rencana.kanvas_lebar - rencana.lebar) // 2,
+                           (rencana.kanvas_tinggi - rencana.tinggi) // 2))
+        img = kanvas
     buf = io.BytesIO()
     img.save(buf, format="PNG")
-    return buf.getvalue()
+    return buf.getvalue(), rencana.dipadding
 
 
 def png_pemanasan() -> bytes:
-    """Gambar kecil untuk memuat model ke memori; waktunya tidak dihitung."""
+    """Gambar untuk memuat model ke memori; waktunya tidak dihitung."""
     from PIL import Image
     buf = io.BytesIO()
     Image.new("RGB", (64, 64), "white").save(buf, format="PNG")
     return buf.getvalue()
 
 
-def panggil(png: bytes, prompt: str, num_predict: int) -> dict:
+def _boleh_diulang(e: Exception) -> bool:
     import httpx
-    from backend.config import LLM_BASE_URL, LLM_PROVIDER, VISION_MODEL
+    if isinstance(e, httpx.HTTPStatusError):
+        return e.response.status_code >= 500
+    return isinstance(e, (httpx.TimeoutException, httpx.TransportError))
+
+
+def _kirim(payload: dict) -> dict:
+    import httpx
+    from backend.config import LLM_BASE_URL
+    with httpx.Client(timeout=TIMEOUT_DETIK) as c:
+        return c.post(f"{LLM_BASE_URL}/api/generate", json=payload).raise_for_status().json()
+
+
+def panggil(png: bytes, prompt: str, num_predict: int) -> dict:
+    """Satu panggilan model dengan coba ulang. GagalVision bila tetap gagal."""
+    from backend.config import LLM_PROVIDER, VISION_MODEL
     if LLM_PROVIDER != "ollama":
         raise SystemExit(f"alat ukur hanya untuk ollama, LLM_PROVIDER={LLM_PROVIDER}")
+    aman, dipadding = siapkan_png(png)
     payload = {"model": VISION_MODEL, "prompt": prompt, "stream": False,
-               "images": [base64.b64encode(png).decode()],
+               "images": [base64.b64encode(aman).decode()],
                "options": {"temperature": 0, "seed": SEED, "num_ctx": NUM_CTX,
                            "num_predict": num_predict}}
-    t0 = time.monotonic()
-    with httpx.Client(timeout=TIMEOUT_DETIK) as c:
-        data = c.post(f"{LLM_BASE_URL}/api/generate", json=payload).raise_for_status().json()
-    return {"detik": round(time.monotonic() - t0, 1), "response": data.get("response", ""),
-            "prompt_eval_count": data.get("prompt_eval_count"),
-            "eval_count": data.get("eval_count"), "done_reason": data.get("done_reason")}
+    galat: list[str] = []
+    for percobaan, jeda in enumerate((*JEDA_COBA_ULANG, None), 1):
+        t0 = time.monotonic()
+        try:
+            data = _kirim(payload)
+        except Exception as e:
+            galat.append(f"{type(e).__name__}: {str(e)[:120]}")
+            if not _boleh_diulang(e) or jeda is None:
+                raise GagalVision(f"{percobaan} percobaan; terakhir {galat[-1]}") from e
+            time.sleep(jeda)
+            continue
+        return {"detik": round(time.monotonic() - t0, 1), "response": data.get("response", ""),
+                "prompt_eval_count": data.get("prompt_eval_count"),
+                "eval_count": data.get("eval_count"), "done_reason": data.get("done_reason"),
+                "percobaan": percobaan, "dipadding": dipadding}
+    raise AssertionError("tidak tercapai")

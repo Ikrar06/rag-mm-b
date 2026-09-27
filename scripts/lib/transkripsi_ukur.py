@@ -273,3 +273,36 @@ def perluas_bbox(bbox, kata_bbox, margin: float = 0.0) -> list[float]:
             x0, y0, x1, y1 = min(x0, k[0]), min(y0, k[1]), max(x1, k[2]), max(y1, k[3])
     return [max(0.0, x0 - margin), max(0.0, y0 - margin),
             min(1.0, x1 + margin), min(1.0, y1 + margin)]
+
+
+@dataclass(frozen=True)
+class RencanaUkuran:
+    """Ukuran gambar setelah diperkecil (lebar, tinggi) dan kanvas setelah padding."""
+    lebar: int
+    tinggi: int
+    kanvas_lebar: int
+    kanvas_tinggi: int
+
+    @property
+    def dipadding(self) -> bool:
+        return (self.kanvas_lebar, self.kanvas_tinggi) != (self.lebar, self.tinggi)
+
+
+def rencana_ukuran(lebar: int, tinggi: int, sisi_maks: int | None,
+                   sisi_min: int, rasio_maks: int) -> RencanaUkuran:
+    """Ukuran aman untuk image processor Qwen-VL di Ollama.
+
+    SmartResize Ollama panic (HTTP 500) bila sisi < patch_size * merge_size
+    atau max(sisi) // min(sisi) > 200. Aturannya:
+    - pengecilan ke sisi_maks tidak boleh membuat sisi pendek < sisi_min;
+      skala berhenti di situ (manual_p23_c03 2087x118 -> 512x29 memicu 500);
+    - gambar tidak pernah diperbesar; sisi yang masih kurang ditambal putih,
+      juga untuk memenuhi rasio_maks. Tidak ada peregangan.
+    """
+    panjang, pendek = max(lebar, tinggi), min(lebar, tinggi)
+    skala = 1.0
+    if sisi_maks and panjang > sisi_maks:
+        skala = min(1.0, max(sisi_maks / panjang, sisi_min / max(pendek, 1)))
+    w, h = max(1, round(lebar * skala)), max(1, round(tinggi * skala))
+    minimum = max(sisi_min, -(-max(w, h) // rasio_maks))
+    return RencanaUkuran(w, h, max(w, minimum), max(h, minimum))

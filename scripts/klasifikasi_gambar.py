@@ -9,9 +9,15 @@ Hasil ditulis per baris ke klasifikasi.jsonl begitu tiap gambar selesai, jadi
 run yang terputus dilanjutkan dengan perintah yang sama. Melanjutkan dengan
 prompt berbeda DITOLAK: satu berkas hanya boleh berisi jawaban satu prompt.
 
+Gambar yang tetap gagal setelah coba ulang dicatat di gagal.jsonl, BUKAN di
+klasifikasi.jsonl, lalu run berlanjut. Run berikutnya mencobanya lagi.
+Pengecilan tidak pernah membuat sisi pendek di bawah batas model; sisanya
+ditambal putih (manual_p23_c03 2087x118 -> 512x29 memicu Ollama 500).
+
 Keluaran di --out:
     klasifikasi.jsonl       satu baris per gambar
     klasifikasi_tinjau.csv  terurut per jenis, dengan rasio tumpang tabel dan deskripsi v4
+    gagal.jsonl             gambar yang gagal beserta alasannya (dicoba lagi di run berikut)
     gambar/<chunk_id>.png   gambar yang dikirim, untuk jenis tabel dan cap
 
 Usage (server):
@@ -36,7 +42,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.transkripsi_ukur import (  # noqa: E402
     PROMPT_KLASIFIKASI, median, sebaran_tumpang, urai_klasifikasi,
 )
-from lib.ukur_io import buka_area, panggil, perkecil, png_pemanasan  # noqa: E402
+from lib.ukur_io import (  # noqa: E402
+    GagalVision, batas_model, buka_area, panggil, png_pemanasan, siapkan_png,
+)
 
 PROMPT_SHA = hashlib.sha256(PROMPT_KLASIFIKASI.encode("utf-8")).hexdigest()
 DPI_RENDER = 150
@@ -67,12 +75,13 @@ def sudah_selesai(hasil_lama: list[dict]) -> set[str]:
 
 def klasifikasi_satu(r: dict, pdf_dir: Path, sisi: int) -> tuple[dict, bytes]:
     a = buka_area(pdf_dir / r["file_name"], r["page_number"], r["bbox"], DPI_RENDER)
-    kecil = perkecil(a.png, sisi)
+    kecil, _ = siapkan_png(a.png, sisi)
     h = panggil(kecil, PROMPT_KLASIFIKASI, NUM_PREDICT)
     return {"chunk_id": r["chunk_id"], "image_id": r.get("image_id"),
             "document_id": r.get("document_id"), "halaman": r.get("page_number"),
             "jenis": urai_klasifikasi(h["response"]), "jawaban_mentah": h["response"].strip(),
             "detik": h["detik"], "prompt_eval_count": h["prompt_eval_count"],
+            "percobaan": h.get("percobaan", 1), "dipadding": h.get("dipadding", False),
             "sisi": sisi, "prompt_sha256": PROMPT_SHA}, kecil
 
 
@@ -94,8 +103,10 @@ def baris_tinjau(hasil: list[dict], rows: list[dict]) -> list[dict]:
     return keluar
 
 
-def ringkasan(hasil: list[dict], rows: list[dict]) -> dict:
+def ringkasan(hasil: list[dict], rows: list[dict], gagal: list[dict]) -> dict:
     tumpang = {t.image_chunk for t in sebaran_tumpang(rows)}
+    selesai = {h["chunk_id"] for h in hasil}
+    belum = {g["chunk_id"]: g["alasan"] for g in gagal if g["chunk_id"] not in selesai}
     jenis = Counter(h["jenis"] or "TAK_DIKENALI" for h in hasil)
     detik = [h["detik"] for h in hasil]
     return {
@@ -106,6 +117,10 @@ def ringkasan(hasil: list[dict], rows: list[dict]) -> dict:
                                        and h["chunk_id"] not in tumpang),
         "tabel_bertumpang_tabel": sum(1 for h in hasil if h["jenis"] == "tabel"
                                       and h["chunk_id"] in tumpang),
+        "dipadding": sum(1 for h in hasil if h.get("dipadding")),
+        "diulang": sum(1 for h in hasil if h.get("percobaan", 1) > 1),
+        "gagal_belum_terklasifikasi": len(belum),
+        "gagal": belum,
         "prompt_sha256": PROMPT_SHA,
     }
 
@@ -127,11 +142,19 @@ def main() -> None:
     if a.batas:
         antre = antre[:a.batas]
     print(f"gambar: {len(gambar_dideskripsi(rows))}; sudah: {len(selesai)}; antre: {len(antre)}")
+    berkas_gagal = a.out / "gagal.jsonl"
     if antre:
+        print(f"batas model: {batas_model()}")
         panggil(png_pemanasan(), PROMPT_KLASIFIKASI, 5)
-    with berkas.open("a", encoding="utf-8") as f:
+    with berkas.open("a", encoding="utf-8") as f, berkas_gagal.open("a", encoding="utf-8") as fg:
         for i, r in enumerate(antre, 1):
-            h, png = klasifikasi_satu(r, a.pdf_dir, a.sisi)
+            try:
+                h, png = klasifikasi_satu(r, a.pdf_dir, a.sisi)
+            except GagalVision as e:
+                fg.write(json.dumps({"chunk_id": r["chunk_id"], "alasan": str(e)}) + "\n")
+                fg.flush()
+                print(f"  [{i}/{len(antre)}] GAGAL {r['chunk_id']}: {e}")
+                continue
             f.write(json.dumps(h, ensure_ascii=False) + "\n")
             f.flush()
             if h["jenis"] != "lainnya":
@@ -143,7 +166,7 @@ def main() -> None:
         w = csv.DictWriter(f, fieldnames=KOLOM_TINJAU)
         w.writeheader()
         w.writerows(baris_tinjau(hasil, rows))
-    ring = ringkasan(hasil, rows)
+    ring = ringkasan(hasil, rows, baca_jsonl(berkas_gagal))
     (a.out / "ringkasan.json").write_text(json.dumps(ring, indent=1), encoding="utf-8")
     print(json.dumps(ring, indent=1))
 
