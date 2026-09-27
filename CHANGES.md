@@ -2789,3 +2789,26 @@ Transkripsi sebagai tabel akan berkolom tiga dan lolos syarat dua kolom, jadi
 pelonggaran syarat itu tidak berlaku di sini. Jawaban model yang tak sah kini
 dicatat cuplikannya di log (`jawaban_tak_sah`) karena tidak pernah di-cache.
 Chunk ini tetap berisi teks OCR v4 dengan `table_source=ocr_fallback`.
+
+## Migrasi gold v4 → v5 (disiapkan selama reindex)
+
+`scripts/migrasi_gold.py` mendapat dua jangkar tambahan, dipakai setelah
+`text_sha` gagal dan sebelum sufiks/chunk_id:
+
+1. **image_id** — chunk gambar lama dikenali lewat gambarnya, apa pun bentuk
+   chunk barunya (narasi+tabel, atau Table asal gambar). Gambar yang tidak lagi
+   menjadi chunk (cap BSrE dibuang) berstatus `hilang`: tanpa aturan ini jangkar
+   chunk_id memetakan `ukt-tahun-2025_p5_c02` ke chunk TEKS yang kini
+   menempati posisinya.
+2. **sidik raw_html** — chunk tabel yang teksnya kini transkripsi, dibatasi ke
+   dokumen yang sama; sidik ganda di satu dokumen = `ambigu`.
+
+Keduanya menghasilkan `isi_berubah` (masuk daftar tinjau). Laporan memuat
+jumlah chunk dan item per jangkar — angka item `sidik` + `image_id` adalah
+jumlah item gold tabel yang perlu dikabarkan ke tim eval.
+
+**`relevan_setara`** (skema dan cara baca evaluator di
+`scripts/lib/relevan_setara.py`) diisi otomatis bila `--chunks-baru` adalah
+dump v5: chunk teks yang dirujuk gold dikelompokkan dengan chunk tabel sehalaman
+bila bbox-nya beririsan dengan daerah perluasan tabel (render_bbox di luar
+bbox). Setiap pasangan ditulis ke `relevan_setara_tinjau.jsonl` untuk ditinjau.

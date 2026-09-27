@@ -37,6 +37,17 @@ Usage:
 `--chunks-lama` opsional tapi SANGAT disarankan: tanpa itu perubahan isi tidak
 dapat dideteksi, dan item yang chunk_id-nya bergeser tidak punya jangkar.
 Ketiadaannya dilaporkan, bukan disamarkan.
+
+v4 -> v5 (Tahap T)
+------------------
+Seluruh teks chunk tabel berubah (transkripsi vision), jadi text_sha gagal
+untuk setiap item tabel. Dua jangkar tambahan dari dump lama: sidik raw_html
+(tidak berubah antar versi) dan image_id (chunk gambar yang kini narasi+tabel
+atau gambar-tabel; gambar cap yang dibuang = hilang). Item yang terpetakan
+lewat keduanya berstatus isi_berubah dan masuk daftar tinjau. Dengan
+--chunks-baru berupa dump v5, `relevan_setara` diisi otomatis (lihat
+lib/relevan_setara.py) dan setiap pasangannya ditulis ke
+relevan_setara_tinjau.jsonl.
 """
 
 from __future__ import annotations
@@ -53,6 +64,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from lib.relevan_setara import kelompok_setara, terapkan_setara  # noqa: E402
 from lib.gold_migrasi import (  # noqa: E402
     STATUS_AMBIGU, STATUS_HILANG, STATUS_IDENTIK, STATUS_ISI_BERUBAH,
     STATUS_PINDAH, bangun_indeks, petakan_item, query_id_usang, slug_dokumen,
@@ -258,8 +270,12 @@ def main() -> int:
         print(f"GAGAL membaca masukan: {e}")
         return 2
 
+    from backend.services.table_continuation import html_sha
+
     sha_lama: dict[str, str] = {}
     teks_lama: dict[str, str] = {}
+    sidik_lama: dict[str, str] = {}
+    image_lama: dict[str, str] = {}
     if args.chunks_lama:
         for r in baca_jsonl(Path(args.chunks_lama).expanduser()):
             cid = r.get("chunk_id")
@@ -270,6 +286,10 @@ def main() -> int:
             isi = r.get("text_content") or r.get("text")
             if isinstance(isi, str) and isi:
                 teks_lama[cid] = isi
+            if r.get("text_as_html"):
+                sidik_lama[cid] = html_sha(r["text_as_html"])
+            if r.get("image_id"):
+                image_lama[cid] = r["image_id"]
 
     indeks = bangun_indeks(rows, images)
 
@@ -279,12 +299,25 @@ def main() -> int:
           + ("" if sha_lama else "  <-- TIDAK ADA: perubahan isi tidak terdeteksi, "
                                 "dan chunk yang bergeser tidak punya jangkar"))
 
-    hasil = [petakan_item(it, sha_lama, indeks, teks_lama) for it in gold]
+    hasil = [petakan_item(it, sha_lama, indeks, teks_lama, sidik_lama, image_lama)
+             for it in gold]
 
     out = Path(args.out_dir).expanduser()
     terpetakan = [h for h in hasil if h.terpetakan]
-    n_mig = tulis_jsonl(out / "ground_truth_migrated.jsonl",
-                        (terapkan(h) for h in terpetakan))
+    # relevan_setara butuh bbox dan render_bbox chunk baru, yang hanya ada di dump.
+    dipetakan = {c.baru for h in terpetakan for c in h.chunks if c.baru}
+    setara = kelompok_setara(dipetakan, rows) if any(r.get("render_bbox") for r in rows) else {}
+    migrasi = [terapkan_setara(terapkan(h), setara) for h in terpetakan]
+    n_mig = tulis_jsonl(out / "ground_truth_migrated.jsonl", migrasi)
+    per_teks = {r.get("chunk_id"): r for r in rows}
+    n_setara = tulis_jsonl(out / "relevan_setara_tinjau.jsonl", (
+        {"query_id": m.get("query_id"), "chunk_teks": a, "chunk_tabel": b,
+         "teks": (per_teks.get(a) or {}).get("text_content", "")[:300],
+         "tabel": (per_teks.get(b) or {}).get("text_content", "")[:300]}
+        for m in migrasi for a, b in m.get("relevan_setara", [])))
+    per_jangkar = Counter(c.jangkar for h in terpetakan for c in h.chunks if c.jangkar)
+    item_jangkar = Counter(j for h in terpetakan
+                           for j in {c.jangkar for c in h.chunks if c.jangkar})
     perlu_tinjau = [h for h in terpetakan
                     if h.status in (STATUS_ISI_BERUBAH, STATUS_PINDAH)
                     or query_id_usang(h) or h.masalah]
@@ -316,6 +349,14 @@ def main() -> int:
         tanda = "" if per_verdict[v] == verdict_mig[v] else "   <-- ADA YANG HILANG"
         print(f"    {label:<12}{per_verdict[v]:>6} -> {verdict_mig[v]:>6}{tanda}")
 
+    if per_jangkar:
+        print("\n  Jangkar v5 (chunk / item) — item ini isi_berubah, perlu tinjau ulang:")
+        for j in sorted(per_jangkar):
+            print(f"    {j:<10}{per_jangkar[j]:>6} chunk  {item_jangkar[j]:>6} item")
+    ada_render = any(r.get("render_bbox") for r in rows)
+    print(f"\n  relevan_setara: {n_setara} pasangan -> relevan_setara_tinjau.jsonl"
+          + ("" if ada_render else "  (index baru tanpa render_bbox: tidak dihitung)"))
+
     n_qid = sum(1 for h in hasil if query_id_usang(h))
     if n_qid:
         print(f"\n  {n_qid} item ber-query_id memuat chunk_id yang bergeser.")
@@ -346,6 +387,8 @@ def main() -> int:
         "human_verdict_sebelum": dict(per_verdict),
         "human_verdict_setelah": dict(verdict_mig),
         "query_id_usang": n_qid,
+        "jangkar_v5_chunk": dict(per_jangkar), "jangkar_v5_item": dict(item_jangkar),
+        "relevan_setara_pasangan": n_setara,
     }, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print(f"\n  laporan_migrasi.json: {out / 'laporan_migrasi.json'}")

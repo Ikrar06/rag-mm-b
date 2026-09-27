@@ -61,6 +61,11 @@ class IndeksBaru:
     # chunk_id -> teks. Hanya terisi bila dump baru membawa `text_content`.
     # Dipakai sebagai jangkar KETIGA, lihat petakan_chunk.
     teks_per_chunk: dict[str, str] = field(default_factory=dict)
+    # v5 (Tahap T): sidik raw_html -> chunk, image_id -> chunk. Jangkar untuk
+    # chunk tabel yang teksnya kini transkripsi, dan chunk gambar yang kini
+    # narasi+tabel atau gambar-tabel.
+    chunk_per_sidik: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    chunk_per_image: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     @property
     def n_chunk(self) -> int:
@@ -74,9 +79,13 @@ def bangun_indeks(baris_chunk, image_ids=()) -> IndeksBaru:
     tapi mengaktifkan jangkar ketiga. Rekaman tanpa `chunk_id` dilewati — chunk
     tanpa id memang tidak dapat dirujuk gold.
     """
+    from backend.services.table_continuation import html_sha
+
     sha_per_chunk: dict[str, str] = {}
     per_sha: dict[str, list[str]] = {}
     teks: dict[str, str] = {}
+    per_sidik: dict[str, list[str]] = {}
+    per_image: dict[str, list[str]] = {}
     for r in baris_chunk:
         cid, sha = r.get("chunk_id"), r.get("text_sha")
         if not isinstance(cid, str) or not cid:
@@ -87,11 +96,17 @@ def bangun_indeks(baris_chunk, image_ids=()) -> IndeksBaru:
         isi = r.get("text_content") or r.get("text")
         if isinstance(isi, str) and isi:
             teks[cid] = isi
+        if r.get("text_as_html"):
+            per_sidik.setdefault(html_sha(r["text_as_html"]), []).append(cid)
+        if r.get("image_id"):
+            per_image.setdefault(r["image_id"], []).append(cid)
     return IndeksBaru(
         sha_per_chunk=sha_per_chunk,
         chunk_per_sha={k: tuple(v) for k, v in per_sha.items()},
         image_ids=frozenset(i for i in image_ids if isinstance(i, str) and i),
         teks_per_chunk=teks,
+        chunk_per_sidik={k: tuple(v) for k, v in per_sidik.items()},
+        chunk_per_image={k: tuple(v) for k, v in per_image.items()},
     )
 
 
@@ -103,6 +118,8 @@ class HasilChunk:
     baru: str | None
     status: str
     alasan: str = ""
+    # Jangkar yang memetakan: text_sha | sidik | image_id | sufiks | chunk_id.
+    jangkar: str = ""
 
     @property
     def terpetakan(self) -> bool:
@@ -126,8 +143,48 @@ def _cocok_sufiks(teks_lama: str, indeks: IndeksBaru) -> tuple[str, ...]:
     )
 
 
+def _jangkar_v5(chunk_id: str, indeks: IndeksBaru, sidik_lama: str | None,
+                image_lama: str | None) -> HasilChunk | None:
+    """Jangkar Tahap T, setelah text_sha gagal. None = tidak berlaku.
+
+    image_id DULU: chunk gambar lama dikenali lewat gambarnya, apa pun bentuk
+    chunk barunya (narasi+tabel, atau Table asal gambar). Gambar yang tidak lagi
+    menjadi chunk (cap BSrE yang dibuang) HILANG — tanpa aturan ini jangkar
+    chunk_id memetakannya ke chunk teks yang kini menempati posisinya.
+
+    Lalu sidik raw_html: chunk tabel yang teksnya kini transkripsi vision. Sidik
+    tidak berubah dari v4 ke v5 karena raw_html tidak disentuh.
+    """
+    if image_lama:
+        kandidat = indeks.chunk_per_image.get(image_lama, ())
+        if len(kandidat) == 1:
+            return HasilChunk(chunk_id, kandidat[0], STATUS_ISI_BERUBAH,
+                              "gambar yang sama (image_id); isi kini transkripsi atau "
+                              "narasi+tabel. Perlu ditinjau ulang", "image_id")
+        if not kandidat:
+            return HasilChunk(chunk_id, None, STATUS_HILANG,
+                              f"gambar {image_lama} tidak lagi menjadi chunk (dibuang "
+                              f"sebagai cap di atas tabel)", "image_id")
+        return HasilChunk(chunk_id, None, STATUS_AMBIGU,
+                          f"image_id {image_lama} dipakai {len(kandidat)} chunk", "image_id")
+    if sidik_lama:
+        dok = slug_dokumen(chunk_id)
+        kandidat = tuple(c for c in indeks.chunk_per_sidik.get(sidik_lama, ())
+                         if slug_dokumen(c) == dok)
+        if len(kandidat) == 1:
+            return HasilChunk(chunk_id, kandidat[0], STATUS_ISI_BERUBAH,
+                              "tabel yang sama (sidik raw_html); teks kini transkripsi "
+                              "vision. Perlu ditinjau ulang", "sidik")
+        if len(kandidat) > 1:
+            return HasilChunk(chunk_id, None, STATUS_AMBIGU,
+                              f"sidik raw_html cocok dengan {len(kandidat)} tabel di "
+                              f"dokumen yang sama — tabel identik berulang", "sidik")
+    return None
+
+
 def petakan_chunk(chunk_id: str, sha_lama: str | None, indeks: IndeksBaru,
-                  teks_lama: str | None = None) -> HasilChunk:
+                  teks_lama: str | None = None, sidik_lama: str | None = None,
+                  image_lama: str | None = None) -> HasilChunk:
     """Petakan satu chunk_id gold ke index baru.
 
     URUTAN JANGKAR: text_sha DULU, chunk_id belakangan. Ini bukan detail gaya —
@@ -197,6 +254,11 @@ def petakan_chunk(chunk_id: str, sha_lama: str | None, indeks: IndeksBaru,
             f"sama — chunk aslinya kemungkinan tidak lagi diproduksi",
         )
 
+    # ── Jangkar v5: image_id lalu sidik raw_html ──
+    v5 = _jangkar_v5(chunk_id, indeks, sidik_lama, image_lama)
+    if v5 is not None:
+        return v5
+
     # ── Jangkar 2: sufiks teks (pola pengulangan header) ──
     if teks_lama:
         sufiks = _cocok_sufiks(teks_lama, indeks)
@@ -259,7 +321,9 @@ class HasilItem:
 
 
 def petakan_item(item: dict, sha_lama_per_chunk: dict, indeks: IndeksBaru,
-                 teks_lama_per_chunk: dict | None = None) -> HasilItem:
+                 teks_lama_per_chunk: dict | None = None,
+                 sidik_lama_per_chunk: dict | None = None,
+                 image_lama_per_chunk: dict | None = None) -> HasilItem:
     """Petakan satu item gold. TIDAK mengubah `item`.
 
     `relevant_images` tidak dimigrasi — penamaan image_id tidak tersentuh
@@ -268,7 +332,9 @@ def petakan_item(item: dict, sha_lama_per_chunk: dict, indeks: IndeksBaru,
     """
     chunks = tuple(
         petakan_chunk(cid, sha_lama_per_chunk.get(cid), indeks,
-                      (teks_lama_per_chunk or {}).get(cid))
+                      (teks_lama_per_chunk or {}).get(cid),
+                      (sidik_lama_per_chunk or {}).get(cid),
+                      (image_lama_per_chunk or {}).get(cid))
         for cid in (item.get("relevant_text_chunks") or [])
         if isinstance(cid, str) and cid
     )
