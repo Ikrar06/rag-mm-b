@@ -54,6 +54,9 @@ _ANGKA = re.compile(r"\d[\d.,]*\d|\d")
 # disatukan sebelum angka diekstrak.
 _DIGIT_BERSPASI = re.compile(r"(?<![\d.,])\d(?: \d(?![\d.,])){2,}")
 _ORDINAL = re.compile(r"_c(\d+)$")
+# Kata dengan tinggi > kelipatan ini dari median tinggi kata halaman diabaikan
+# saat memperluas area render.
+TINGGI_KATA_MAKS = 3.0
 
 
 def bersihkan(raw: str | None) -> str:
@@ -268,7 +271,13 @@ def perluas_bbox(bbox, kata_bbox, margin: float = 0.0) -> list[float]:
     di sekitarnya. Koordinat ternormalisasi, dijepit ke [0, 1].
     """
     x0, y0, x1, y1 = bbox
+    tinggi = median([k[3] - k[1] for k in kata_bbox])
     for k in kata_bbox:
+        # Kata jauh lebih tinggi dari kata biasa bukan isi sel: teks vertikal
+        # raksasa ("February" di academic-calendar p10, menarik 34% halaman)
+        # atau kotak sampah lapisan OCR (bagan-akun p6).
+        if tinggi and k[3] - k[1] > TINGGI_KATA_MAKS * tinggi:
+            continue
         if k[0] < x1 and k[2] > x0 and k[1] < y1 and k[3] > y0:
             x0, y0, x1, y1 = min(x0, k[0]), min(y0, k[1]), max(x1, k[2]), max(y1, k[3])
     return [max(0.0, x0 - margin), max(0.0, y0 - margin),

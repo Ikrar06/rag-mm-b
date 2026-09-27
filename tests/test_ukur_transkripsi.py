@@ -492,3 +492,13 @@ def test_klasifikasi_gagal_dicatat_lalu_dicoba_lagi(korpus, monkeypatch):
     kg.main()
     ring = json.loads((out / "ringkasan.json").read_text())
     assert ring["gagal_belum_terklasifikasi"] == 0 and ring["jumlah"] == 1
+
+
+def test_perluas_mengabaikan_kata_raksasa():
+    # academic-calendar p10: "February" vertikal setinggi ~0,4 halaman menarik
+    # area render 34% ke bawah. Kata biasa tingginya ~0,015.
+    biasa = [(0.1, y, 0.2, y + 0.015) for y in (0.1, 0.2, 0.3, 0.4)]
+    raksasa = (0.05, 0.3, 0.12, 0.7)
+    assert perluas_bbox([0.1, 0.1, 0.5, 0.35], biasa + [raksasa]) == [0.1, 0.1, 0.5, 0.35]
+    assert perluas_bbox([0.1, 0.1, 0.5, 0.35], biasa) == [0.1, 0.1, 0.5, 0.35]
+    assert perluas_bbox([0.1, 0.1, 0.5, 0.41], biasa)[3] == pytest.approx(0.415)
