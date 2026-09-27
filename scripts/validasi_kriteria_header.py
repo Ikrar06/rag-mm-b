@@ -26,7 +26,20 @@ atau B memang sudah diawali header itu. Perbandingan v2<->v3 memakai `text_sha`,
 bukan `chunk_id`: penomoran halaman diperbaiki di antara kedua run sehingga id
 bisa bergeser, sedangkan sha ikut isinya.
 
+Dump v5 (transkripsi tabel, Tahap T)
+------------------------------------
+Pada v5 kriteria header dinilai indexing atas TRANSKRIPSI, bukan raw_html.
+Chunk dengan `table_source=vision_transcription` karenanya dinilai dari
+`text_content` sebagai markup (sama dengan table_continuation.tabel_transkripsi);
+`ocr_fallback` tetap dari `text_as_html`. Header rantai yang disisipkan ke
+`text_content` tidak mengganggu: penyisipan hanya terjadi setelah rantai
+"diketahui", dan keadaan itu lengket — isi potongan bersisipan tidak lagi ikut
+memutuskan. Langkah WAJIB setelah reindex v5; rantai yang mati karena
+e-panjang dicetak beserta sel terpanjangnya.
+
 Usage:
+    python scripts/validasi_kriteria_header.py --keputusan <berkas> \
+        --chunks-v3 <dump v5>/chunks.jsonl
     python scripts/validasi_kriteria_header.py \
         --keputusan ~/rag_mm_b_shared/table_continuation.json \
         --chunks-v3 .../20260921T095218Z-589ddf85/chunks.jsonl \
@@ -52,6 +65,8 @@ from lib.header_tabel import (  # noqa: E402
     panjang_sel_terpanjang,
 )
 from lib.tabel_html import _Pengurai, urai  # noqa: E402
+from backend.services.table_continuation import tabel_transkripsi  # noqa: E402
+from backend.services.transkripsi_murni import bersihkan, urai_markdown  # noqa: E402
 
 PEMISAH_MD = re.compile(r"\|[\s:|-]+\|")
 
@@ -66,6 +81,14 @@ def baca_jsonl(path: Path) -> list[dict]:
         except json.JSONDecodeError as e:
             raise ValueError(f"{path} baris {i}: {e}") from e
     return out
+
+
+def tabel_chunk(c: dict):
+    """Tabel yang dinilai indexing untuk chunk ini (lihat docstring modul, v5)."""
+    if c.get("table_source") == "vision_transcription":
+        baris = urai_markdown(bersihkan(c.get("text_content")))
+        return tabel_transkripsi(baris) if baris else None
+    return urai(c.get("text_as_html"))
 
 
 def baris_header_markdown(teks: str) -> str:
@@ -172,7 +195,7 @@ def main() -> int:
 
     def tabel(cid):
         if cid not in tabel_cache:
-            tabel_cache[cid] = urai(per_id[cid].get("text_as_html"))
+            tabel_cache[cid] = tabel_chunk(per_id[cid])
         return tabel_cache[cid]
 
     if args.maks_panjang_sel is None:
@@ -385,6 +408,23 @@ def main() -> int:
         for alasan, jml in Counter(r["tak_berubah"].split(" —")[0] for r in tb).most_common():
             print(f"    {jml:>4}  {alasan}")
 
+    # ── Rantai yang mati karena e-panjang (wajib ditinjau di v5) ───────────
+    # Aturan 3 prompt transkripsi menggabungkan header bertingkat, jadi sel
+    # header bisa jauh lebih panjang daripada di OCR dan melewati batas (e).
+    mati_e = []
+    for cid in sorted({k.sumber for k in keadaan.values()
+                       if k is not None and k.status == STATUS_MATI and k.sumber}):
+        t, p = nilai(cid)
+        if p is not None and p.aturan.split("/")[0] == "e-panjang":
+            terpanjang = max(t.baris[0], key=lambda c: len(str(c).strip()))
+            mati_e.append({"chunk_id": cid, "panjang": len(str(terpanjang).strip()),
+                           "sel": str(terpanjang).strip(),
+                           "sumber": per_id[cid].get("table_source") or "raw_html"})
+    print(f"\n  RANTAI MATI KARENA e-panjang (batas {args.maks_panjang_sel or 'mati'}): {len(mati_e)}")
+    for r in sorted(mati_e, key=lambda r: -r["panjang"]):
+        print(f"    {r['panjang']:>4}  {r['chunk_id'][:52]:<54}[{r['sumber']}]")
+        print(f"          {_potong([r['sel']], 100)}")
+
     if hilang:
         print(f"\n  PERINGATAN: {len(hilang)} pasangan tidak ditemukan di dump v3")
         for kunci, sisi in hilang[:5]:
@@ -392,7 +432,7 @@ def main() -> int:
 
     if args.json:
         Path(args.json).write_text(
-            json.dumps({"n_disetujui": len(disetujui), "hasil": hasil,
+            json.dumps({"n_disetujui": len(disetujui), "hasil": hasil, "mati_e_panjang": mati_e,
                         "beda": [r["kunci"] for r in beda],
                         "tinjau_satu_sel": [r["kunci"] for r in curiga]},
                        indent=2, ensure_ascii=False), encoding="utf-8")

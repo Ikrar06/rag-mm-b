@@ -2738,3 +2738,41 @@ Semua kolom Tahap T dikecualikan dari embedding.
   syarat dan ketentuan DIPA) tergolong `tabel` dengan `memuat_tabel_data` true,
   padahal harapannya `lainnya`. Diterima sebagai satu salah klasifikasi yang
   tercatat: gambar itu ditranskripsi, narasinya tidak dibuat.
+
+## Revisi setelah uji 10 tabel lewat pipeline
+
+**Kolom tidak konsisten.** Di uji pertama, tiga dari sepuluh transkripsi punya
+jumlah sel header ≠ baris data. Penyebabnya:
+
+| tabel | header / data | penyebab |
+|---|---|---|
+| ukt p5_c01 | 14 / 13 | header induk "UKT PER SEMESTER" jadi kolom sendiri; setiap nilai bergeser satu kolom |
+| jadwal-retensi p50_c00 | 4 / 4,5,6 | AKTIF/INAKTIF di bawah "JANGKA WAKTU PENYIMPANAN" tidak dipecah, DAN sub-butir `a.` / `1)` di kolom SERIES dijadikan sel sendiri |
+| standar-biaya 2025 p9_c00 | 4 / 4,5 | kode `1.7.` dan huruf `a`–`r` di kolom URAIAN (tanpa garis) dijadikan kolom sendiri |
+
+Angkanya benar, pemetaan kolomnya salah — dan pemetaan itu yang dibaca LLM.
+Perbaikan: setelah transkripsi satu tabel (Table OCR maupun gambar-tabel),
+jumlah sel diperiksa dengan pengurai Markdown (`\|` di dalam sel dihormati).
+Bila berbeda, model diminta SEKALI lagi dengan prompt koreksi yang menyebut
+angkanya dan dua sebab di atas (varian `table_transcription_fix`, sha templat
+di cache dan manifest). Yang disimpan hasil dengan baris meleset paling sedikit;
+bila tetap tidak konsisten ditandai `kolom_tidak_konsisten:x/y` dan TIDAK jatuh
+ke OCR — OCR tabel-tabel ini lebih buruk. Hitungan sebelum/sesudah koreksi
+(`kolom_tidak_konsisten_awal`, `koreksi_kolom_berhasil`,
+`kolom_tidak_konsisten_akhir`) dicetak di akhir run dan dicatat di manifest.
+Gambar narasi+tabel hanya ditandai, tidak dikoreksi.
+
+**Penanda angka palsu dari penyatuan digit.** `angka_tak_ditemukan:123457`
+(jadwal-retensi p50, nomor kolom 1–7) dan `123456789` (academic-calendar p10,
+tanggal 1–9) lahir karena sel transkripsi digabung dulu, lalu digit tunggal
+berspasi disatukan. Kini angka diambil PER SEL tanpa penyatuan, dan yang
+dilonggarkan adalah pencocokan terhadap RUJUKAN (spasi dan pemisah antar digit
+rujukan diabaikan), sehingga kode `4 2 6 1 1 1` di lapisan OCR bagan-akun tetap
+cocok dengan 426111.
+
+**Validasi kriteria header wajib setelah reindex v5.**
+`scripts/validasi_kriteria_header.py` kini membaca transkripsi untuk chunk
+`vision_transcription` dan mencetak rantai yang mati karena e-panjang beserta
+sel terpanjangnya. Aturan 3 prompt menggabungkan header bertingkat, jadi sel
+header bisa melewati 80 karakter; di uji 10 tabel hanya satu sampel lanjutan
+(SKPI p19).

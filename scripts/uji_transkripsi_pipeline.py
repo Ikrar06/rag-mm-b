@@ -120,17 +120,35 @@ def main() -> None:
             md_berdampingan(no, p, r, v5, cara, info_g), encoding="utf-8")
         ringkas.append(baris_ringkas(no, r, v5, cara, info_g))
 
+    # Semua tabel di halaman yang diproses, bukan hanya sampel: tabel yang jatuh
+    # ke OCR atau kolomnya tetap tidak konsisten bisa berada di luar sepuluh
+    # sampel (uji pertama: tabel_fallback_ocr 1 tanpa jejak chunk_id).
+    diproses = [c for doc_id, (chunks, _, _) in hasil_dok.items() for c in chunks
+                if c.get("page_number") in per_dok[doc_id]
+                and c.get("table_source") in ("vision_transcription", "ocr_fallback")]
+    fallback = [{"chunk_id": c["chunk_id"], "alasan": c.get("transkripsi_peringatan")}
+                for c in diproses if c.get("table_source") == "ocr_fallback"]
+    tak_konsisten = [{"chunk_id": c["chunk_id"], "tanda": t} for c in diproses
+                     for t in (c.get("transkripsi_peringatan") or [])
+                     if t.startswith("kolom_tidak_konsisten")]
+
     with (a.out / "ringkasan.csv").open("w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(ringkas[0]))
         w.writeheader()
         w.writerows(ringkas)
     prov = table_transcription.provenance()
     (a.out / "ringkasan.json").write_text(json.dumps(
-        {"sampel": ringkas, "detik_per_dokumen": waktu, "provenance": prov},
+        {"sampel": ringkas, "detik_per_dokumen": waktu, "tabel_diproses": len(diproses),
+         "tabel_fallback": fallback, "kolom_tidak_konsisten": tak_konsisten, "provenance": prov},
         ensure_ascii=False, indent=1, default=str), encoding="utf-8")
     for x in ringkas:
         print(f"{x['no']:2d} {x['pasangan']:9s} {str(x['jenis_v4']):17s}->{str(x['jenis_v5']):17s} "
               f"{x['sumber']:21s} {x['perlakuan_gambar']:12s} {x['chunk_v4']}  {x['peringatan']}")
+    print(f"\ntabel diproses di halaman sampel: {len(diproses)}")
+    for x in fallback:
+        print(f"  FALLBACK OCR {x['chunk_id']}  {x['alasan']}")
+    for x in tak_konsisten:
+        print(f"  KOLOM TIDAK KONSISTEN {x['chunk_id']}  {x['tanda']}")
     print(f"\nhitungan: {prov['hitungan'] if prov else {}}\nberkas: {a.out}")
 
 

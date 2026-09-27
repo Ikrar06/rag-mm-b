@@ -85,7 +85,13 @@ def test_main_dengan_pipeline_palsu(tmp_path, monkeypatch, capsys):
     def palsu(pdf, doc_id, halaman, out):
         dipanggil.append((pdf.name, doc_id, sorted(halaman)))
         return ([{"chunk_id": "ukt-tahun-2025_p5_c01", "page_number": 5, "element_type": "Table",
-                  "table_source": "vision_transcription", "text_content": "| v5 |"}],
+                  "table_source": "vision_transcription", "text_content": "| v5 |",
+                  "transkripsi_peringatan": ["kolom_tidak_konsisten:14/13"]},
+                 {"chunk_id": "ukt-tahun-2025_p5_c04", "page_number": 5, "element_type": "Table",
+                  "table_source": "ocr_fallback", "text_content": "| ocr |",
+                  "transkripsi_peringatan": ["gagal:tak_terurai"]},
+                 {"chunk_id": "ukt-tahun-2025_p6_c00", "page_number": 6, "element_type": "Table",
+                  "table_source": "ocr_fallback"}],
                 {"ukt-tahun-2025_p5_img00": {"perlakuan": "buang"}}, 12.5)
 
     monkeypatch.setattr(uji, "jalankan_dokumen", palsu)
@@ -99,6 +105,11 @@ def test_main_dengan_pipeline_palsu(tmp_path, monkeypatch, capsys):
     ring = json.loads((tmp_path / "o" / "ringkasan.json").read_text())
     assert [s["pasangan"] for s in ring["sampel"]] == ["chunk_id", "dibuang"]
     assert ring["detik_per_dokumen"] == {"ukt-tahun-2025": 12.5}
+    assert ring["tabel_diproses"] == 2          # halaman 6 tidak diproses
+    assert ring["tabel_fallback"] == [{"chunk_id": "ukt-tahun-2025_p5_c04",
+                                       "alasan": ["gagal:tak_terurai"]}]
+    assert ring["kolom_tidak_konsisten"] == [{"chunk_id": "ukt-tahun-2025_p5_c01",
+                                              "tanda": "kolom_tidak_konsisten:14/13"}]
     assert (tmp_path / "o" / "01_ukt-tahun-2025_p5_c01.md").is_file()
     assert "TAK ADA tak:1:Table" in capsys.readouterr().out
 
