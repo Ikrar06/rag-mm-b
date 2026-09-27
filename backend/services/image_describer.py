@@ -263,6 +263,10 @@ def describe_image(image_bytes: bytes) -> Optional[str]:
 
     image_bytes_original = image_bytes
     image_bytes = _resize_image_if_needed(image_bytes)
+    # Pengecilan ke PDF_MAX_IMAGE_DIM dapat membuat sisi pendek gambar pipih di
+    # bawah batas model (HTTP 500). Kunci cache di atas tetap sha bytes ASLI.
+    from backend.services.vision_io import amankan
+    image_bytes = amankan(image_bytes)
 
     if LLM_PROVIDER not in ("vllm", "ollama"):
         # Dulu logger.debug lalu return None — SELURUH deskripsi gambar hilang

@@ -206,8 +206,9 @@ def parse_jawaban(raw: str) -> Putusan:
 def _tanya_model(png: bytes) -> str | None:
     """Kirim gambar ke model vision. Pola dan parameter sama dengan image_describer."""
     import httpx
+    from backend.services.vision_io import amankan
 
-    b64 = base64.b64encode(png).decode("utf-8")
+    b64 = base64.b64encode(amankan(png)).decode("utf-8")
     if LLM_PROVIDER == "vllm":
         payload = {
             "model": VISION_MODEL,
