@@ -31,7 +31,7 @@ LK = "pedoman-penyusunan-laporan-keuangan-perguruan-tinggi-negeri-badan-hukum-un
 
 # Label yang diterima per kasus. Label = jenis, ditambah "+tabel" bila
 # memuat_tabel_data true (lihat lib.klasifikasi.Klasifikasi.label).
-TABEL = frozenset({"tabel", "lainnya+tabel"})       # isi tabel tersalin
+TABEL = frozenset({"tabel", "tabel+tabel", "lainnya+tabel"})   # isi tabel tersalin
 LAINNYA = frozenset({"lainnya", "lainnya+tabel"})   # narasi dipertahankan
 NARASI_SAJA = frozenset({"lainnya"})
 CAP = frozenset({"cap", "cap+tabel"})
