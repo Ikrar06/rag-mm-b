@@ -2776,3 +2776,16 @@ cocok dengan 426111.
 sel terpanjangnya. Aturan 3 prompt menggabungkan header bertingkat, jadi sel
 header bisa melewati 80 karakter; di uji 10 tabel hanya satu sampel lanjutan
 (SKPI p19).
+
+**Prompt koreksi dapat membetulkan ejaan header.** Di UKT p5 dokumen aslinya
+salah ketik "KELROMPOK"; transkripsi setelah koreksi menulis "UKT PER SEMESTER
+KELOMPOK I" dan seterusnya. Dibiarkan karena ejaan yang benar menguntungkan
+retrieval. Akibatnya teks chunk tabel bisa berbeda dari dokumen asli DI BAGIAN
+HEADER; tim evaluasi tidak perlu menganggapnya salah salin.
+
+**Fallback OCR sop12 p10_c00 bukan tabel satu kolom.** Area render-nya isian
+formulir tanpa garis ("Nama Mahasiswa : ………"), dideteksi OCR sebagai Table.
+Transkripsi sebagai tabel akan berkolom tiga dan lolos syarat dua kolom, jadi
+pelonggaran syarat itu tidak berlaku di sini. Jawaban model yang tak sah kini
+dicatat cuplikannya di log (`jawaban_tak_sah`) karena tidak pernah di-cache.
+Chunk ini tetap berisi teks OCR v4 dengan `table_source=ocr_fallback`.

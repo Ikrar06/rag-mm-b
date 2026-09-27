@@ -140,6 +140,11 @@ def _tanya(png: bytes, variant: str, num_predict: int,
         _stats["terpotong"] += 1
         return None, "terpotong"
     if not sah(h["response"]):
+        # Jawaban lengkap tapi bukan tabel/label yang sah. Tidak di-cache, jadi
+        # cuplikannya dicatat di sini — satu-satunya jejak untuk diagnosis
+        # (sop12 p10_c00: isian formulir tanpa garis yang dideteksi OCR sebagai Table).
+        logger.warning("jawaban_tak_sah variant=%s sha=%s cuplikan=%r",
+                       variant, img_sha[:12], h["response"][:400])
         return None, "tak_terurai"
     if key is not None:
         vision_cache.put(key, image_sha256=img_sha, variant=variant,
