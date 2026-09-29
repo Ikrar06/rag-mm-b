@@ -2812,3 +2812,38 @@ jumlah item gold tabel yang perlu dikabarkan ke tim eval.
 dump v5: chunk teks yang dirujuk gold dikelompokkan dengan chunk tabel sehalaman
 bila bbox-nya beririsan dengan daerah perluasan tabel (render_bbox di luar
 bbox). Setiap pasangan ditulis ke `relevan_setara_tinjau.jsonl` untuk ditinjau.
+
+## Reindex v5 pertama: dua dokumen gagal total
+
+UKT dan Pedoman Tesis FTUH gagal di `table_transcription.proses` →
+`klasifikasi` → `get_pixmap(...).tobytes("png")`: "Invalid bandwriter header
+dimensions". PyMuPDF MENERIMA klip terbalik atau di luar halaman dan
+menghasilkan pixmap 0×N / N×0 (terukur di halaman UKT: bbox terbalik → 0×195,
+di bawah halaman → 249×0); yang gagal adalah penulisan PNG-nya. Galat itu
+naik sampai `index_documents`, yang membuang seluruh dokumen.
+
+Perbaikan:
+- **Validasi area render** (`transkripsi_murni.klip_aman`, dipakai
+  `_Halaman.render` — satu-satunya jalur render klasifikasi, transkripsi tabel,
+  transkripsi gambar, dan koreksi): bbox harus 4 angka hingga, tidak terbalik,
+  dan ≥ 1 pt di kedua sisi setelah dijepit ke halaman; pixmap 0 piksel ditolak.
+- **Galat per element** jatuh ke fallback element itu (OCR untuk tabel, narasi
+  untuk gambar) dengan penanda `galat:<Jenis>:<pesan>`; hitungan `galat_elemen`
+  dan per jenis galat di manifest dan ringkasan akhir run.
+- **Klasifikasi hanya untuk gambar yang lolos deskripsi v4.** v4 tidak punya
+  saringan ukuran (`is_likely_informative` fungsi mati); yang menyaring adalah
+  putusan MODEL (DEKORATIF / TIDAK JELAS / gagal). Pipeline kini memanggil
+  `describe_image` lebih dulu (cache) dan hanya mengklasifikasi yang
+  dideskripsikan — himpunan yang sama dengan `klasifikasi_gambar.py`.
+
+**Konsekuensi untuk run utama.** Run utama v5 (ea8959a) mengklasifikasi SEMUA
+gambar. Gambar dekoratif yang lolos sebagai gambar-tabel atau narasi+tabel
+menjadi chunk yang di v4 tidak ada, dan saringan baru meniadakannya. Run susulan
+dua dokumen saja hanya sah bila jumlah chunk semacam itu di run utama NOL —
+`scripts/bandingkan_dump.py` melaporkannya ("CHUNK DARI GAMBAR YANG DI DUMP
+LAMA BUKAN CHUNK"). Bila tidak nol, run penuh diulang.
+
+Alat: `scripts/bandingkan_dump.py` (selisih chunk per dokumen/halaman beserta
+sebab dan chunk_id yang bergeser), `scripts/gabung_dump.py` (satukan dump
+utama + susulan; menolak bila konfigurasi penentu isi chunk berbeda atau
+dokumen/chunk_id/image_id bertabrakan; manifest mencatat kedua run dan commit-nya).
