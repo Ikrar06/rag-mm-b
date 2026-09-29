@@ -324,3 +324,36 @@ def rencana_ukuran(lebar: int, tinggi: int, sisi_maks: int | None,
     w, h = max(1, round(lebar * skala)), max(1, round(tinggi * skala))
     minimum = max(sisi_min, -(-max(w, h) // rasio_maks))
     return RencanaUkuran(w, h, max(w, minimum), max(h, minimum))
+
+
+class AreaTidakSah(ValueError):
+    """Area render yang akan menghasilkan pixmap nol piksel."""
+
+
+# Sisi minimum area render, dalam poin PDF. Di bawah ini pixmap bisa 0 piksel
+# dan PyMuPDF gagal saat menulis PNG ("Invalid bandwriter header dimensions") —
+# galat yang menjatuhkan UKT dan Pedoman Tesis di reindex v5 pertama.
+SISI_KLIP_MIN_PT = 1.0
+
+
+def klip_aman(bbox, lebar_hal: float, tinggi_hal: float) -> tuple[float, float, float, float]:
+    """bbox ternormalisasi -> klip dalam poin, dijepit ke halaman. AreaTidakSah bila
+    bbox bukan 4 angka hingga, terbalik, di luar halaman, atau lebih sempit dari
+    SISI_KLIP_MIN_PT setelah dijepit."""
+    import math
+    if not bbox or len(bbox) != 4:
+        raise AreaTidakSah(f"bbox bukan 4 angka: {bbox!r}")
+    try:
+        x0, y0, x1, y1 = (float(v) for v in bbox)
+    except (TypeError, ValueError):
+        raise AreaTidakSah(f"bbox bukan angka: {bbox!r}") from None
+    if not all(math.isfinite(v) for v in (x0, y0, x1, y1)):
+        raise AreaTidakSah(f"bbox tidak hingga: {bbox!r}")
+    if x1 <= x0 or y1 <= y0:
+        raise AreaTidakSah(f"bbox terbalik atau nol: {bbox!r}")
+    kx0, ky0 = max(0.0, x0) * lebar_hal, max(0.0, y0) * tinggi_hal
+    kx1, ky1 = min(1.0, x1) * lebar_hal, min(1.0, y1) * tinggi_hal
+    if kx1 - kx0 < SISI_KLIP_MIN_PT or ky1 - ky0 < SISI_KLIP_MIN_PT:
+        raise AreaTidakSah(f"area setelah dijepit ke halaman {kx1 - kx0:.2f}x{ky1 - ky0:.2f} pt: {bbox!r}")
+    return kx0, ky0, kx1, ky1
+

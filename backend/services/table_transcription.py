@@ -33,7 +33,8 @@ from backend.services.klasifikasi_gambar import (
     PROMPT_KLASIFIKASI, Klasifikasi, perlakuan_gambar, urai_klasifikasi,
 )
 from backend.services.transkripsi_murni import (
-    PROMPT_KOREKSI_KOLOM, PROMPT_TRANSKRIPSI, PROMPT_TRANSKRIPSI_SEMUA, baris_meleset,
+    PROMPT_KOREKSI_KOLOM, PROMPT_TRANSKRIPSI, PROMPT_TRANSKRIPSI_SEMUA, AreaTidakSah,
+    baris_meleset, klip_aman,
     bersihkan, bersihkan_semua, jenis_halaman, kolom_tidak_konsisten, perluas_bbox,
     peringatan, prompt_koreksi_kolom, rasio_tumpang, urai_markdown,
 )
@@ -65,7 +66,7 @@ def reset_stats() -> None:
 
 def ringkasan_run() -> str:
     """Satu baris hitungan kunci untuk akhir run."""
-    kunci = ("tabel_ditranskripsi", "tabel_fallback_ocr", "kolom_tidak_konsisten_awal",
+    kunci = ("tabel_ditranskripsi", "tabel_fallback_ocr", "galat_elemen", "kolom_tidak_konsisten_awal",
              "koreksi_kolom_berhasil", "kolom_tidak_konsisten_akhir", "gagal_vision",
              "terpotong", "gambar_buang", "gambar_transkripsi", "gambar_narasi+tabel")
     return "  ".join(f"{k}={_stats.get(k, 0)}" for k in kunci)
@@ -221,11 +222,16 @@ class _Halaman:
                           for w in kata)
 
     def render(self, bbox, dpi: int) -> bytes:
+        """PNG area bbox. AreaTidakSah bila area atau pixmap-nya nol — dipakai
+        SEMUA jalur (klasifikasi, transkripsi tabel/gambar, koreksi)."""
         import fitz
         r = self.page.rect
-        klip = fitz.Rect(r.x0 + bbox[0] * r.width, r.y0 + bbox[1] * r.height,
-                         r.x0 + bbox[2] * r.width, r.y0 + bbox[3] * r.height)
-        return self.page.get_pixmap(dpi=dpi, clip=klip).tobytes("png")
+        x0, y0, x1, y1 = klip_aman(bbox, r.width, r.height)
+        klip = fitz.Rect(r.x0 + x0, r.y0 + y0, r.x0 + x1, r.y0 + y1)
+        pm = self.page.get_pixmap(dpi=dpi, clip=klip)
+        if pm.width < 1 or pm.height < 1:
+            raise AreaTidakSah(f"pixmap {pm.width}x{pm.height} untuk bbox {bbox!r}")
+        return pm.tobytes("png")
 
 
 def _rujukan(hal: _Halaman, teks_ocr: str) -> tuple[str, str]:
@@ -363,6 +369,70 @@ def perlakukan_gambar(el: dict, hal: _Halaman, tabel_sehalaman) -> tuple[dict | 
 
 # ─── Satu dokumen ─────────────────────────────────────────────────────────────
 
+def _lolos_deskripsi(el: dict) -> bool:
+    """Gambar yang juga lolos ke deskripsi v4 — satu-satunya yang diklasifikasi.
+
+    v4 tidak punya saringan ukuran (is_likely_informative adalah fungsi mati);
+    yang menyaring adalah MODEL: gambar berputusan DEKORATIF/TIDAK JELAS, atau
+    yang deskripsinya gagal, tidak menjadi chunk. Himpunan yang sama dipakai
+    klasifikasi_gambar.py (chunk ImageDescription dump v4). Deskripsi di sini
+    diambil dari cache; _describe_image_elements memanggilnya lagi dari cache
+    proses-lokal, jadi tidak ada panggilan model tambahan. Gambar yang tidak
+    lolos diteruskan apa adanya dan dibuang deskripsi persis seperti v4 —
+    termasuk garis/serpihan yang bbox-nya merosot jadi nol piksel.
+    """
+    import base64
+    from backend.services.image_describer import describe_image
+    akan = (config.PDF_DESCRIBE_IMAGES == "true"
+            or (config.PDF_DESCRIBE_IMAGES == "auto" and config.LLM_SUPPORTS_VISION))
+    b64 = (el.get("metadata") or {}).get("image_base64")
+    if not akan or not b64:
+        _stats["gambar_tidak_dideskripsi"] += 1
+        return False
+    try:
+        lolos = bool(describe_image(base64.b64decode(b64)))
+    except Exception as e:
+        logger.warning("saringan_deskripsi_gagal image_id=%s error=%s: %s",
+                       (el.get("metadata") or {}).get("image_id"), type(e).__name__, e)
+        lolos = False
+    if not lolos:
+        _stats["gambar_tidak_dideskripsi"] += 1
+    return lolos
+
+
+def _aman(fungsi, fallback, el: dict, *args):
+    """Satu element: galat APA PUN jatuh ke fallback element itu, bukan ke dokumen.
+
+    Reindex v5 pertama kehilangan UKT dan Pedoman Tesis seluruhnya karena satu
+    render gambar gagal. Galat dicatat (hitungan `galat_elemen`, log dengan
+    traceback) supaya tidak tersembunyi.
+    """
+    try:
+        return fungsi(el, *args)
+    except Exception as e:
+        _stats["galat_elemen"] += 1
+        _stats[f"galat_{type(e).__name__}"] += 1
+        meta = el.get("metadata") or {}
+        logger.error("transkripsi_galat_elemen kategori=%s halaman=%s bbox=%s image_id=%s "
+                     "error=%s: %s", el.get("category"), el.get("page"), meta.get("bbox"),
+                     meta.get("image_id"), type(e).__name__, e, exc_info=True)
+        return fallback(el, f"galat:{type(e).__name__}:{str(e)[:120]}")
+
+
+def _fallback_tabel(el: dict, alasan: str) -> dict:
+    _stats["tabel_fallback_ocr"] += 1
+    meta = el.get("metadata") or {}
+    return {**el, "metadata": {**meta, "table_source": "ocr_fallback",
+                                "transkripsi_peringatan": [alasan]}}
+
+
+def _fallback_gambar(el: dict, alasan: str) -> tuple[dict, dict]:
+    meta = el.get("metadata") or {}
+    return ({**el, "metadata": {**meta, "image_content": "narasi",
+                                "transkripsi_peringatan": [alasan]}},
+            {"klasifikasi_jenis": None, "memuat_tabel_data": None, "rasio_tumpang_tabel": None,
+             "perlakuan": "narasi", "image_content": "narasi"})
+
 def proses(elements: list[dict], pdf_path: Path,
            halaman_terpilih: set[int] | None = None) -> tuple[list[dict], dict[str, dict]]:
     """(element baru, info per image_id). Urutan element dipertahankan.
@@ -403,9 +473,11 @@ def proses(elements: list[dict], pdf_path: Path,
                 b = (el.get("metadata") or {}).get("bbox")
                 lain = [x for x in tabel_per_hal.get(el.get("page"), []) if x is not b]
                 lain += gambar_per_hal.get(el.get("page"), [])
-                keluar.append(transkripsi_tabel(el, h, lain))
-            elif kat == "Image" and config.INDEX_IMAGE_TABLE_TRANSCRIPTION and h is not None:
-                baru, i = perlakukan_gambar(el, h, tabel_per_hal.get(el.get("page"), []))
+                keluar.append(_aman(transkripsi_tabel, _fallback_tabel, el, h, lain))
+            elif (kat == "Image" and config.INDEX_IMAGE_TABLE_TRANSCRIPTION and h is not None
+                  and _lolos_deskripsi(el)):
+                baru, i = _aman(perlakukan_gambar, _fallback_gambar, el, h,
+                                tabel_per_hal.get(el.get("page"), []))
                 image_id = (el.get("metadata") or {}).get("image_id")
                 if image_id:
                     info[image_id] = i

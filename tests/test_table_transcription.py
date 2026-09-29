@@ -57,6 +57,9 @@ def lingkungan(monkeypatch):
     monkeypatch.setattr(vision_io, "batas_model", lambda: BATAS)
     import backend.services.image_describer as idesc
     monkeypatch.setattr(idesc, "vision_provenance", lambda: {"vision_model_digest": "sha256:d"})
+    # Saringan deskripsi v4: bawaan semua gambar lolos (dideskripsikan).
+    monkeypatch.setattr(config, "PDF_DESCRIBE_IMAGES", "true")
+    monkeypatch.setattr(idesc, "describe_image", lambda b: "deskripsi")
     monkeypatch.setattr(vision_cache, "enabled", lambda: True)
     monkeypatch.setattr(vision_cache, "get", lambda k: simpanan.get(k))
     monkeypatch.setattr(vision_cache, "put", lambda k, **kw: simpanan.__setitem__(
@@ -93,7 +96,7 @@ def tabel_el(teks="OCR 1 UKT I 1.500.000"):
 
 def gambar_el(bbox, image_id="ukt_p1_img00"):
     return {"category": "Image", "text": "", "page": 1,
-            "metadata": {"image_base64": "x", "bbox": bbox, "image_id": image_id}}
+            "metadata": {"image_base64": "aGFsbw==", "bbox": bbox, "image_id": image_id}}
 
 
 def test_flag_mati_tidak_mengubah_apa_pun(lingkungan, pdf, monkeypatch):
@@ -326,3 +329,94 @@ def test_gambar_tabel_juga_dikoreksi(lingkungan, pdf):
     (el,), _ = tt.proses([gambar_el(BBOX_GAMBAR)], pdf)
     assert el["category"] == "Table" and el["text"] == UKT_BENAR
     assert el["metadata"]["transkripsi_peringatan"] == []
+
+
+
+# ─── area render tak sah, galat per element, saringan deskripsi ─────────────
+
+from backend.services.transkripsi_murni import AreaTidakSah, klip_aman  # noqa: E402
+
+
+@pytest.mark.parametrize("bbox,pesan", [
+    ([0.3, 0.1, 0.3, 0.2], "terbalik atau nol"),        # lebar nol
+    ([0.5, 0.1, 0.3, 0.2], "terbalik atau nol"),        # terbalik
+    ([0.1, 1.05, 0.3, 1.2], "setelah dijepit"),         # di bawah halaman
+    ([-0.3, -0.3, -0.1, -0.1], "setelah dijepit"),      # seluruhnya negatif
+    ([0.3, 0.1, 0.3001, 0.2], "setelah dijepit"),       # < 1 pt
+    ([float("nan"), 0, 0.2, 0.2], "tidak hingga"),
+    ([0.1, 0.1, 0.2], "bukan 4 angka"),
+    (None, "bukan 4 angka"),
+])
+def test_klip_aman_menolak(bbox, pesan):
+    with pytest.raises(AreaTidakSah, match=pesan):
+        klip_aman(bbox, 595.3, 936.0)
+
+
+def test_klip_aman_menjepit_yang_sebagian_di_luar():
+    assert klip_aman([-0.0004, 0.9, 0.2, 1.2], 100.0, 200.0) == pytest.approx((0, 180, 20, 200))
+
+
+def test_render_pixmap_nol_ditolak(pdf, monkeypatch):
+    doc = fitz.open(str(pdf))
+    hal = tt._Halaman(doc[0])
+
+    class Pm:
+        width, height = 0, 195
+
+        def tobytes(self, _):
+            raise AssertionError("tidak boleh ditulis")
+
+    monkeypatch.setattr(type(doc[0]), "get_pixmap", lambda self, **k: Pm())
+    hal.page = doc[0]
+    with pytest.raises(AreaTidakSah, match="pixmap 0x195"):
+        hal.render([0.1, 0.1, 0.2, 0.2], 150)
+
+
+@pytest.mark.parametrize("bbox", [[0.3, 0.1, 0.3, 0.2], [0.1, 1.05, 0.3, 1.2]])
+def test_gambar_area_nol_jatuh_ke_narasi_dokumen_lanjut(lingkungan, pdf, bbox):
+    """Reindex v5 pertama: satu render gagal menjatuhkan seluruh UKT."""
+    model, _ = lingkungan
+    model.jawab[PROMPT_TRANSKRIPSI] = [MD]
+    keluar, info = tt.proses([gambar_el(bbox), tabel_el()], pdf)
+    g, t = keluar
+    assert g["category"] == "Image" and g["metadata"]["image_content"] == "narasi"
+    assert g["metadata"]["transkripsi_peringatan"][0].startswith("galat:AreaTidakSah")
+    assert info["ukt_p1_img00"]["perlakuan"] == "narasi"
+    assert t["metadata"]["table_source"] == "vision_transcription"      # element lain tetap jalan
+    assert tt.provenance()["hitungan"]["galat_elemen"] == 1
+
+
+def test_tabel_area_nol_jatuh_ke_ocr(lingkungan, pdf):
+    el = {**tabel_el(), "metadata": {**tabel_el()["metadata"], "bbox": [0.5, 0.1, 0.3, 0.2]}}
+    (t,), _ = tt.proses([el], pdf)
+    assert t["text"] == "OCR 1 UKT I 1.500.000" and t["metadata"]["table_source"] == "ocr_fallback"
+    assert t["metadata"]["transkripsi_peringatan"][0].startswith("galat:AreaTidakSah")
+    assert "galat_elemen=1" in tt.ringkasan_run()
+
+
+def test_galat_tak_terduga_juga_ditangkap(lingkungan, pdf, monkeypatch):
+    monkeypatch.setattr(tt, "klasifikasi", lambda *a: (_ for _ in ()).throw(RuntimeError("x")))
+    (g,), info = tt.proses([gambar_el(BBOX_GAMBAR)], pdf)
+    assert g["metadata"]["transkripsi_peringatan"] == ["galat:RuntimeError:x"]
+    assert tt.provenance()["hitungan"]["galat_RuntimeError"] == 1
+
+
+def test_gambar_dekoratif_tidak_diklasifikasi(lingkungan, pdf, monkeypatch):
+    """Saringan v4: gambar yang tidak menjadi chunk deskripsi tidak diklasifikasi
+    dan diteruskan apa adanya — termasuk yang bbox-nya merosot jadi nol."""
+    import backend.services.image_describer as idesc
+    model, _ = lingkungan
+    monkeypatch.setattr(idesc, "describe_image", lambda b: None)
+    el = gambar_el([0.3, 0.1, 0.3, 0.2])
+    keluar, info = tt.proses([el], pdf)
+    assert keluar == [el] and info == {} and model.panggilan == []
+    assert tt.provenance()["hitungan"]["gambar_tidak_dideskripsi"] == 1
+    assert "galat_elemen" not in tt.provenance()["hitungan"]
+
+
+def test_deskripsi_mati_tidak_ada_klasifikasi(lingkungan, pdf, monkeypatch):
+    model, _ = lingkungan
+    monkeypatch.setattr(config, "PDF_DESCRIBE_IMAGES", "false")
+    monkeypatch.setattr(config, "LLM_SUPPORTS_VISION", False)
+    el = gambar_el(BBOX_GAMBAR)
+    assert tt.proses([el], pdf) == ([el], {}) and model.panggilan == []
