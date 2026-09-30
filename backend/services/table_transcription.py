@@ -59,6 +59,18 @@ NUM_PREDICT_KLASIFIKASI = 40
 
 _stats: Counter = Counter()
 
+NUM_PREDICT_MIN = 512
+NUM_PREDICT_MAX = 4096
+NUM_PREDICT_CHARS_PER_TOKEN = 3
+NUM_PREDICT_HEADROOM = 1.5
+
+
+def num_predict_adaptif(teks_ocr: str | None) -> int:
+    """Batas keluaran berdasar panjang OCR, dengan ruang untuk Markdown."""
+    perkiraan = int((len(teks_ocr or "") / NUM_PREDICT_CHARS_PER_TOKEN)
+                    * NUM_PREDICT_HEADROOM) + 256
+    return max(NUM_PREDICT_MIN, min(NUM_PREDICT_MAX, perkiraan))
+
 
 def reset_stats() -> None:
     _stats.clear()
@@ -91,6 +103,10 @@ def provenance() -> dict | None:
         "INDEX_IMAGE_TABLE_TRANSCRIPTION": config.INDEX_IMAGE_TABLE_TRANSCRIPTION,
         "render_dpi": config.TABLE_TRANSCRIPTION_DPI,
         "num_predict": config.TABLE_TRANSCRIPTION_NUM_PREDICT,
+        "num_predict_adaptif": {"aktif": True, "minimum": NUM_PREDICT_MIN,
+                                "maksimum": NUM_PREDICT_MAX,
+                                "karakter_per_token": NUM_PREDICT_CHARS_PER_TOKEN,
+                                "headroom": NUM_PREDICT_HEADROOM},
         "num_ctx": config.TABLE_TRANSCRIPTION_NUM_CTX,
         "render_scan_margin": config.TABLE_RENDER_SCAN_MARGIN,
         "classification_dpi": config.IMAGE_CLASSIFICATION_DPI,
@@ -108,7 +124,8 @@ def provenance() -> dict | None:
 
 def _tanya(png: bytes, variant: str, num_predict: int,
            sah: Callable[[str], bool], verdict: str,
-           prompt: str | None = None, kunci_tambahan: str = "") -> tuple[str | None, str]:
+           prompt: str | None = None, kunci_tambahan: str = "",
+           konteks: dict | None = None) -> tuple[str | None, str]:
     """(jawaban mentah yang sah, alasan gagal). Hanya jawaban sah yang di-cache.
 
     Gagal = galat jaringan setelah coba ulang, terpotong (done_reason=length;
@@ -139,13 +156,17 @@ def _tanya(png: bytes, variant: str, num_predict: int,
     _stats["diulang"] += int(h["percobaan"] > 1)
     if h["done_reason"] == "length":
         _stats["terpotong"] += 1
+        logger.warning("transkripsi_terpotong variant=%s sha=%s cuplikan_awal=%r cuplikan_akhir=%r eval_count=%s num_predict=%s",
+                       variant, img_sha[:12], h["response"][:400], h["response"][-400:],
+                       h.get("eval_count"), num_predict)
         return None, "terpotong"
     if not sah(h["response"]):
         # Jawaban lengkap tapi bukan tabel/label yang sah. Tidak di-cache, jadi
         # cuplikannya dicatat di sini — satu-satunya jejak untuk diagnosis
         # (sop12 p10_c00: isian formulir tanpa garis yang dideteksi OCR sebagai Table).
-        logger.warning("jawaban_tak_sah variant=%s sha=%s cuplikan=%r",
-                       variant, img_sha[:12], h["response"][:400])
+        logger.warning("jawaban_tak_sah file=%s document_id=%s halaman=%s bbox=%s variant=%s sha=%s cuplikan_awal=%r cuplikan_akhir=%r",
+                       *((konteks or {}).get(k) for k in ("file", "document_id", "halaman", "bbox")),
+                       variant, img_sha[:12], h["response"][:400], h["response"][-400:])
         return None, "tak_terurai"
     if key is not None:
         vision_cache.put(key, image_sha256=img_sha, variant=variant,
@@ -155,7 +176,8 @@ def _tanya(png: bytes, variant: str, num_predict: int,
     return h["response"], ""
 
 
-def transkripsi_satu_tabel(png: bytes) -> tuple[str | None, str]:
+def transkripsi_satu_tabel(png: bytes, teks_ocr: str | None = None,
+                           konteks: dict | None = None) -> tuple[str | None, str]:
     """(markdown, alasan gagal) satu tabel, dengan SATU koreksi kolom.
 
     Bila jumlah sel header tidak sama dengan baris data, model diminta ulang
@@ -164,8 +186,9 @@ def transkripsi_satu_tabel(png: bytes) -> tuple[str | None, str]:
     TIDAK jatuh ke OCR — di UKT p5 dan standar-biaya OCR-nya lebih buruk;
     penanda kolom_tidak_konsisten dipasang oleh peringatan().
     """
-    raw, alasan = _tanya(png, VARIANT_TABEL, config.TABLE_TRANSCRIPTION_NUM_PREDICT,
-                         _tabel_sah, vision_cache.VERDICT_TRANSCRIBED)
+    budget = num_predict_adaptif(teks_ocr)
+    raw, alasan = _tanya(png, VARIANT_TABEL, budget,
+                         _tabel_sah, vision_cache.VERDICT_TRANSCRIBED, konteks=konteks)
     if raw is None:
         return None, alasan
     md = bersihkan(raw)
@@ -174,10 +197,11 @@ def transkripsi_satu_tabel(png: bytes) -> tuple[str | None, str]:
     if kolom is None:
         return md, ""
     _stats["kolom_tidak_konsisten_awal"] += 1
-    raw2, alasan2 = _tanya(png, VARIANT_KOREKSI, config.TABLE_TRANSCRIPTION_NUM_PREDICT,
+    raw2, alasan2 = _tanya(png, VARIANT_KOREKSI, budget,
                            _tabel_sah, vision_cache.VERDICT_TRANSCRIBED,
                            prompt=prompt_koreksi_kolom(*kolom),
-                           kunci_tambahan=f":{kolom[0]}:{','.join(map(str, kolom[1]))}")
+                           kunci_tambahan=f":{kolom[0]}:{','.join(map(str, kolom[1]))}",
+                           konteks=konteks)
     if raw2 is not None:
         md2 = bersihkan(raw2)
         baris2 = urai_markdown(md2)
@@ -187,7 +211,8 @@ def transkripsi_satu_tabel(png: bytes) -> tuple[str | None, str]:
         _stats["koreksi_kolom_berhasil"] += 1
     else:
         _stats["kolom_tidak_konsisten_akhir"] += 1
-        logger.warning("kolom_tidak_konsisten_setelah_koreksi awal=%s koreksi=%s",
+        logger.warning("kolom_tidak_konsisten_setelah_koreksi file=%s document_id=%s halaman=%s bbox=%s awal=%s koreksi=%s",
+                       *((konteks or {}).get(k) for k in ("file", "document_id", "halaman", "bbox")),
                        kolom, alasan2 or kolom_tidak_konsisten(urai_markdown(bersihkan(raw2 or ""))))
     return md, ""
 
@@ -268,11 +293,16 @@ def transkripsi_tabel(el: dict, hal: _Halaman, milik_lain) -> dict:
                                     "transkripsi_peringatan": ["gagal:tanpa_bbox"]}}
     area = area_render(bbox, hal, milik_lain)
     png = hal.render(area, config.TABLE_TRANSCRIPTION_DPI)
-    md, alasan = transkripsi_satu_tabel(png)
+    from backend.services.document_registry import get_document_id
+    nama = getattr(hal, "pdf_name", None)
+    konteks = {"file": nama, "document_id": get_document_id(nama) if nama else None,
+               "halaman": el.get("page"), "bbox": bbox}
+    md, alasan = transkripsi_satu_tabel(png, el.get("text") or "", konteks)
     if md is None:
         _stats["tabel_fallback_ocr"] += 1
-        logger.warning("tabel_fallback_ocr halaman=%s bbox=%s alasan=%s",
-                       el.get("page"), bbox, alasan)
+        nama = getattr(hal, "pdf_name", None)
+        logger.warning("tabel_fallback_ocr file=%s document_id=%s halaman=%s bbox=%s alasan=%s",
+                       nama, konteks["document_id"], el.get("page"), bbox, alasan)
         return {**el, "metadata": {**meta, "table_source": "ocr_fallback", "render_bbox": area,
                                     "transkripsi_peringatan": [f"gagal:{alasan}"]}}
     baris = urai_markdown(md)
@@ -315,7 +345,11 @@ def _transkripsi_gambar(el: dict, hal: _Halaman, semua: bool) -> tuple[str | Non
     """(markdown, alasan gagal). `semua`: prompt setiap tabel untuk narasi+tabel."""
     png = hal.render(el["metadata"]["bbox"], config.TABLE_TRANSCRIPTION_DPI)
     if not semua:
-        return transkripsi_satu_tabel(png)
+        from backend.services.document_registry import get_document_id
+        nama = getattr(hal, "pdf_name", None)
+        return transkripsi_satu_tabel(png, el.get("text") or "", {
+            "file": nama, "document_id": get_document_id(nama) if nama else None,
+            "halaman": el.get("page"), "bbox": (el.get("metadata") or {}).get("bbox")})
     raw, alasan = _tanya(png, VARIANT_TABEL_SEMUA, config.TABLE_TRANSCRIPTION_NUM_PREDICT,
                          _tabel_semua_sah, vision_cache.VERDICT_TRANSCRIBED)
     if raw is None:
@@ -462,6 +496,7 @@ def proses(elements: list[dict], pdf_path: Path,
                 return None
             if no not in halaman:
                 halaman[no] = _Halaman(doc[no - 1])
+                halaman[no].pdf_name = Path(pdf_path).name
             return halaman[no]
 
         for el in elements:

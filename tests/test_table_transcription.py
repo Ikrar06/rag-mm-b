@@ -120,7 +120,18 @@ def test_tabel_ditranskripsi_raw_html_utuh_area_diperluas(lingkungan, pdf):
     assert m["render_bbox"][2] > BBOX_TABEL[2]          # kata terpotong ditarik utuh
     assert m["render_bbox"][0] == BBOX_TABEL[0]
     assert m["transkripsi_peringatan"] == []            # kedua angka ada di lapisan teks
-    assert model.panggilan == [(PROMPT_TRANSKRIPSI, config.TABLE_TRANSCRIPTION_NUM_PREDICT)]
+    assert model.panggilan == [(PROMPT_TRANSKRIPSI, tt.num_predict_adaptif("OCR 1 UKT I 1.500.000"))]
+
+
+def test_tabel_satu_kolom_lolos_jika_punya_header_pemisah_data(lingkungan, pdf):
+    model, _ = lingkungan
+    model.jawab[PROMPT_TRANSKRIPSI] = [
+        "| 6. Revenues |\n| --- |\n| 1. APBN Revenue-PNS |"]
+    (el,), _ = tt.proses([tabel_el()], pdf)
+    assert el["metadata"]["table_source"] == "vision_transcription"
+    assert el["metadata"]["transkripsi_baris"] == (
+        ("6. Revenues",), ("1. APBN Revenue-PNS",))
+    assert not _  # no image records
 
 
 def test_angka_tak_ditemukan_ditandai_dengan_rujukan(lingkungan, pdf):

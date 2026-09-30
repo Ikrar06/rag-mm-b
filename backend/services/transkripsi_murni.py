@@ -120,14 +120,15 @@ def _pecah_sel(baris: str) -> list[str]:
 def urai_markdown(md: str) -> tuple[tuple[str, ...], ...] | None:
     """Tabel Markdown -> baris sel (header di indeks 0). None bila bukan tabel.
 
-    Sah bila ada baris pemisah tepat setelah header, minimal 2 kolom dan
-    minimal satu baris data.
+    Sah bila ada baris pemisah tepat setelah header, minimal satu kolom dan
+    minimal satu baris data. Pemisah wajib menjaga formulir teks biasa tetap
+    ditolak sebagai tabel.
     """
     baris = [b for b in (md or "").splitlines() if b.strip()]
     if len(baris) < 3 or not _BARIS_PEMISAH.match(baris[1]):
         return None
     hasil = tuple(tuple(_pecah_sel(b)) for b in [baris[0], *baris[2:]])
-    if len(hasil[0]) < 2:
+    if len(hasil[0]) < 1:
         return None
     return hasil
 
@@ -356,4 +357,3 @@ def klip_aman(bbox, lebar_hal: float, tinggi_hal: float) -> tuple[float, float, 
     if kx1 - kx0 < SISI_KLIP_MIN_PT or ky1 - ky0 < SISI_KLIP_MIN_PT:
         raise AreaTidakSah(f"area setelah dijepit ke halaman {kx1 - kx0:.2f}x{ky1 - ky0:.2f} pt: {bbox!r}")
     return kx0, ky0, kx1, ky1
-

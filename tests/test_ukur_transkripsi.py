@@ -45,7 +45,11 @@ class TestUraiMarkdown:
         b = urai_markdown("|  |  |\n|---|---|\n| 9 | lanjutan |")
         assert b[0] == ("", "")
 
-    @pytest.mark.parametrize("md", ["", "| a | b |", "| a |\n|---|\n| 1 |",
+    def test_tabel_satu_kolom_dengan_header_dan_pemisah_sah(self):
+        assert urai_markdown("| 6. Revenues |\n| --- |\n| 1. APBN Revenue-PNS |") == (
+            ("6. Revenues",), ("1. APBN Revenue-PNS",))
+
+    @pytest.mark.parametrize("md", ["", "| a | b |", "| a |\n| 1 |\n| 2 |",
                                     "| a | b |\n| 1 | 2 |\n| 3 | 4 |"])
     def test_bukan_tabel(self, md):
         assert urai_markdown(md) is None
