@@ -431,3 +431,14 @@ def test_deskripsi_mati_tidak_ada_klasifikasi(lingkungan, pdf, monkeypatch):
     monkeypatch.setattr(config, "LLM_SUPPORTS_VISION", False)
     el = gambar_el(BBOX_GAMBAR)
     assert tt.proses([el], pdf) == ([el], {}) and model.panggilan == []
+
+
+def test_registry_tak_terbaca_tidak_menggagalkan_transkripsi(lingkungan, pdf, monkeypatch):
+    """Konteks log memanggil registry; kegagalannya tidak boleh jadi fallback OCR."""
+    import backend.services.document_registry as reg
+    model, _ = lingkungan
+    model.jawab[PROMPT_TRANSKRIPSI] = [MD]
+    monkeypatch.setattr(reg, "get_document_id",
+                        lambda n: (_ for _ in ()).throw(reg.RegistryError("tidak ditemukan")))
+    (el,), _ = tt.proses([tabel_el()], pdf)
+    assert el["metadata"]["table_source"] == "vision_transcription" and el["text"] == MD

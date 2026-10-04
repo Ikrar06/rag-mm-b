@@ -283,6 +283,22 @@ def area_render(bbox, hal: _Halaman, milik_lain) -> list[float]:
     return perluas_bbox(bbox, hal.kata, milik_lain=milik_lain)
 
 
+def _document_id_log(nama: str | None) -> str | None:
+    """document_id untuk konteks LOG saja. Gagal baca registry -> None.
+
+    Konteks log tidak boleh menggagalkan isi chunk: tanpa ini RegistryError
+    tertangkap pembungkus per element dan transkripsi yang berhasil jatuh ke OCR.
+    """
+    if not nama:
+        return None
+    try:
+        from backend.services.document_registry import get_document_id
+        return get_document_id(nama)
+    except Exception as e:
+        logger.debug("document_id_log_gagal file=%s error=%s", nama, e)
+        return None
+
+
 def transkripsi_tabel(el: dict, hal: _Halaman, milik_lain) -> dict:
     """Element Table baru berisi transkripsi, atau element lama + penanda fallback."""
     meta = el.get("metadata") or {}
@@ -293,9 +309,8 @@ def transkripsi_tabel(el: dict, hal: _Halaman, milik_lain) -> dict:
                                     "transkripsi_peringatan": ["gagal:tanpa_bbox"]}}
     area = area_render(bbox, hal, milik_lain)
     png = hal.render(area, config.TABLE_TRANSCRIPTION_DPI)
-    from backend.services.document_registry import get_document_id
     nama = getattr(hal, "pdf_name", None)
-    konteks = {"file": nama, "document_id": get_document_id(nama) if nama else None,
+    konteks = {"file": nama, "document_id": _document_id_log(nama),
                "halaman": el.get("page"), "bbox": bbox}
     md, alasan = transkripsi_satu_tabel(png, el.get("text") or "", konteks)
     if md is None:
@@ -345,10 +360,9 @@ def _transkripsi_gambar(el: dict, hal: _Halaman, semua: bool) -> tuple[str | Non
     """(markdown, alasan gagal). `semua`: prompt setiap tabel untuk narasi+tabel."""
     png = hal.render(el["metadata"]["bbox"], config.TABLE_TRANSCRIPTION_DPI)
     if not semua:
-        from backend.services.document_registry import get_document_id
         nama = getattr(hal, "pdf_name", None)
         return transkripsi_satu_tabel(png, el.get("text") or "", {
-            "file": nama, "document_id": get_document_id(nama) if nama else None,
+            "file": nama, "document_id": _document_id_log(nama),
             "halaman": el.get("page"), "bbox": (el.get("metadata") or {}).get("bbox")})
     raw, alasan = _tanya(png, VARIANT_TABEL_SEMUA, config.TABLE_TRANSCRIPTION_NUM_PREDICT,
                          _tabel_semua_sah, vision_cache.VERDICT_TRANSCRIBED)
