@@ -2847,3 +2847,29 @@ Alat: `scripts/bandingkan_dump.py` (selisih chunk per dokumen/halaman beserta
 sebab dan chunk_id yang bergeser), `scripts/gabung_dump.py` (satukan dump
 utama + susulan; menolak bila konfigurasi penentu isi chunk berbeda atau
 dokumen/chunk_id/image_id bertabrakan; manifest mencatat kedua run dan commit-nya).
+
+## relevan_setara: syarat isi wajib, ambang tanpa nilai bawaan
+
+Ketiga pasangan `relevan_setara` dari migrasi v5 pertama ditolak peninjau:
+manual-dosen p17 (catatan tombol Penilaian vs tabel status kegiatan),
+penyelenggaraan-prodi p10 (ayat 7–9 vs tabel konversi nilai Pasal 17), kalender
+akademik (catatan 8 Aug soal UKT vs grid tanggal Agustus). Semuanya hanya
+BERTETANGGA: irisan bbox membuktikan letak, bukan isi. Gold tidak diubah.
+
+Kini dua syarat wajib: letak (seperti sebelumnya) DAN isi — `containment`
+token chunk teks di chunk tabel (|teks ∩ tabel| / |teks|; baris judul Markdown
+dibuang karena kedua chunk berbagi prefiks section; angka tanpa pemisah
+ribuan). Containment, bukan Jaccard, karena chunk tabel jauh lebih panjang
+daripada bagian yang tergandakan. Petunjuk dari dump v2 (teks tabel OCR, bukan
+transkripsi): kalender 8 Aug 0,02; manual-dosen p17 0,20.
+
+`--ambang-setara` TIDAK punya nilai bawaan; tanpanya `relevan_setara` tidak
+diisi dan kandidat beserta skornya ditulis ke `relevan_setara_kandidat.jsonl`.
+Ambang ditetapkan dari sebaran populasi di dump v5 (`scripts/sebaran_setara.py`).
+Bila tidak ada pasangan yang lolos, evaluator tidak perlu mendukung
+`relevan_setara` untuk v5.
+
+Perbaikan kecil atas 96272c3: `document_id` untuk konteks log kini dibaca lewat
+`_document_id_log`, yang mengembalikan None bila registry tak terbaca.
+Sebelumnya `RegistryError` tertangkap pembungkus per element dan transkripsi
+yang berhasil jatuh ke OCR.

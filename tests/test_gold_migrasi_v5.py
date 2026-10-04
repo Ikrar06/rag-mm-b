@@ -14,7 +14,7 @@ from lib.gold_migrasi import (  # noqa: E402
     petakan_chunk,
 )
 from lib.relevan_setara import (  # noqa: E402
-    kelompok_setara, luas_di_perluasan, terapkan_setara,
+    containment, kandidat_letak, kelompok_setara, luas_di_perluasan, terapkan_setara, token_isi,
 )
 from backend.services.table_continuation import html_sha  # noqa: E402
 
@@ -35,10 +35,15 @@ V5 = [
      "text_content": "| Rentang | Huruf |", "table_origin": "image"},
     {"chunk_id": "sb_p19_c00", "document_id": "sb", "page_number": 19, "element_type": "Table",
      "text_sha": "baru3", "text_as_html": "<table/>", "bbox": [0.10, 0.04, 0.88, 0.69],
-     "render_bbox": [0.10, 0.04, 0.95, 0.69], "text_content": "| URAIAN | BESARAN |"},
+     "render_bbox": [0.10, 0.04, 0.95, 0.69],
+     "text_content": "## NO\n\n| URAIAN | BESARAN |\n|---|---|\n| Ketua | 350.000 |\n| Anggota | 75.000 |"},
     {"chunk_id": "sb_p19_c12", "document_id": "sb", "page_number": 19,
      "element_type": "Title+UncategorizedText", "text_sha": "kolom", "bbox": [0.876, 0.05, 0.948, 0.88],
-     "text_content": "# BESARAN 4 350.000 75.000"},
+     "text_content": "# BESARAN\n\n350.000\n\n75.000"},
+    # Bertetangga, lolos syarat letak, isi berbeda (pola ketiga pasangan yang ditolak).
+    {"chunk_id": "sb_p19_c13", "document_id": "sb", "page_number": 19,
+     "element_type": "NarrativeText", "text_sha": "catatan", "bbox": [0.89, 0.30, 0.95, 0.40],
+     "text_content": "# NO\n\nCatatan tombol Penilaian hanya untuk kegiatan selesai"},
     {"chunk_id": "sb_p19_c01", "document_id": "sb", "page_number": 19, "element_type": "ListItem",
      "text_sha": "jauh", "bbox": [0.17, 0.70, 0.82, 0.71], "text_content": "Koordinator"},
 ]
@@ -82,11 +87,20 @@ def test_sidik_ganda_sedokumen_ambigu():
     assert h.status == STATUS_AMBIGU
 
 
-def test_relevan_setara_kolom_besaran():
+def test_token_isi_buang_judul_dan_normalkan_angka():
+    assert token_isi("## Bagian Umum\n| Ketua | 1.500.000 | a. |") == {"ketua", "1500000"}
+    assert containment("# x", "apa pun") is None
+
+
+def test_relevan_setara_syarat_letak_dan_isi():
     assert luas_di_perluasan([0.876, 0.05, 0.948, 0.88], [0.10, 0.04, 0.88, 0.69],
                              [0.10, 0.04, 0.95, 0.69]) > 0
-    setara = kelompok_setara(["sb_p19_c12", "sb_p19_c01", "ukt-tahun-2025_p5_c02", "tak_ada"], V5)
-    assert setara == {"sb_p19_c12": "sb_p19_c00"}          # c01 di luar daerah perluasan
+    ids = ["sb_p19_c12", "sb_p19_c13", "sb_p19_c01", "ukt-tahun-2025_p5_c02", "tak_ada"]
+    kand = {(t, b): round(c, 2) for t, b, c in kandidat_letak(ids, V5)}
+    # c01 gagal letak; c13 lolos letak tapi isinya bukan duplikat
+    assert kand == {("sb_p19_c12", "sb_p19_c00"): 1.0, ("sb_p19_c13", "sb_p19_c00"): 0.0}
+    setara = kelompok_setara(ids, V5, ambang=0.8)
+    assert setara == {"sb_p19_c12": "sb_p19_c00"}
     item = {"query_id": "q", "relevant_text_chunks": ["sb_p19_c12", "sb_p19_c01"]}
     assert terapkan_setara(item, setara)["relevan_setara"] == [["sb_p19_c12", "sb_p19_c00"]]
     assert "relevan_setara" not in terapkan_setara({"relevant_text_chunks": ["x"]}, setara)
@@ -116,8 +130,26 @@ def test_cli_v4_ke_v5(tmp_path, monkeypatch, capsys):
     assert migrasi_gold.main() == 1                     # q2 (cap) tidak terpetakan
     lap = json.loads((tmp_path / "o" / "laporan_migrasi.json").read_text())
     assert lap["jangkar_v5_item"] == {"sidik": 1}
-    assert lap["relevan_setara_pasangan"] == 1
+    assert lap["relevan_setara_pasangan"] == 0 and lap["ambang_setara"] is None   # tanpa ambang
+    assert lap["relevan_setara_kandidat"] == 1
     mig = [json.loads(l) for l in (tmp_path / "o" / "ground_truth_migrated.jsonl").read_text().splitlines()]
+    assert all("relevan_setara" not in m for m in mig)
+    monkeypatch.setattr(sys, "argv", sys.argv + ["--ambang-setara", "0.8", "--out-dir", str(tmp_path / "o2")])
+    migrasi_gold.main()
+    mig = [json.loads(l) for l in (tmp_path / "o2" / "ground_truth_migrated.jsonl").read_text().splitlines()]
     assert {m["query_id"]: m.get("relevan_setara") for m in mig} == {
         "q1": None, "q3": [["sb_p19_c12", "sb_p19_c00"]]}
     assert STATUS_IDENTIK in lap["per_status"] and lap["per_status"][STATUS_HILANG] == 1
+
+
+def test_sebaran_setara_cli(tmp_path, monkeypatch, capsys):
+    import sebaran_setara
+    (tmp_path / "c.jsonl").write_text("\n".join(json.dumps(r) for r in V5))
+    monkeypatch.setattr(sys, "argv", ["x", "--chunks", str(tmp_path / "c.jsonl"),
+                                      "--tolak", "sb_p19_c13~sb_p19_c00",
+                                      "--out", str(tmp_path / "s.json")])
+    assert sebaran_setara.main() == 0
+    keluar = capsys.readouterr().out
+    assert "pasangan lolos syarat letak: 2" in keluar and "celah terbesar: 0.000 -> 1.000" in keluar
+    assert "DITOLAK manusia: sb_p19_c13 ~ sb_p19_c00  containment=0.000" in keluar
+    assert len(json.loads((tmp_path / "s.json").read_text())) == 2

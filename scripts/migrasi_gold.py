@@ -64,7 +64,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib.relevan_setara import kelompok_setara, terapkan_setara  # noqa: E402
+from lib.relevan_setara import kandidat_letak, kelompok_setara, terapkan_setara  # noqa: E402
 from lib.gold_migrasi import (  # noqa: E402
     STATUS_AMBIGU, STATUS_HILANG, STATUS_IDENTIK, STATUS_ISI_BERUBAH,
     STATUS_PINDAH, bangun_indeks, petakan_item, query_id_usang, slug_dokumen,
@@ -239,6 +239,10 @@ def main() -> int:
     ap.add_argument("--chunks-lama", default=None,
                     help="chunks.jsonl run LAMA — jangkar text_sha. Sangat disarankan.")
     ap.add_argument("--out-dir", default="migrasi_gold")
+    ap.add_argument("--ambang-setara", type=float, default=None,
+                    help="containment minimum untuk relevan_setara. Tanpa nilai ini "
+                         "relevan_setara TIDAK diisi; kandidat letak dan skornya tetap "
+                         "dilaporkan. Tetapkan dari scripts/sebaran_setara.py.")
     ap.add_argument("--hitung-tabrakan", action="store_true",
                     help="Hitung text_sha yang muncul lebih dari sekali lalu "
                          "berhenti. Tidak menjalankan migrasi, tidak butuh --gold.")
@@ -306,7 +310,13 @@ def main() -> int:
     terpetakan = [h for h in hasil if h.terpetakan]
     # relevan_setara butuh bbox dan render_bbox chunk baru, yang hanya ada di dump.
     dipetakan = {c.baru for h in terpetakan for c in h.chunks if c.baru}
-    setara = kelompok_setara(dipetakan, rows) if any(r.get("render_bbox") for r in rows) else {}
+    ada_render = any(r.get("render_bbox") for r in rows)
+    kandidat = kandidat_letak(dipetakan, rows) if ada_render else []
+    setara = (kelompok_setara(dipetakan, rows, args.ambang_setara)
+              if ada_render and args.ambang_setara is not None else {})
+    tulis_jsonl(out / "relevan_setara_kandidat.jsonl", (
+        {"chunk_teks": a, "chunk_tabel": b, "containment": round(c, 3),
+         "lolos": a in setara and setara[a] == b} for a, b, c in sorted(kandidat, key=lambda x: -x[2])))
     migrasi = [terapkan_setara(terapkan(h), setara) for h in terpetakan]
     n_mig = tulis_jsonl(out / "ground_truth_migrated.jsonl", migrasi)
     per_teks = {r.get("chunk_id"): r for r in rows}
@@ -353,9 +363,12 @@ def main() -> int:
         print("\n  Jangkar v5 (chunk / item) — item ini isi_berubah, perlu tinjau ulang:")
         for j in sorted(per_jangkar):
             print(f"    {j:<10}{per_jangkar[j]:>6} chunk  {item_jangkar[j]:>6} item")
-    ada_render = any(r.get("render_bbox") for r in rows)
-    print(f"\n  relevan_setara: {n_setara} pasangan -> relevan_setara_tinjau.jsonl"
+    print(f"\n  relevan_setara: kandidat letak {len(kandidat)}, lolos isi {n_setara}"
+          + (f" (ambang {args.ambang_setara})" if args.ambang_setara is not None
+             else " (TANPA --ambang-setara: tidak diisi)")
           + ("" if ada_render else "  (index baru tanpa render_bbox: tidak dihitung)"))
+    for a, b, c in sorted(kandidat, key=lambda x: -x[2])[:10]:
+        print(f"    {c:.3f}  {a}  ~  {b}")
 
     n_qid = sum(1 for h in hasil if query_id_usang(h))
     if n_qid:
@@ -388,7 +401,8 @@ def main() -> int:
         "human_verdict_setelah": dict(verdict_mig),
         "query_id_usang": n_qid,
         "jangkar_v5_chunk": dict(per_jangkar), "jangkar_v5_item": dict(item_jangkar),
-        "relevan_setara_pasangan": n_setara,
+        "relevan_setara_pasangan": n_setara, "relevan_setara_kandidat": len(kandidat),
+        "ambang_setara": args.ambang_setara,
     }, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print(f"\n  laporan_migrasi.json: {out / 'laporan_migrasi.json'}")
