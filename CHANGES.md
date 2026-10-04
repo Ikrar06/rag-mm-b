@@ -2873,3 +2873,38 @@ Perbaikan kecil atas 96272c3: `document_id` untuk konteks log kini dibaca lewat
 `_document_id_log`, yang mengembalikan None bila registry tak terbaca.
 Sebelumnya `RegistryError` tertangkap pembungkus per element dan transkripsi
 yang berhasil jatuh ke OCR.
+
+## relevan_setara dibangun, diuji, lalu TIDAK dipakai di v5
+
+Sebaran containment di dump v5 final (20261002T044035Z-516d9f21): 606 pasangan
+lolos syarat letak, hanya 3 yang dirujuk gold. Sebaran menyambung dari 0 sampai
+1; celah terbesar 0,714 → 0,750 (lebar 0,036), jadi ambang tidak dapat
+dibuktikan dari data. Pasangan berskor 1,0 memang duplikat sungguhan (pecahan
+teks ekstraksi yang isinya sudah ada di tabel: jadwal retensi, daftar duta K3,
+SKPI), tapi tak satu pun dirujuk gold. Ketiga pasangan yang dirujuk gold
+berskor rendah dan isinya berbeda menurut tinjauan manusia: manual-dosen
+p17_c02~c01 0,160; penyelenggaraan-prodi p10_c03~c04 0,081; kalender
+p6_c05~c04 0,044. Pengaruh ke evaluasi: nol.
+
+Keputusan: `relevan_setara` tidak diisi di migrasi gold v5 dan evaluator TIDAK
+perlu mendukung field ini. Kodenya dibiarkan, mati secara bawaan
+(`--ambang-setara` tanpa nilai bawaan = tidak diisi).
+
+## Koreksi: pengaman ukuran gambar MENGUBAH keluaran deskripsi v4
+
+Klaim sebelumnya ("isi cache v4 tidak berubah; deskripsi v4 tidak pernah
+terkena") salah. Hitungannya hanya atas 1.441 gambar ber-narasi, bukan seluruh
+2.230 gambar. Di v4 ada 160 gambar yang sisi pendeknya < 32 px setelah
+pengecilan ke PDF_MAX_IMAGE_DIM 1.280 (atau rasio > 200) — dan KESELURUHANNYA
+tanpa narasi: deskripsinya gagal HTTP 500 di Ollama (panic SmartResize), dan
+kegagalan tidak di-cache. Terbanyak di pedoman-penulisan-skripsi (91, serpihan
+sampul 1554×25 px), laporan-keuangan (34), dan kkn-covid (23).
+
+Di v5, `vision_io.amankan` menambal gambar itu sampai 32 px sehingga
+deskripsinya berhasil, dan yang dinilai model bukan DEKORATIF menjadi chunk.
+Saringan klasifikasi (perbaikan a) tidak menghilangkannya karena saringan itu
+menolak gambar yang TIDAK dideskripsikan — gambar ini kini dideskripsikan. Ini
+asal sebagian besar selisih chunk v4→v5 yang diterima sebagai perbedaan
+diketahui: +15 sampul skripsi, +2 laporan keuangan, −6 cap UKT (dibuang) = +11.
+Isi cache v4 untuk gambar yang SUDAH berhasil memang tidak berubah; yang
+berubah adalah gambar yang di v4 gagal.
