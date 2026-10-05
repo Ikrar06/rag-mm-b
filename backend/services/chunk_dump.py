@@ -42,6 +42,7 @@ from pathlib import Path
 
 from backend import config
 from backend.services import image_describer, preprocessing, vision_cache
+from backend.services.modality import modality_dari
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ _CSV_COLUMNS = [
     "page_number",
     "page_span",
     "chunk_type",
+    "modality",
     "element_type",
     "chunk_index",
     "image_id",
@@ -167,6 +169,9 @@ def _record(doc) -> dict:
         # halaman nol — dinormalkan jadi null di dataset.
         "page_number": page if isinstance(page, int) and page > 0 else None,
         "chunk_type": _chunk_type(meta.get("element_type", "")),
+        # Tag modalitas eksplisit: image / table / text. Dari payload bila ada,
+        # diturunkan dari element_type untuk Document lama tanpa field ini.
+        "modality": meta.get("modality") or modality_dari(meta.get("element_type")),
         "text_content": doc.text,
         "text_as_html": meta.get("raw_html") or None,
         "bbox": meta.get("bbox"),
@@ -232,6 +237,7 @@ def _row(rec: dict) -> dict:
         "page_number": "" if rec.get("page_number") is None else rec["page_number"],
         "page_span": "-".join(str(h) for h in (rec.get("page_span") or [])),
         "chunk_type": rec.get("chunk_type") or "",
+        "modality": rec.get("modality") or "",
         "element_type": rec.get("element_type") or "",
         "chunk_index": rec.get("chunk_index"),
         "image_id": rec.get("image_id") or "",

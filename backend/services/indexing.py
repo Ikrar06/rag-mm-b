@@ -73,6 +73,8 @@ _STRUCTURAL_METADATA_KEYS = (
     "transkripsi_peringatan",
     "image_content",
     "render_bbox",
+    # Tag modalitas eksplisit; payload index keyword (_pasang_payload_index).
+    "modality",
 )
 
 
@@ -471,10 +473,33 @@ def delete_file_chunks(file_name: str) -> int:
         return 0
 
 
+def _pasang_payload_index(client: QdrantClient, collection: str = None) -> list[str]:
+    """Payload index keyword untuk field filter (saat ini: modality). Idempoten.
+
+    Dipanggil juga untuk collection yang sudah ada, supaya collection lama
+    mendapat index saat indexing berikutnya tanpa dibuat ulang. Kegagalan
+    dicatat, tidak menjatuhkan indexing: index mempercepat filter, tidak
+    mengubah isi.
+    """
+    from qdrant_client.models import PayloadSchemaType
+    from backend.services.modality import PAYLOAD_INDEX_KEYWORD
+    nama = collection or QDRANT_COLLECTION_NAME
+    terpasang = []
+    for field in PAYLOAD_INDEX_KEYWORD:
+        try:
+            client.create_payload_index(collection_name=nama, field_name=field,
+                                        field_schema=PayloadSchemaType.KEYWORD)
+            terpasang.append(field)
+        except Exception as e:
+            logger.warning("payload_index_gagal collection=%s field=%s error=%s", nama, field, e)
+    return terpasang
+
+
 def _ensure_collection(client: QdrantClient):
-    """Pastikan collection ada di Qdrant, buat jika belum."""
+    """Pastikan collection ada di Qdrant, buat jika belum. Payload index selalu dipastikan."""
     collections = [c.name for c in client.get_collections().collections]
     if QDRANT_COLLECTION_NAME in collections:
+        _pasang_payload_index(client)
         return
 
     logger.info(f"collection_create name={QDRANT_COLLECTION_NAME} dim={EMBED_DIMENSION}")
@@ -485,6 +510,7 @@ def _ensure_collection(client: QdrantClient):
                 collection_name=QDRANT_COLLECTION_NAME,
                 vectors_config=VectorParams(size=EMBED_DIMENSION, distance=Distance.COSINE),
             )
+            _pasang_payload_index(client)
             return
         except Exception as e:
             if "already exists" in str(e).lower() and attempt < max_retries - 1:

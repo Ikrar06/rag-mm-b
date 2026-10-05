@@ -19,13 +19,13 @@ def _stub_qdrant() -> None:
     import types
     if importlib.util.find_spec("qdrant_client") is not None:
         return
-    kelas = type("Stub", (), {"__init__": lambda self, *a, **k: None})
+    kelas = type("Stub", (), {"__init__": lambda self, *a, **k: None, "KEYWORD": "keyword"})
     for nama, atribut in (
         ("llama_index.vector_stores", ()),
         ("llama_index.vector_stores.qdrant", ("QdrantVectorStore",)),
         ("qdrant_client", ("QdrantClient",)),
         ("qdrant_client.models", ("Filter", "FieldCondition", "MatchValue", "Distance",
-                                  "VectorParams")),
+                                  "VectorParams", "PayloadSchemaType")),
     ):
         mod = sys.modules.setdefault(nama, types.ModuleType(nama))
         for a in atribut:

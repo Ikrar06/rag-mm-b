@@ -40,6 +40,7 @@ from backend.config import (
     LLM_SUPPORTS_VISION,
 )
 from backend.services import table_continuation, table_transcription
+from backend.services.modality import modality_dari
 
 logger = logging.getLogger(__name__)
 
@@ -931,6 +932,9 @@ def _chunk_elements(
                     chunk["document_id"] = document_id
                     chunk["chunk_id"] = f"{document_id}_{segment}_c{ordinal:02d}"
                 chunk["text_sha"] = text_sha(hash_basis)
+                # Tag modalitas eksplisit (permintaan dosen). Payload saja, tidak
+                # di-embed — lihat EMBED_EXCLUDED_METADATA_KEYS.
+                chunk["modality"] = modality_dari(element_type)
                 for key, value in (extra or {}).items():
                     if value not in (None, ""):
                         chunk[key] = value

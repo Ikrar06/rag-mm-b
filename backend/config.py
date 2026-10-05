@@ -239,6 +239,8 @@ EMBED_EXCLUDED_METADATA_KEYS = (
     "transkripsi_peringatan",
     "image_content",
     "render_bbox",
+    # Tag modalitas (image/table/text) untuk filter payload, bukan isi.
+    "modality",
 )
 
 # Nama lama, dipertahankan agar impor yang ada tidak patah.
