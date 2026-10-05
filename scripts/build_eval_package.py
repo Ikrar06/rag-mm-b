@@ -14,6 +14,14 @@ Pemakaian:
 import argparse, collections, csv, json, os, re, shutil, sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from lib.paket_dosen import (  # noqa: E402
+    baris_semua_chunk, format_ukuran, modality_chunk, readme_paket, tulis_semua_chunk,
+    ukuran_folder,
+)
+
 FLOW = re.compile(r"diagram alir|flowchart|bagan alir|alur proses|diagram alur", re.I)
 TABEL = re.compile(r"\btabel\b|baris dan kolom|kolom.*baris", re.I)
 FORM = re.compile(r"formulir|blanko|template|kop surat|tanda tangan|lembar pengesahan", re.I)
@@ -61,7 +69,9 @@ def main():
     (out / "chunks_markdown").mkdir(parents=True)
     (out / "gambar").mkdir(parents=True)
 
-    chunks = read_jsonl(dump / "chunks.jsonl")
+    # modality diturunkan dari element_type bila dump lama tidak membawanya,
+    # supaya paket v5 dapat dibangun ulang dari dump yang sama.
+    chunks = [{**c, "modality": modality_chunk(c)} for c in read_jsonl(dump / "chunks.jsonl")]
     images = read_jsonl(dump / "images.jsonl")
     manifest = json.load(open(dump / "run_manifest.json", encoding="utf-8"))
 
@@ -96,7 +106,7 @@ def main():
             et = c.get("element_type") or "?"
             pg = c.get("page_number")
             lines.append(f"## `{c.get('chunk_id')}`")
-            lines.append(f"halaman {pg} · tipe {et}"
+            lines.append(f"halaman {pg} · {c.get('modality')} · tipe {et}"
                          + (f" · gambar `{c['image_id']}`" if c.get("image_id") else ""))
             lines.append("")
             lines.append((c.get("text_content") or "").strip())
@@ -333,9 +343,21 @@ ground truth tidak bisa dicocokkan dengan hasil sistem.
     (out / "README.md").write_text(readme, encoding="utf-8")
     shutil.copy2(dump / "run_manifest.json", out / "run_manifest.json")
 
+    # ---------- paket dosen: satu CSV gabungan + README ----------
+    ringkas = tulis_semua_chunk(out / "semua_chunk.csv", baris_semua_chunk(chunks, images))
+    (out / "README_paket.md").write_text(readme_paket(
+        ringkas, dump.name, manifest.get("provenance", {}).get("qdrant_collection", "")),
+        encoding="utf-8")
+
     print(f"Paket ditulis: {out}")
     print(f"  dokumen {n_doc} · chunk {n_chunk:,} · gambar {n_img:,}")
     print(f"  gambar disalin {disalin}" + (f", gagal {gagal}" if gagal else ""))
+    print(f"  semua_chunk.csv {ringkas['baris']:,} baris · per modality {ringkas['per_modality']}")
+    if ringkas["sel_melebihi_batas_excel"]:
+        print(f"  PERINGATAN: {ringkas['sel_melebihi_batas_excel']} chunk > 32.767 karakter "
+              "(terpotong bila dibuka di Excel)")
+    print(f"  ukuran paket {format_ukuran(ukuran_folder(out))} · "
+          f"folder gambar {format_ukuran(ukuran_folder(out / 'gambar'))}")
     print()
     print("  kandidat strata:")
     for k, v in saran.most_common():

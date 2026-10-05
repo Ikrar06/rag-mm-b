@@ -2908,3 +2908,66 @@ asal sebagian besar selisih chunk v4→v5 yang diterima sebagai perbedaan
 diketahui: +15 sampul skripsi, +2 laporan keuangan, −6 cap UKT (dibuang) = +11.
 Isi cache v4 untuk gambar yang SUDAH berhasil memang tidak berubah; yang
 berubah adalah gambar yang di v4 gagal.
+
+## Tag `modality` (wajib identik untuk strategi A)
+
+Dosen meminta tag modalitas eksplisit. Sebelumnya hanya ditambahkan manual
+lewat `set_payload` ke collection v4 dan v5; dump dan paket v5 tidak
+membawanya. Kini bagian pipeline:
+
+| modality | aturan (pencocokan TEPAT pada element_type) | v5 |
+|---|---|---|
+| `image` | `ImageDescription` (termasuk narasi+tabel) | 1.410 |
+| `table` | `Table` (1.160 tabel + 42 gambar-tabel, `table_origin="image"`) | 1.202 |
+| `text` | selainnya, termasuk `NarrativeText+Table` (tabel kecil di buffer teks) | 22.874 |
+
+- Satu aturan, `backend/services/modality.py`, dipakai preprocessing (diset saat
+  chunk dibentuk), dump, dan `build_eval_package.py`.
+- Masuk payload Qdrant (`_STRUCTURAL_METADATA_KEYS`) dengan payload index
+  keyword, yang dipastikan setiap indexing — juga untuk collection yang sudah
+  ada. Masuk `chunks.jsonl` dan `chunks_review.csv`.
+- TIDAK di-embed (`EMBED_EXCLUDED_METADATA_KEYS`); uji eksklusi mencakupnya.
+- `build_eval_package.py` menurunkan `modality` dari `element_type` bila dump
+  tidak membawanya, sehingga paket v5 dibangun ulang dari dump v5 yang sama.
+- **Wajib identik untuk strategi A:** aturan di atas dan nilai per chunk harus
+  sama di kedua fork; filter/stratifikasi per modalitas tidak sebanding bila
+  satu fork, misalnya, menghitung `NarrativeText+Table` sebagai `table`.
+
+## Koreksi berkas keputusan v5 setelah index dibangun
+
+`laporan-keuangan p17_c00 -> p18_c02` diubah dari `terima` ke `tolak` SETELAH
+index v5 dibangun. Index v5 memakai keputusan lama: satu chunk (p18_c02)
+membawa header yang diulang dari p17_c00. Tidak ada gold yang merujuknya;
+dampak ke evaluasi nol. Berkas keputusan yang benar untuk run berikutnya
+adalah versi terkoreksi.
+
+## Statistik run v5 final
+
+| hitungan | nilai |
+|---|---|
+| `tabel_ditranskripsi` | 1.107 |
+| `tabel_fallback_ocr` | 54 |
+| `kolom_tidak_konsisten_awal` → `_akhir` | 170 → 89 (81 diperbaiki koreksi) |
+| `terpotong` | 39 |
+
+Rincian perbedaan v4 → v5 yang diketahui (lanjutan bagian "Koreksi: pengaman
+ukuran gambar"): +15 chunk dekoratif sampul pedoman-penulisan-skripsi halaman
+1, +2 di laporan-keuangan halaman 26 dan 107, −6 cap UKT p5–p10 = +11.
+
+## Gold
+
+Gold lama (v4, termigrasi) TIDAK dipakai. Gold baru 790 item dibuat ulang dari
+nol atas v5 dengan generator lokal, menunggu tinjauan tim evaluasi.
+
+## Paket dosen
+
+`build_eval_package.py` kini juga menulis `semua_chunk.csv` (satu baris per
+chunk; UTF-8 dengan BOM, koma, kutip standar; kolom chunk_id, document_id,
+judul_dokumen, halaman, modality, element_type, table_source, image_id,
+path_gambar, text_content) dan `README_paket.md`. `path_gambar` =
+`gambar/<document_id>/pN_imgNN.ext`, letak salinan di paket, sehingga cocok
+setelah folder `gambar/` diunggah utuh ke Google Drive. Judul diturunkan dari
+nama berkas PDF (registry belum punya judul terkurasi). Sel yang diawali
+`= + - @` diberi apostrof agar tidak dibaca sebagai rumus; sel > 32.767
+karakter dihitung dan dilaporkan, tidak dipotong. Ukuran paket dan folder
+gambar dicetak di akhir.
